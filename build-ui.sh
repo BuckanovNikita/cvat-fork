@@ -11,6 +11,7 @@ corepack enable --install-directory "$HOME/.npm-global/bin" yarn
 export PATH="$HOME/.npm-global/bin:$PATH"
 
 cd "$ROOT/cvat"
+git clean -xdqf -- cvat-ui/dist
 yarn install --immutable
 DISABLE_SOURCE_MAPS=true yarn run build:cvat-ui
 

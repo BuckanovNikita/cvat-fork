@@ -1,7 +1,7 @@
 From 2614a6dc317615f33665df6bc67ea2ec7793304b Mon Sep 17 00:00:00 2001
 From: Buckanov Nikita <buckanov.nikita@yandex.ru>
 Date: Thu, 20 Aug 2026 21:30:28 +0300
-Subject: [PATCH 2/2] feat(ui): report the same job buckets in the task list
+Subject: [PATCH 2/3] feat(ui): report the same job buckets in the task list
  legend
 
 The counters above the bar still used the three buckets the tasks
