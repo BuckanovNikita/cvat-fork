@@ -137,10 +137,35 @@
     color: $annotation-progress-color;
 }
 
+.cvat-jobs-legend-annotation-new {
+    color: $annotation-new-progress-color;
+}
+
+.cvat-jobs-legend-annotating {
+    color: $annotation-active-progress-color;
+}
+
+.cvat-jobs-legend-validation {
+    color: $validation-progress-color;
+}
+
+.cvat-jobs-legend-acceptance {
+    color: $completed-progress-color;
+}
+
+.cvat-jobs-legend-rejected {
+    color: $rejected-progress-color;
+}
+
+.cvat-jobs-legend-inaccessible {
+    color: $annotation-progress-color;
+}
+
 .cvat-task-item-jobs-progress {
     display: flex;
     width: 100%;
     height: 6px;
+    margin-top: $grid-unit-size * 2;
     border-radius: 100px;
     overflow: hidden;
     background: $border-color-1;
