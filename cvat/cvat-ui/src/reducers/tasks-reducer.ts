@@ -25,6 +25,10 @@ const defaultState: TasksState = {
     current: [],
     selected: [],
     previews: {},
+    jobsSummary: {
+        fetching: false,
+        data: {},
+    },
     gettingQuery: {
         page: 1,
         id: null,
@@ -53,6 +57,7 @@ export default (state: TasksState = defaultState, action: AnyAction): TasksState
                 initialized: false,
                 fetching: true,
                 count: 0,
+                jobsSummary: defaultState.jobsSummary,
                 gettingQuery: action.payload.updateQuery ? {
                     ...defaultState.gettingQuery,
                     ...action.payload.query,
@@ -72,6 +77,27 @@ export default (state: TasksState = defaultState, action: AnyAction): TasksState
                 ...state,
                 initialized: true,
                 fetching: false,
+            };
+        case TasksActionTypes.GET_TASKS_JOBS_SUMMARY:
+            return {
+                ...state,
+                jobsSummary: {
+                    ...state.jobsSummary,
+                    fetching: true,
+                },
+            };
+        case TasksActionTypes.GET_TASKS_JOBS_SUMMARY_SUCCESS:
+            return {
+                ...state,
+                jobsSummary: {
+                    fetching: false,
+                    data: action.payload.summary,
+                },
+            };
+        case TasksActionTypes.GET_TASKS_JOBS_SUMMARY_FAILED:
+            return {
+                ...state,
+                jobsSummary: defaultState.jobsSummary,
             };
         case ProjectsActionTypes.DELETE_PROJECT_SUCCESS: {
             const { projectId } = action.payload;

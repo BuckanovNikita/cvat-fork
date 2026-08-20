@@ -119,6 +119,15 @@ export interface JobsState {
     };
 }
 
+export interface TaskJobsSummary {
+    annotationNew: number;
+    annotating: number;
+    validation: number;
+    acceptance: number;
+    rejected: number;
+    fetched: number;
+}
+
 export interface TasksState {
     fetchingTimestamp: number;
     initialized: boolean;
@@ -133,6 +142,10 @@ export interface TasksState {
     selected: number[];
     previews: {
         [index: number]: Preview;
+    };
+    jobsSummary: {
+        fetching: boolean;
+        data: Record<number, TaskJobsSummary>;
     };
     activities: {
         deletes: {

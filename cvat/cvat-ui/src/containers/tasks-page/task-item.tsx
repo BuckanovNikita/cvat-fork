@@ -6,7 +6,9 @@
 import { connect } from 'react-redux';
 
 import { Task, Request } from 'cvat-core-wrapper';
-import { CombinedState, ActiveInference, PluginComponent } from 'reducers';
+import {
+    CombinedState, ActiveInference, PluginComponent, TaskJobsSummary,
+} from 'reducers';
 import TaskItemComponent from 'components/tasks-page/task-item';
 import { updateTaskInState as updateTaskInStateAction, getTaskPreviewAsync } from 'actions/tasks-actions';
 import { cancelInferenceAsync } from 'actions/models-actions';
@@ -17,6 +19,7 @@ interface StateToProps {
     activeInference: ActiveInference | null;
     activeRequest: Request | null;
     ribbonPlugins: PluginComponent[];
+    jobsSummary: TaskJobsSummary | null;
 }
 
 interface DispatchToProps {
@@ -45,6 +48,7 @@ function mapStateToProps(state: CombinedState, own: OwnProps): StateToProps {
         activeInference: state.models.inferences[id] || null,
         ribbonPlugins: state.plugins.components.taskItem.ribbon,
         activeRequest: activeRequest || null,
+        jobsSummary: state.tasks.jobsSummary.data[id] ?? null,
     };
 }
 

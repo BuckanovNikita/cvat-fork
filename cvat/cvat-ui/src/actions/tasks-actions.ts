@@ -4,11 +4,12 @@
 // SPDX-License-Identifier: MIT
 
 import { AnyAction } from 'redux';
-import { TasksQuery } from 'reducers';
+import { TaskJobsSummary, TasksQuery } from 'reducers';
 import {
     getCore, RQStatus, Storage, StorageLocation, Task, UpdateStatusData, Request, FramesMetaData,
 } from 'cvat-core-wrapper';
 import { filterNull } from 'utils/filter-null';
+import aggregateTaskJobs from 'utils/task-jobs-summary';
 import { ThunkDispatch, ThunkAction } from 'utils/redux';
 
 import { ValidationMode } from 'components/create-task-page/quality-configuration-form';
@@ -22,6 +23,9 @@ export enum TasksActionTypes {
     GET_TASKS = 'GET_TASKS',
     GET_TASKS_SUCCESS = 'GET_TASKS_SUCCESS',
     GET_TASKS_FAILED = 'GET_TASKS_FAILED',
+    GET_TASKS_JOBS_SUMMARY = 'GET_TASKS_JOBS_SUMMARY',
+    GET_TASKS_JOBS_SUMMARY_SUCCESS = 'GET_TASKS_JOBS_SUMMARY_SUCCESS',
+    GET_TASKS_JOBS_SUMMARY_FAILED = 'GET_TASKS_JOBS_SUMMARY_FAILED',
     DELETE_TASK = 'DELETE_TASK',
     DELETE_TASK_SUCCESS = 'DELETE_TASK_SUCCESS',
     DELETE_TASK_FAILED = 'DELETE_TASK_FAILED',
@@ -69,6 +73,53 @@ function getTasksFailed(error: any): AnyAction {
     return action;
 }
 
+function getTasksJobsSummary(): AnyAction {
+    return { type: TasksActionTypes.GET_TASKS_JOBS_SUMMARY };
+}
+
+function getTasksJobsSummarySuccess(summary: Record<number, TaskJobsSummary>): AnyAction {
+    return {
+        type: TasksActionTypes.GET_TASKS_JOBS_SUMMARY_SUCCESS,
+        payload: { summary },
+    };
+}
+
+function getTasksJobsSummaryFailed(): AnyAction {
+    return { type: TasksActionTypes.GET_TASKS_JOBS_SUMMARY_FAILED };
+}
+
+// Per stage/state job counters the tasks endpoint does not provide.
+// The whole page is covered by a single request, and a failure only means
+// task items keep rendering the default two-colour progress bar
+export function getTasksJobsSummaryAsync(taskIds: number[], fetchingTimestamp: number): ThunkAction {
+    return async (dispatch: ThunkDispatch, getState): Promise<void> => {
+        if (!taskIds.length) {
+            return;
+        }
+
+        const isRequestRelevant = (): boolean => (
+            getState().tasks.fetchingTimestamp === fetchingTimestamp
+        );
+
+        dispatch(getTasksJobsSummary());
+
+        try {
+            const jobs = await cvat.jobs.get({
+                filter: JSON.stringify({ in: [{ var: 'task_id' }, taskIds] }),
+            }, true);
+
+            if (isRequestRelevant()) {
+                dispatch(getTasksJobsSummarySuccess(aggregateTaskJobs(Array.from(jobs), taskIds)));
+            }
+        } catch (error) {
+            console.warn('Could not collect job statistics for the task list', error);
+            if (isRequestRelevant()) {
+                dispatch(getTasksJobsSummaryFailed());
+            }
+        }
+    };
+}
+
 export function getTasksAsync(
     query: Partial<TasksQuery>,
     updateQuery = true,
@@ -96,6 +147,7 @@ export function getTasksAsync(
             const array = Array.from(result);
             dispatch(getInferenceStatusAsync());
             dispatch(getTasksSuccess(array, result.count));
+            dispatch(getTasksJobsSummaryAsync(array.map((task) => task.id), requestedOn));
         }
     };
 }
