@@ -1,0 +1,9 @@
+# Custom CVAT frontend: the stock nginx image with our own webpack bundle.
+# Build cvat/cvat-ui/dist first (see build-ui.sh) - this stage only swaps the static files,
+# so no node base image is needed here.
+FROM cvat/ui:v2.59.1
+
+USER root
+RUN rm -rf /usr/share/nginx/html/assets /usr/share/nginx/html/index.html
+COPY cvat/cvat-ui/dist/ /usr/share/nginx/html/
+USER 101

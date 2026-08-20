@@ -1,0 +1,6 @@
+# Copy next to CVAT's docker-compose.yml in the deployment.
+# Only the frontend image is overridden - CVAT_VERSION is shared with every
+# cvat/server service and must stay at the upstream tag.
+services:
+  cvat_ui:
+    image: cvat/ui:v2.59.1-progress-colors

@@ -1,0 +1,469 @@
+From 6d14f42f32655375f132ac46b225e6dc79d0be77 Mon Sep 17 00:00:00 2001
+From: Buckanov Nikita <buckanov.nikita@yandex.ru>
+Date: Thu, 20 Aug 2026 20:41:53 +0300
+Subject: [PATCH 1/2] feat(ui): colour task progress bar by job stage and state
+
+The tasks list showed a two-tone bar built from the three counters the
+tasks endpoint returns. Split it into per stage/state segments: not
+started, annotating, on review, accepted and rejected, plus a neutral
+segment for jobs the current user cannot see.
+
+The tasks endpoint has no counters for rejected / new / in progress
+jobs, so a single filtered /api/jobs request per list page collects them
+and they are aggregated client side. Until it resolves, and if it fails,
+task items keep rendering the stock progress bar.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UX8GBrH8Jb7eacj7Pj9hKi
+---
+ cvat-ui/src/actions/tasks-actions.ts          | 54 ++++++++++++++++++-
+ cvat-ui/src/base.scss                         |  3 ++
+ cvat-ui/src/components/tasks-page/styles.scss | 38 +++++++++++++
+ .../src/components/tasks-page/task-item.tsx   | 23 +++++---
+ .../tasks-page/task-jobs-progress.tsx         | 48 +++++++++++++++++
+ .../src/containers/tasks-page/task-item.tsx   |  6 ++-
+ cvat-ui/src/reducers/index.ts                 | 13 +++++
+ cvat-ui/src/reducers/tasks-reducer.ts         | 26 +++++++++
+ cvat-ui/src/utils/task-jobs-summary.ts        | 51 ++++++++++++++++++
+ 9 files changed, 252 insertions(+), 10 deletions(-)
+ create mode 100644 cvat-ui/src/components/tasks-page/task-jobs-progress.tsx
+ create mode 100644 cvat-ui/src/utils/task-jobs-summary.ts
+
+diff --git a/cvat-ui/src/actions/tasks-actions.ts b/cvat-ui/src/actions/tasks-actions.ts
+index a75e3026a..f11a6aabc 100644
+--- a/cvat-ui/src/actions/tasks-actions.ts
++++ b/cvat-ui/src/actions/tasks-actions.ts
+@@ -4,11 +4,12 @@
+ // SPDX-License-Identifier: MIT
+ 
+ import { AnyAction } from 'redux';
+-import { TasksQuery } from 'reducers';
++import { TaskJobsSummary, TasksQuery } from 'reducers';
+ import {
+     getCore, RQStatus, Storage, StorageLocation, Task, UpdateStatusData, Request, FramesMetaData,
+ } from 'cvat-core-wrapper';
+ import { filterNull } from 'utils/filter-null';
++import aggregateTaskJobs from 'utils/task-jobs-summary';
+ import { ThunkDispatch, ThunkAction } from 'utils/redux';
+ 
+ import { ValidationMode } from 'components/create-task-page/quality-configuration-form';
+@@ -22,6 +23,9 @@ export enum TasksActionTypes {
+     GET_TASKS = 'GET_TASKS',
+     GET_TASKS_SUCCESS = 'GET_TASKS_SUCCESS',
+     GET_TASKS_FAILED = 'GET_TASKS_FAILED',
++    GET_TASKS_JOBS_SUMMARY = 'GET_TASKS_JOBS_SUMMARY',
++    GET_TASKS_JOBS_SUMMARY_SUCCESS = 'GET_TASKS_JOBS_SUMMARY_SUCCESS',
++    GET_TASKS_JOBS_SUMMARY_FAILED = 'GET_TASKS_JOBS_SUMMARY_FAILED',
+     DELETE_TASK = 'DELETE_TASK',
+     DELETE_TASK_SUCCESS = 'DELETE_TASK_SUCCESS',
+     DELETE_TASK_FAILED = 'DELETE_TASK_FAILED',
+@@ -69,6 +73,53 @@ function getTasksFailed(error: any): AnyAction {
+     return action;
+ }
+ 
++function getTasksJobsSummary(): AnyAction {
++    return { type: TasksActionTypes.GET_TASKS_JOBS_SUMMARY };
++}
++
++function getTasksJobsSummarySuccess(summary: Record<number, TaskJobsSummary>): AnyAction {
++    return {
++        type: TasksActionTypes.GET_TASKS_JOBS_SUMMARY_SUCCESS,
++        payload: { summary },
++    };
++}
++
++function getTasksJobsSummaryFailed(): AnyAction {
++    return { type: TasksActionTypes.GET_TASKS_JOBS_SUMMARY_FAILED };
++}
++
++// Per stage/state job counters the tasks endpoint does not provide.
++// The whole page is covered by a single request, and a failure only means
++// task items keep rendering the default two-colour progress bar
++export function getTasksJobsSummaryAsync(taskIds: number[], fetchingTimestamp: number): ThunkAction {
++    return async (dispatch: ThunkDispatch, getState): Promise<void> => {
++        if (!taskIds.length) {
++            return;
++        }
++
++        const isRequestRelevant = (): boolean => (
++            getState().tasks.fetchingTimestamp === fetchingTimestamp
++        );
++
++        dispatch(getTasksJobsSummary());
++
++        try {
++            const jobs = await cvat.jobs.get({
++                filter: JSON.stringify({ in: [{ var: 'task_id' }, taskIds] }),
++            }, true);
++
++            if (isRequestRelevant()) {
++                dispatch(getTasksJobsSummarySuccess(aggregateTaskJobs(Array.from(jobs), taskIds)));
++            }
++        } catch (error) {
++            console.warn('Could not collect job statistics for the task list', error);
++            if (isRequestRelevant()) {
++                dispatch(getTasksJobsSummaryFailed());
++            }
++        }
++    };
++}
++
+ export function getTasksAsync(
+     query: Partial<TasksQuery>,
+     updateQuery = true,
+@@ -96,6 +147,7 @@ export function getTasksAsync(
+             const array = Array.from(result);
+             dispatch(getInferenceStatusAsync());
+             dispatch(getTasksSuccess(array, result.count));
++            dispatch(getTasksJobsSummaryAsync(array.map((task) => task.id), requestedOn));
+         }
+     };
+ }
+diff --git a/cvat-ui/src/base.scss b/cvat-ui/src/base.scss
+index d935b8820..540317424 100644
+--- a/cvat-ui/src/base.scss
++++ b/cvat-ui/src/base.scss
+@@ -15,6 +15,9 @@ $hover-menu-color: rgba(24, 144, 255, 5%);
+ $completed-progress-color: #61c200;
+ $validation-progress-color: #1890ff;
+ $annotation-progress-color: #c1c1c1;
++$annotation-new-progress-color: #5f8a78;
++$annotation-active-progress-color: #faad14;
++$rejected-progress-color: #ff4136;
+ $border-color-1: #f0f0f0;
+ $border-color-hover: #40a9ff;
+ $background-color-1: white;
+diff --git a/cvat-ui/src/components/tasks-page/styles.scss b/cvat-ui/src/components/tasks-page/styles.scss
+index 3e6704295..7b8e2b31b 100644
+--- a/cvat-ui/src/components/tasks-page/styles.scss
++++ b/cvat-ui/src/components/tasks-page/styles.scss
+@@ -137,6 +137,44 @@
+     color: $annotation-progress-color;
+ }
+ 
++.cvat-task-item-jobs-progress {
++    display: flex;
++    width: 100%;
++    height: 6px;
++    border-radius: 100px;
++    overflow: hidden;
++    background: $border-color-1;
++
++    > .cvat-task-item-jobs-progress-segment {
++        height: 100%;
++        min-width: 2px;
++    }
++
++    .cvat-jobs-progress-annotation-new {
++        background: $annotation-new-progress-color;
++    }
++
++    .cvat-jobs-progress-annotating {
++        background: $annotation-active-progress-color;
++    }
++
++    .cvat-jobs-progress-validation {
++        background: $validation-progress-color;
++    }
++
++    .cvat-jobs-progress-acceptance {
++        background: $completed-progress-color;
++    }
++
++    .cvat-jobs-progress-rejected {
++        background: $rejected-progress-color;
++    }
++
++    .cvat-jobs-progress-inaccessible {
++        background: $annotation-progress-color;
++    }
++}
++
+ .cvat-task-item-progress-wrapper {
+     > div:first-child {
+         margin-bottom: -$grid-unit-size;
+diff --git a/cvat-ui/src/components/tasks-page/task-item.tsx b/cvat-ui/src/components/tasks-page/task-item.tsx
+index 424d3434c..5df73791e 100644
+--- a/cvat-ui/src/components/tasks-page/task-item.tsx
++++ b/cvat-ui/src/components/tasks-page/task-item.tsx
+@@ -14,10 +14,11 @@ import Progress from 'antd/lib/progress';
+ import Badge from 'antd/lib/badge';
+ import { Task, RQStatus, Request } from 'cvat-core-wrapper';
+ import Preview from 'components/common/preview';
+-import { ActiveInference, PluginComponent } from 'reducers';
++import { ActiveInference, PluginComponent, TaskJobsSummary } from 'reducers';
+ import StatusMessage from 'components/requests-page/request-status';
+ import { useContextMenuClick, useIsMounted } from 'utils/hooks';
+ import AutomaticAnnotationProgress from './automatic-annotation-progress';
++import TaskJobsProgress from './task-jobs-progress';
+ import TaskActionsComponent from './actions-menu';
+ 
+ export interface TaskItemProps {
+@@ -26,6 +27,7 @@ export interface TaskItemProps {
+     activeInference: ActiveInference | null;
+     activeRequest: Request | null;
+     ribbonPlugins: PluginComponent[];
++    jobsSummary: TaskJobsSummary | null;
+     cancelAutoAnnotation(): void;
+     updateTaskInState(task: Task): void;
+     selected: boolean;
+@@ -45,6 +47,7 @@ function TaskItemComponent(props: TaskItemProps): JSX.Element {
+         activeInference,
+         activeRequest,
+         ribbonPlugins,
++        jobsSummary,
+         cancelAutoAnnotation,
+         updateTaskInState,
+         selected,
+@@ -164,13 +167,17 @@ function TaskItemComponent(props: TaskItemProps): JSX.Element {
+                                 {`\u2022 ${numOfJobs} total`}
+                             </Text>
+                         </div>
+-                        <Progress
+-                            percent={jobsProgress}
+-                            success={{ percent: (numOfCompleted * 100) / numOfJobs }}
+-                            strokeColor='#1890FF'
+-                            showInfo={false}
+-                            size='small'
+-                        />
++                        {jobsSummary ? (
++                            <TaskJobsProgress summary={jobsSummary} totalJobs={numOfJobs} />
++                        ) : (
++                            <Progress
++                                percent={jobsProgress}
++                                success={{ percent: (numOfCompleted * 100) / numOfJobs }}
++                                strokeColor='#1890FF'
++                                showInfo={false}
++                                size='small'
++                            />
++                        )}
+                     </Col>
+                 </Row>
+                 <AutomaticAnnotationProgress
+diff --git a/cvat-ui/src/components/tasks-page/task-jobs-progress.tsx b/cvat-ui/src/components/tasks-page/task-jobs-progress.tsx
+new file mode 100644
+index 000000000..d7afedfbd
+--- /dev/null
++++ b/cvat-ui/src/components/tasks-page/task-jobs-progress.tsx
+@@ -0,0 +1,48 @@
++// Copyright (C) CVAT.ai Corporation
++//
++// SPDX-License-Identifier: MIT
++
++import React from 'react';
++import { TaskJobsSummary } from 'reducers';
++
++interface Props {
++    summary: TaskJobsSummary;
++    totalJobs: number;
++}
++
++interface Segment {
++    className: string;
++    label: string;
++    count: number;
++}
++
++function TaskJobsProgress(props: Props): JSX.Element {
++    const { summary, totalJobs } = props;
++
++    // A user may have access to a subset of the task jobs only,
++    // the rest is still displayed to keep the bar consistent with the total counter
++    const inaccessibleJobs = Math.max(0, totalJobs - summary.fetched);
++    const segments: Segment[] = [
++        { className: 'cvat-jobs-progress-annotation-new', label: 'Not started', count: summary.annotationNew },
++        { className: 'cvat-jobs-progress-annotating', label: 'Annotating', count: summary.annotating },
++        { className: 'cvat-jobs-progress-validation', label: 'On review', count: summary.validation },
++        { className: 'cvat-jobs-progress-acceptance', label: 'Accepted', count: summary.acceptance },
++        { className: 'cvat-jobs-progress-rejected', label: 'Rejected', count: summary.rejected },
++        { className: 'cvat-jobs-progress-inaccessible', label: 'Not available', count: inaccessibleJobs },
++    ].filter((segment: Segment) => segment.count > 0);
++
++    return (
++        <div className='cvat-task-item-jobs-progress'>
++            {segments.map(({ className, label, count }: Segment) => (
++                <div
++                    key={className}
++                    className={`cvat-task-item-jobs-progress-segment ${className}`}
++                    style={{ flexGrow: count }}
++                    title={`${label}: ${count}`}
++                />
++            ))}
++        </div>
++    );
++}
++
++export default React.memo(TaskJobsProgress);
+diff --git a/cvat-ui/src/containers/tasks-page/task-item.tsx b/cvat-ui/src/containers/tasks-page/task-item.tsx
+index c1bbf006d..936d01c0b 100644
+--- a/cvat-ui/src/containers/tasks-page/task-item.tsx
++++ b/cvat-ui/src/containers/tasks-page/task-item.tsx
+@@ -6,7 +6,9 @@
+ import { connect } from 'react-redux';
+ 
+ import { Task, Request } from 'cvat-core-wrapper';
+-import { CombinedState, ActiveInference, PluginComponent } from 'reducers';
++import {
++    CombinedState, ActiveInference, PluginComponent, TaskJobsSummary,
++} from 'reducers';
+ import TaskItemComponent from 'components/tasks-page/task-item';
+ import { updateTaskInState as updateTaskInStateAction, getTaskPreviewAsync } from 'actions/tasks-actions';
+ import { cancelInferenceAsync } from 'actions/models-actions';
+@@ -17,6 +19,7 @@ interface StateToProps {
+     activeInference: ActiveInference | null;
+     activeRequest: Request | null;
+     ribbonPlugins: PluginComponent[];
++    jobsSummary: TaskJobsSummary | null;
+ }
+ 
+ interface DispatchToProps {
+@@ -45,6 +48,7 @@ function mapStateToProps(state: CombinedState, own: OwnProps): StateToProps {
+         activeInference: state.models.inferences[id] || null,
+         ribbonPlugins: state.plugins.components.taskItem.ribbon,
+         activeRequest: activeRequest || null,
++        jobsSummary: state.tasks.jobsSummary.data[id] ?? null,
+     };
+ }
+ 
+diff --git a/cvat-ui/src/reducers/index.ts b/cvat-ui/src/reducers/index.ts
+index 615cd06d4..d43890a8c 100644
+--- a/cvat-ui/src/reducers/index.ts
++++ b/cvat-ui/src/reducers/index.ts
+@@ -119,6 +119,15 @@ export interface JobsState {
+     };
+ }
+ 
++export interface TaskJobsSummary {
++    annotationNew: number;
++    annotating: number;
++    validation: number;
++    acceptance: number;
++    rejected: number;
++    fetched: number;
++}
++
+ export interface TasksState {
+     fetchingTimestamp: number;
+     initialized: boolean;
+@@ -134,6 +143,10 @@ export interface TasksState {
+     previews: {
+         [index: number]: Preview;
+     };
++    jobsSummary: {
++        fetching: boolean;
++        data: Record<number, TaskJobsSummary>;
++    };
+     activities: {
+         deletes: {
+             [tid: number]: boolean; // deleted (deleting if in dictionary)
+diff --git a/cvat-ui/src/reducers/tasks-reducer.ts b/cvat-ui/src/reducers/tasks-reducer.ts
+index 4a310378c..8c02b2b79 100644
+--- a/cvat-ui/src/reducers/tasks-reducer.ts
++++ b/cvat-ui/src/reducers/tasks-reducer.ts
+@@ -25,6 +25,10 @@ const defaultState: TasksState = {
+     current: [],
+     selected: [],
+     previews: {},
++    jobsSummary: {
++        fetching: false,
++        data: {},
++    },
+     gettingQuery: {
+         page: 1,
+         id: null,
+@@ -53,6 +57,7 @@ export default (state: TasksState = defaultState, action: AnyAction): TasksState
+                 initialized: false,
+                 fetching: true,
+                 count: 0,
++                jobsSummary: defaultState.jobsSummary,
+                 gettingQuery: action.payload.updateQuery ? {
+                     ...defaultState.gettingQuery,
+                     ...action.payload.query,
+@@ -73,6 +78,27 @@ export default (state: TasksState = defaultState, action: AnyAction): TasksState
+                 initialized: true,
+                 fetching: false,
+             };
++        case TasksActionTypes.GET_TASKS_JOBS_SUMMARY:
++            return {
++                ...state,
++                jobsSummary: {
++                    ...state.jobsSummary,
++                    fetching: true,
++                },
++            };
++        case TasksActionTypes.GET_TASKS_JOBS_SUMMARY_SUCCESS:
++            return {
++                ...state,
++                jobsSummary: {
++                    fetching: false,
++                    data: action.payload.summary,
++                },
++            };
++        case TasksActionTypes.GET_TASKS_JOBS_SUMMARY_FAILED:
++            return {
++                ...state,
++                jobsSummary: defaultState.jobsSummary,
++            };
+         case ProjectsActionTypes.DELETE_PROJECT_SUCCESS: {
+             const { projectId } = action.payload;
+             return {
+diff --git a/cvat-ui/src/utils/task-jobs-summary.ts b/cvat-ui/src/utils/task-jobs-summary.ts
+new file mode 100644
+index 000000000..def8cb9c1
+--- /dev/null
++++ b/cvat-ui/src/utils/task-jobs-summary.ts
+@@ -0,0 +1,51 @@
++// Copyright (C) CVAT.ai Corporation
++//
++// SPDX-License-Identifier: MIT
++
++import { Job, JobStage, JobState } from 'cvat-core-wrapper';
++import { TaskJobsSummary } from 'reducers';
++
++function emptySummary(): TaskJobsSummary {
++    return {
++        annotationNew: 0,
++        annotating: 0,
++        validation: 0,
++        acceptance: 0,
++        rejected: 0,
++        fetched: 0,
++    };
++}
++
++// A rejected job is reported as rejected no matter which stage it is currently in
++function bucketOf(job: Job): keyof Omit<TaskJobsSummary, 'fetched'> {
++    if (job.state === JobState.REJECTED) {
++        return 'rejected';
++    }
++
++    if (job.stage === JobStage.VALIDATION) {
++        return 'validation';
++    }
++
++    if (job.stage === JobStage.ACCEPTANCE) {
++        return 'acceptance';
++    }
++
++    return job.state === JobState.NEW ? 'annotationNew' : 'annotating';
++}
++
++export default function aggregateTaskJobs(jobs: Job[], taskIds: number[]): Record<number, TaskJobsSummary> {
++    const summary: Record<number, TaskJobsSummary> = {};
++    for (const taskId of taskIds) {
++        summary[taskId] = emptySummary();
++    }
++
++    for (const job of jobs) {
++        const taskSummary = job.taskId === null ? null : summary[job.taskId];
++        if (taskSummary) {
++            taskSummary[bucketOf(job)] += 1;
++            taskSummary.fetched += 1;
++        }
++    }
++
++    return summary;
++}
+-- 
+2.53.0
+
