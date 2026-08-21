@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
-# Builds the customised CVAT frontend image. Needs network access for the npm registry,
+# Builds the customised CVAT frontend image with CVAT's own Dockerfile, so the whole
+# bundle is compiled inside the image. Needs network access for the npm registry,
 # so run it outside the closed contour and transfer the result with docker save/load.
 set -euo pipefail
 
 IMAGE="${IMAGE:-cvat/ui:v2.59.1-progress-colors}"
+# Dockerfile.ui builds on the floating node:lts-slim tag; pin it here so the image is
+# reproducible. CVAT documents Node 20 as the minimum.
+NODE_IMAGE="${NODE_IMAGE:-node:24.19.0-slim}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-corepack enable --install-directory "$HOME/.npm-global/bin" yarn
-export PATH="$HOME/.npm-global/bin:$PATH"
-
 cd "$ROOT/cvat"
+# webpack does not clean its output directory, and cvat-ui/dist is part of the build
+# context, so a stale host build would be copied into the image alongside the fresh one
 git clean -xdqf -- cvat-ui/dist
-yarn install --immutable
-DISABLE_SOURCE_MAPS=true yarn run build:cvat-ui
+
+DOCKER_BUILDKIT=1 docker build \
+    --build-context "node:lts-slim=docker-image://$NODE_IMAGE" \
+    --build-arg DISABLE_SOURCE_MAPS=true \
+    -f Dockerfile.ui \
+    -t "$IMAGE" \
+    .
 
 cd "$ROOT"
-docker build -t "$IMAGE" -f Dockerfile.custom-ui .
 docker save "$IMAGE" | gzip > "${IMAGE//[:\/]/-}.tar.gz"
-echo "built $IMAGE -> ${IMAGE//[:\/]/-}.tar.gz"
+echo "built $IMAGE on $NODE_IMAGE -> ${IMAGE//[:\/]/-}.tar.gz"
