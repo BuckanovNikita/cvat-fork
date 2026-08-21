@@ -22,6 +22,11 @@ DOCKER_BUILDKIT=1 docker build \
     -t "$IMAGE" \
     .
 
-cd "$ROOT"
-docker save "$IMAGE" | gzip > "${IMAGE//[:\/]/-}.tar.gz"
-echo "built $IMAGE on $NODE_IMAGE -> ${IMAGE//[:\/]/-}.tar.gz"
+echo "built $IMAGE on $NODE_IMAGE"
+
+# Only needed when the image has to cross the air gap
+if [ "${SAVE:-0}" = 1 ]; then
+    cd "$ROOT"
+    docker save "$IMAGE" | gzip > "${IMAGE//[:\/]/-}.tar.gz"
+    echo "saved ${IMAGE//[:\/]/-}.tar.gz"
+fi
