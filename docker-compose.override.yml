@@ -1,6 +1,15 @@
-# Copy next to CVAT's docker-compose.yml in the deployment.
+# Copy next to CVAT's docker-compose.yml in the deployment, together with the
+# opa/ directory the relative bind mounts below point at.
 # Only the frontend image is overridden - CVAT_VERSION is shared with every
 # cvat/server service and must stay at the upstream tag.
 services:
   cvat_ui:
     image: cvat/ui:v2.59.1-progress-colors
+
+  # Patched OPA rules: any organization member may do anything with issues and
+  # their comments. cvat_server is the only source of the OPA bundle, so the
+  # mount belongs here alone. Copy opa/rules next to this file in the deployment.
+  cvat_server:
+    volumes:
+      - ./opa/rules/issues.rego:/home/django/cvat/apps/engine/rules/issues.rego:ro
+      - ./opa/rules/comments.rego:/home/django/cvat/apps/engine/rules/comments.rego:ro
