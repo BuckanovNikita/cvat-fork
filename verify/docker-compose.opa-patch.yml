@@ -1,0 +1,9 @@
+# The patched OPA rules, layered on top of docker-compose.opa-issues.yml.
+# Same two mounts the deployment's docker-compose.override.yml makes, except
+# OPA_RULES is an ABSOLUTE path: compose resolves relative bind mounts against
+# the first -f file's directory, which is cvat/, not this one.
+services:
+  cvat_server:
+    volumes:
+      - ${OPA_RULES:?set OPA_RULES to an absolute path of opa/rules}/issues.rego:/home/django/cvat/apps/engine/rules/issues.rego:ro
+      - ${OPA_RULES:?set OPA_RULES to an absolute path of opa/rules}/comments.rego:/home/django/cvat/apps/engine/rules/comments.rego:ro

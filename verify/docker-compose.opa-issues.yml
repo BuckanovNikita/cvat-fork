@@ -1,0 +1,62 @@
+# Throwaway stack for proving the patched issue/comment OPA rules.
+#
+# Its own compose project, container names and ports, so it cannot collide with
+# a deployment owning the default `cvat` project nor with the frontend stack in
+# docker-compose.verify.yml.
+#
+# Two published hosts on ONE port: traefik answers to both `localhost` and
+# `127.0.0.1`. Chrome scopes session cookies by host, so the same browser can
+# hold an admin session on one origin and a worker session on the other - which
+# is what "two tabs, two users" needs.
+#
+# The patched rules themselves are a SEPARATE overlay
+# (docker-compose.opa-patch.yml) so the same stack can be run twice - once on
+# stock rules to record the baseline denials, once patched - with nothing but
+# a `-f` differing between the runs.
+services:
+  cvat_clickhouse:
+    container_name: opa_cvat_clickhouse
+  cvat_db:
+    container_name: opa_cvat_db
+  cvat_grafana:
+    container_name: opa_cvat_grafana
+  cvat_opa:
+    container_name: opa_cvat_opa
+  cvat_redis_inmem:
+    container_name: opa_cvat_redis_inmem
+  cvat_redis_ondisk:
+    container_name: opa_cvat_redis_ondisk
+  cvat_server:
+    container_name: opa_cvat_server
+    labels:
+      # One line on purpose: a folded scalar keeps the newline of a
+      # more-indented continuation, and traefik rejects the rule outright -
+      # which silently hands /api/ to the UI's nginx.
+      traefik.http.routers.cvat.rule: (Host(`localhost`) || Host(`127.0.0.1`)) && (PathPrefix(`/api/`) || PathPrefix(`/static/`) || PathPrefix(`/admin`) || PathPrefix(`/django-rq`))
+  cvat_ui:
+    container_name: opa_cvat_ui
+    labels:
+      traefik.http.routers.cvat-ui.rule: Host(`localhost`) || Host(`127.0.0.1`)
+  cvat_vector:
+    container_name: opa_cvat_vector
+  cvat_worker_annotation:
+    container_name: opa_cvat_worker_annotation
+  cvat_worker_chunks:
+    container_name: opa_cvat_worker_chunks
+  cvat_worker_consensus:
+    container_name: opa_cvat_worker_consensus
+  cvat_worker_export:
+    container_name: opa_cvat_worker_export
+  cvat_worker_import:
+    container_name: opa_cvat_worker_import
+  cvat_worker_quality_reports:
+    container_name: opa_cvat_worker_quality_reports
+  cvat_worker_utils:
+    container_name: opa_cvat_worker_utils
+  cvat_worker_webhooks:
+    container_name: opa_cvat_worker_webhooks
+  traefik:
+    container_name: opa_traefik
+    ports:
+      - 8281:8080
+      - 8291:8090
