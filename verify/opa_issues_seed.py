@@ -116,7 +116,9 @@ wait_for_request(admin, r.json()["rq_id"])
 job = admin.get(f"{BASE}/jobs", params={"task_id": task_id}, timeout=30).json()["results"][0]
 job_id = job["id"]
 
-users = {u["username"]: u["id"] for u in admin.get(f"{BASE}/users", params={"page_size": 100}, timeout=30).json()["results"]}
+users = {
+    u["username"]: u["id"] for u in admin.get(f"{BASE}/users", params={"page_size": 100}, timeout=30).json()["results"]
+}
 r = admin.patch(f"{BASE}/jobs/{job_id}", json={"assignee": users["worker1"]}, timeout=30)
 r.raise_for_status()
 

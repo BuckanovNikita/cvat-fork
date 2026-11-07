@@ -62,12 +62,22 @@ for username in ("admin", "worker1", "worker2"):
     issue, comment = state["issue_id"], state["admin_comment_id"]
     victim = throwaway_issue()
     rows = [
-        probe("list issues of the job", lambda: s.get(f"{BASE}/issues", params={"job_id": state["job_id"]}, timeout=30)),
+        probe(
+            "list issues of the job", lambda: s.get(f"{BASE}/issues", params={"job_id": state["job_id"]}, timeout=30)
+        ),
         probe("read admin's issue", lambda: s.get(f"{BASE}/issues/{issue}", timeout=30)),
         probe("edit admin's issue", lambda: s.patch(f"{BASE}/issues/{issue}", json={"resolved": True}, timeout=30)),
         probe("list comments of the issue", lambda: s.get(f"{BASE}/comments", params={"issue_id": issue}, timeout=30)),
-        probe("add a comment", lambda: s.post(f"{BASE}/comments", json={"issue": issue, "message": f"comment by {username}"}, timeout=30)),
-        probe("edit admin's comment", lambda: s.patch(f"{BASE}/comments/{comment}", json={"message": f"admin's comment, edited by {username}"}, timeout=30)),
+        probe(
+            "add a comment",
+            lambda: s.post(f"{BASE}/comments", json={"issue": issue, "message": f"comment by {username}"}, timeout=30),
+        ),
+        probe(
+            "edit admin's comment",
+            lambda: s.patch(
+                f"{BASE}/comments/{comment}", json={"message": f"admin's comment, edited by {username}"}, timeout=30
+            ),
+        ),
         probe("delete an issue admin opened", lambda: s.delete(f"{BASE}/issues/{victim}", timeout=30)),
     ]
     # the list check only means anything if the issue is actually in the page
