@@ -49,8 +49,10 @@ test_unassigned_member_actions if {
     every package_name, package_scopes in scopes {
         every role in ["worker", "supervisor"] {
             every scope in package_scopes {
-                result := data[package_name].allow with input as request(role, scope)
-                result == patched
+                every privilege in ["user", "worker"] {
+                    result := data[package_name].allow with input as request(role, scope) with input.auth.user.privilege as privilege
+                    result == patched
+                }
             }
         }
     }
@@ -109,7 +111,7 @@ test_sandbox_nonstaff_denied if {
     every package_name, package_scopes in scopes {
         every scope in package_scopes {
             candidate := request("worker", scope)
-            not data[package_name].allow with input as candidate with input.auth.organization as null
+            not data[package_name].allow with input as candidate with input.auth.organization as null with input.resource.organization as null
         }
     }
 }
@@ -118,7 +120,40 @@ test_sandbox_staff_retained if {
     every package_name, package_scopes in scopes {
         every scope in package_scopes {
             candidate := request("worker", scope)
-            data[package_name].allow with input as candidate with input.auth.organization as null with input.resource.task.owner.id as 7
+            data[package_name].allow with input as candidate with input.auth.organization as null with input.resource.organization as null with input.resource.task.owner.id as 7
+        }
+    }
+}
+
+test_removed_member_staff_denied if {
+    every package_name, package_scopes in scopes {
+        every scope in package_scopes {
+            candidate := request(null, scope)
+            every privilege in ["user", "worker"] {
+                not data[package_name].allow with input as candidate with input.auth.user.privilege as privilege with input.resource.task.owner.id as 7
+            }
+        }
+    }
+}
+
+test_sandbox_context_cannot_access_organization_resource if {
+    every package_name, package_scopes in scopes {
+        every scope in package_scopes {
+            candidate := request("worker", scope)
+            every privilege in ["user", "worker"] {
+                not data[package_name].allow with input as candidate with input.auth.user.privilege as privilege with input.auth.organization as null with input.resource.task.owner.id as 7
+            }
+        }
+    }
+}
+
+test_organization_context_cannot_access_sandbox_resource if {
+    every package_name, package_scopes in scopes {
+        every scope in package_scopes {
+            candidate := request("worker", scope)
+            every privilege in ["user", "worker"] {
+                not data[package_name].allow with input as candidate with input.auth.user.privilege as privilege with input.resource.organization as null with input.resource.task.owner.id as 7
+            }
         }
     }
 }

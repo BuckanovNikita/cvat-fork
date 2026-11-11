@@ -4,7 +4,7 @@
 # cvat/server service and must stay at the upstream tag.
 services:
   cvat_ui:
-    image: cvat/ui:v2.74.1-progress-colors
+    image: cvat/ui:v2.82.0-progress-colors
 
   # Patched OPA rules: any organization member may do anything with issues and
   # their comments. cvat_server is the only source of the OPA bundle, so the
