@@ -1,5 +1,6 @@
 cvat-ui-*.tar.gz
 .cvat-mirror.git/
+cvat/.yarn/
 cvat/**/node_modules/
 cvat/cvat-ui/dist/*
 !cvat/cvat-ui/dist/favicon.ico

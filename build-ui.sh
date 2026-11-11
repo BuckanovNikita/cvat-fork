@@ -4,7 +4,7 @@
 # so run it outside the closed contour and transfer the result with docker save/load.
 set -euo pipefail
 
-IMAGE="${IMAGE:-cvat/ui:v2.59.1-progress-colors}"
+IMAGE="${IMAGE:-cvat/ui:v2.74.1-progress-colors}"
 # Dockerfile.ui builds on the floating node:lts-slim tag; pin it here so the image is
 # reproducible. CVAT documents Node 20 as the minimum.
 NODE_IMAGE="${NODE_IMAGE:-node:24.19.0-slim}"
@@ -17,7 +17,7 @@ git clean -xdqf -- cvat-ui/dist
 
 DOCKER_BUILDKIT=1 docker build \
     --build-context "node:lts-slim=docker-image://$NODE_IMAGE" \
-    --build-arg DISABLE_SOURCE_MAPS=true \
+    --build-arg SOURCE_MAPS_ENABLED=false \
     -f Dockerfile.ui \
     -t "$IMAGE" \
     .

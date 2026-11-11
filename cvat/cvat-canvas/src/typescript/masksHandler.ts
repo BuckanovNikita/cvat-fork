@@ -11,7 +11,7 @@ import {
 import consts from './consts';
 import { DrawHandler } from './drawHandler';
 import {
-    PropType, computeWrappingBox, zipChannels, expandChannels, imageDataToDataURL,
+    PropType, computeWrappingBox, imageDataToRLE, RLEToImageData, imageDataToDataURL,
 } from './shared';
 
 interface WrappingBBox {
@@ -21,11 +21,16 @@ interface WrappingBBox {
     bottom: number;
 }
 
+type DrawnObject = fabric.Polygon | fabric.Circle | fabric.Rect | fabric.Line | fabric.Image;
+type HistoryAction = DrawnObject[];
+
 export interface MasksHandler {
     draw(drawData: DrawData): void;
     edit(state: MasksEditData): void;
     configure(configuration: Configuration): void;
     transform(geometry: Geometry): void;
+    undo(): boolean;
+    redo(): boolean;
     cancel(): void;
     enabled: boolean;
 }
@@ -52,7 +57,10 @@ export class MasksHandlerImpl implements MasksHandler {
     private brushMarker: fabric.Rect | fabric.Circle | null;
     private drawablePolygon: null | fabric.Polygon;
     private isPolygonDrawing: boolean;
-    private drawnObjects: (fabric.Polygon | fabric.Circle | fabric.Rect | fabric.Line | fabric.Image)[];
+    private drawnObjects: DrawnObject[];
+    private undoStack: HistoryAction[];
+    private redoStack: HistoryAction[];
+    private activeHistoryAction: HistoryAction | null;
 
     private tool: DrawData['brushTool'] | null;
     private drawData: DrawData | null;
@@ -123,6 +131,7 @@ export class MasksHandlerImpl implements MasksHandler {
         this.canvas.renderAll();
         this.isInsertion = false;
         this.drawnObjects = this.createDrawnObjectsArray();
+        this.clearHistory();
         this.onDrawDone(null);
     }
 
@@ -139,6 +148,7 @@ export class MasksHandlerImpl implements MasksHandler {
         this.isInsertion = false;
         this.redraw = null;
         this.drawnObjects = this.createDrawnObjectsArray();
+        this.clearHistory();
     }
 
     private releaseEdit(): void {
@@ -152,6 +162,7 @@ export class MasksHandlerImpl implements MasksHandler {
         this.canvas.renderAll();
         this.isEditing = false;
         this.drawnObjects = this.createDrawnObjectsArray();
+        this.clearHistory();
         this.onEditDone(null, null);
     }
 
@@ -226,7 +237,35 @@ export class MasksHandlerImpl implements MasksHandler {
         return imageData;
     }
 
-    private updateHidden(value: boolean) {
+    private clearHistory(): void {
+        this.undoStack = [];
+        this.redoStack = [];
+        this.activeHistoryAction = null;
+    }
+
+    private startHistoryAction(): void {
+        this.activeHistoryAction = [];
+    }
+
+    private addToHistoryAction(object: DrawnObject): void {
+        this.activeHistoryAction?.push(object);
+    }
+
+    private finishHistoryAction(): void {
+        if (this.activeHistoryAction?.length) {
+            this.undoStack.push(this.activeHistoryAction);
+            this.redoStack = [];
+        }
+        this.activeHistoryAction = null;
+    }
+
+    private addDrawnObject(object: DrawnObject): void {
+        this.canvas.add(object);
+        this.drawnObjects.push(object);
+        this.addToHistoryAction(object);
+    }
+
+    private updateHidden(value: boolean): void {
         this.isHidden = value;
 
         // Need to update style of upper canvas explicitly because update of default cursor is not applied immediately
@@ -302,8 +341,9 @@ export class MasksHandlerImpl implements MasksHandler {
                         globalCompositeOperation: this.tool.type === 'polygon-minus' ? 'destination-out' : 'xor',
                     });
 
-                    this.canvas.add(polygon);
-                    this.drawnObjects.push(polygon);
+                    this.startHistoryAction();
+                    this.addDrawnObject(polygon);
+                    this.finishHistoryAction();
                     this.canvas.renderAll();
                 },
             }, this.geometry);
@@ -330,11 +370,11 @@ export class MasksHandlerImpl implements MasksHandler {
         if (this.brushMarker) {
             this.canvas.add(this.brushMarker);
         }
-        const rle = zipChannels(imageData);
-        const emptyMask = rle.length < 2;
+        const rle = imageDataToRLE(imageData);
+        const isEmptyMask = rle.length < 2;
         this.tool.onBlockUpdated({
-            eraser: emptyMask,
-            'polygon-minus': emptyMask,
+            eraser: isEmptyMask,
+            'polygon-minus': isEmptyMask,
         });
     }
 
@@ -343,6 +383,7 @@ export class MasksHandlerImpl implements MasksHandler {
         const updateBlockedToolsDebounced = debounce(this.updateBlockedTools.bind(this), 250);
         return new Proxy(drawnObjects, {
             set(target, property, value) {
+                // eslint-disable-next-line no-param-reassign
                 target[property] = value;
                 updateBlockedToolsDebounced();
                 return true;
@@ -383,10 +424,12 @@ export class MasksHandlerImpl implements MasksHandler {
         });
         this.canvas.imageSmoothingEnabled = false;
         this.drawnObjects = this.createDrawnObjectsArray();
+        this.clearHistory();
 
         this.canvas.getElement().parentElement.addEventListener('contextmenu', (e: MouseEvent) => e.preventDefault());
         this.latestMousePos = { x: -1, y: -1 };
         window.document.addEventListener('mouseup', () => {
+            this.finishHistoryAction();
             this.isMouseDown = false;
             this.isBrushSizeChanging = false;
         });
@@ -396,11 +439,15 @@ export class MasksHandlerImpl implements MasksHandler {
             this.isMouseDown = (isDrawing || isEditing) && options.e.button === 0 && !options.e.altKey;
             this.isBrushSizeChanging = (isDrawing || isEditing) && options.e.button === 2 && options.e.altKey;
 
+            if (this.isMouseDown && !isInsertion && ['brush', 'eraser'].includes(this.tool?.type)) {
+                this.startHistoryAction();
+            }
+
             if (isInsertion) {
                 const continueInserting = options.e.ctrlKey;
                 const wrappingBbox = this.getDrawnObjectsWrappingBox();
                 const imageData = this.imageDataFromCanvas(wrappingBbox);
-                const rle = zipChannels(imageData);
+                const rle = imageDataToRLE(imageData);
                 rle.push(wrappingBbox.left, wrappingBbox.top, wrappingBbox.right, wrappingBbox.bottom);
 
                 this.onDrawDone({
@@ -506,9 +553,8 @@ export class MasksHandlerImpl implements MasksHandler {
                     });
                 }
 
-                this.canvas.add(shape);
                 if (['brush', 'eraser'].includes(tool?.type)) {
-                    this.drawnObjects.push(shape);
+                    this.addDrawnObject(shape);
                 }
 
                 // add line to smooth the mask
@@ -528,9 +574,8 @@ export class MasksHandlerImpl implements MasksHandler {
                             strokeLineCap: tool.form === 'circle' ? 'round' : 'square',
                         });
 
-                        this.canvas.add(line);
                         if (['brush', 'eraser'].includes(tool?.type)) {
-                            this.drawnObjects.push(line);
+                            this.addDrawnObject(line);
                         }
                     }
                 }
@@ -589,33 +634,31 @@ export class MasksHandlerImpl implements MasksHandler {
                 const { points } = drawData.initialState;
                 const color = fabric.Color.fromHex(this.getStateColor(drawData.initialState)).getSource();
                 const [left, top, right, bottom] = points.slice(-4);
-                const imageBitmap = expandChannels(color[0], color[1], color[2], points);
+                const imageBitmap = RLEToImageData(color[0], color[1], color[2], points);
                 imageDataToDataURL(
                     imageBitmap,
                     right - left + 1,
                     bottom - top + 1,
-                    (dataURL: string) => new Promise((resolve) => {
+                    (dataURL: string) => {
                         fabric.Image.fromURL(dataURL, (image: fabric.Image) => {
-                            try {
-                                image.selectable = false;
-                                image.evented = false;
-                                image.globalCompositeOperation = 'xor';
-                                image.opacity = 0.5;
-                                this.canvas.add(image);
-                                /*
-                                    when we paste a mask, we do not need additional logic implemented
-                                    in MasksHandlerImpl::createDrawnObjectsArray.push using JS Proxy
-                                    because we will not work with any drawing tools here, and it will cause the issue
-                                    because this.tools may be undefined here
-                                    when it is used inside the push custom implementation
-                                */
-                                this.drawnObjects = [image];
-                                this.canvas.renderAll();
-                            } finally {
-                                resolve();
-                            }
+                            URL.revokeObjectURL(dataURL);
+                            image.selectable = false;
+                            image.evented = false;
+                            image.globalCompositeOperation = 'xor';
+                            image.opacity = 0.5;
+                            this.canvas.add(image);
+                            /*
+                                when we paste a mask, we do not need additional logic implemented
+                                in MasksHandlerImpl::createDrawnObjectsArray.push using JS Proxy
+                                because we will not work with any drawing tools here, and it will cause the issue
+                                because this.tools may be undefined here
+                                when it is used inside the push custom implementation
+                            */
+                            this.drawnObjects = [image];
+                            this.canvas.renderAll();
                         }, { left, top });
-                    }));
+                    },
+                );
 
                 this.isInsertion = true;
             } else {
@@ -631,13 +674,15 @@ export class MasksHandlerImpl implements MasksHandler {
             this.startTimestamp = Date.now();
         }
 
-        if (!drawData.enabled && this.isDrawing) {
+        if (!drawData.enabled && this.isInsertion) {
+            this.releasePaste();
+        } else if (!drawData.enabled && this.isDrawing) {
             try {
                 if (this.drawnObjects.length) {
                     const wrappingBbox = this.getDrawnObjectsWrappingBox();
                     this.removeBrushMarker(); // remove brush marker from final mask
                     const imageData = this.imageDataFromCanvas(wrappingBbox);
-                    const rle = zipChannels(imageData);
+                    const rle = imageDataToRLE(imageData);
                     rle.push(wrappingBbox.left, wrappingBbox.top, wrappingBbox.right, wrappingBbox.bottom);
 
                     const isEmptyMask = rle.length < 6;
@@ -683,26 +728,24 @@ export class MasksHandlerImpl implements MasksHandler {
                 const { points } = editData.state;
                 const color = fabric.Color.fromHex(this.getStateColor(editData.state)).getSource();
                 const [left, top, right, bottom] = points.slice(-4);
-                const imageBitmap = expandChannels(color[0], color[1], color[2], points);
+                const imageBitmap = RLEToImageData(color[0], color[1], color[2], points);
                 imageDataToDataURL(
                     imageBitmap,
                     right - left + 1,
                     bottom - top + 1,
-                    (dataURL: string) => new Promise((resolve) => {
+                    (dataURL: string) => {
                         fabric.Image.fromURL(dataURL, (image: fabric.Image) => {
-                            try {
-                                image.selectable = false;
-                                image.evented = false;
-                                image.globalCompositeOperation = 'xor';
-                                image.opacity = 0.5;
-                                this.canvas.add(image);
-                                this.drawnObjects.push(image);
-                                this.canvas.renderAll();
-                            } finally {
-                                resolve();
-                            }
+                            URL.revokeObjectURL(dataURL);
+                            image.selectable = false;
+                            image.evented = false;
+                            image.globalCompositeOperation = 'xor';
+                            image.opacity = 0.5;
+                            this.canvas.add(image);
+                            this.drawnObjects.push(image);
+                            this.canvas.renderAll();
                         }, { left, top });
-                    }));
+                    },
+                );
 
                 this.isEditing = true;
                 this.startTimestamp = Date.now();
@@ -721,7 +764,7 @@ export class MasksHandlerImpl implements MasksHandler {
                     const wrappingBbox = this.getDrawnObjectsWrappingBox();
                     this.removeBrushMarker(); // remove brush marker from final mask
                     const imageData = this.imageDataFromCanvas(wrappingBbox);
-                    const rle = zipChannels(imageData);
+                    const rle = imageDataToRLE(imageData);
                     rle.push(wrappingBbox.left, wrappingBbox.top, wrappingBbox.right, wrappingBbox.bottom);
                     const isEmptyMask = rle.length < 6;
                     if (isEmptyMask) {
@@ -739,6 +782,49 @@ export class MasksHandlerImpl implements MasksHandler {
 
     get enabled(): boolean {
         return this.isDrawing || this.isEditing || this.isInsertion;
+    }
+
+    public undo(): boolean {
+        if (!this.enabled) {
+            return false;
+        }
+
+        const action = this.undoStack.pop();
+        if (!action) {
+            return false;
+        }
+
+        for (const object of action) {
+            this.canvas.remove(object);
+            const index = this.drawnObjects.indexOf(object);
+            if (index !== -1) {
+                this.drawnObjects.splice(index, 1);
+            }
+        }
+        this.redoStack.push(action);
+        this.canvas.renderAll();
+
+        return true;
+    }
+
+    public redo(): boolean {
+        if (!this.enabled) {
+            return false;
+        }
+
+        const action = this.redoStack.pop();
+        if (!action) {
+            return false;
+        }
+
+        for (const object of action) {
+            this.canvas.add(object);
+            this.drawnObjects.push(object);
+        }
+        this.undoStack.push(action);
+        this.canvas.renderAll();
+
+        return true;
     }
 
     public cancel(): void {

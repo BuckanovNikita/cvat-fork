@@ -17,7 +17,7 @@ services:
     container_name: verify_cvat_server
   cvat_ui:
     container_name: verify_cvat_ui
-    image: cvat/ui:v2.59.1-progress-colors
+    image: cvat/ui:v2.74.1-progress-colors
   cvat_vector:
     container_name: verify_cvat_vector
   cvat_worker_annotation:
