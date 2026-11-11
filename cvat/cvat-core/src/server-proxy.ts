@@ -58,6 +58,20 @@ const totalBandwidthInfo = {
     totalDownloadRetries: 0,
 };
 
+// A download may start and finish while the page is visible but be throttled while it is hidden.
+// Track visibility transitions to exclude such downloads from bandwidth telemetry.
+let pageVisibilityCounter = 0;
+
+function isPageVisible(): boolean {
+    return typeof document === 'undefined' || document.visibilityState === 'visible';
+}
+
+if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+        pageVisibilityCounter++;
+    });
+}
+
 tus.defaultOptions.storeFingerprintForResuming = false;
 
 function enableOrganization(): { org: string } {
@@ -208,6 +222,20 @@ function generateHealthCheckError(errorData: AxiosError<unknown>): ServerError |
     return new ServerError(message, response.status, response.statusText || errorData.code);
 }
 
+// Flattens nested serializer errors, e.g. {"field": {"subfield": ["error"]}},
+// into the (field path, message) pairs
+function flattenFieldErrors(data: unknown, path: string[] = []): [string, string][] {
+    if (Array.isArray(data) && data.every((item) => typeof item !== 'object' || item === null)) {
+        return [[path.join('.'), data.join(' ')]];
+    }
+
+    if (data && typeof data === 'object') {
+        return Object.entries(data).flatMap(([key, value]) => flattenFieldErrors(value, [...path, key]));
+    }
+
+    return [[path.join('.'), String(data)]];
+}
+
 function generateError(errorData: AxiosError): ServerError {
     if (errorData.response) {
         const serverError = (message: string): ServerError => new ServerError(
@@ -248,8 +276,8 @@ function generateError(errorData: AxiosError): ServerError {
                 }
 
                 // serializers fields
-                const message = Object.keys(errorData.response.data).map((key) => (
-                    `**${key}**: ${errorData.response.data[key].toString()}`
+                const message = flattenFieldErrors(errorData.response.data).map(([key, value]) => (
+                    `**${key}**: ${value}`
                 )).join('\n\n');
                 return serverError(message);
             }
@@ -1618,7 +1646,7 @@ const validationLayout = (instance: 'tasks' | 'jobs') => async (
     }
 };
 
-async function getUsers(filter: Record<string, unknown> = { page_size: 'all' }): Promise<SerializedUser[]> {
+async function getUsers(filter: Record<string, unknown> = {}): Promise<SerializedUser[]> {
     const { backendAPI } = config;
 
     let response = null;
@@ -1731,6 +1759,8 @@ async function getImageContext(jid: number, frame: number): Promise<ArrayBuffer>
 
 async function getData(jid: number, chunk: number, quality: ChunkQuality): Promise<ArrayBuffer> {
     const { backendAPI } = config;
+    const pageWasVisible = isPageVisible();
+    const pageVisibilityVersionAtStart = pageVisibilityCounter;
 
     try {
         const response = await (workerAxios as any).get(`${backendAPI}/jobs/${jid}/data`, {
@@ -1743,7 +1773,10 @@ async function getData(jid: number, chunk: number, quality: ChunkQuality): Promi
             responseType: 'arraybuffer',
         });
 
-        if (response.telemetry) {
+        const pageWasVisibleThroughoutDownload = pageWasVisible &&
+            isPageVisible() && pageVisibilityCounter === pageVisibilityVersionAtStart;
+
+        if (response.telemetry && pageWasVisibleThroughoutDownload) {
             totalBandwidthInfo.totalDownloadBytes += response.telemetry.chunkSizeBytes;
             totalBandwidthInfo.totalDownloadTimeMs += response.telemetry.downloadTimeMs;
             totalBandwidthInfo.totalDownloadRetries += response.telemetry.retries;

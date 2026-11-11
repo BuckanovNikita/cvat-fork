@@ -17,11 +17,29 @@ export enum QualityRequirementAnnotationType {
     ELLIPSE = 'ellipse',
 }
 
-export enum QualityRequirementMetric {
+export enum QualityMetric {
     ACCURACY = 'accuracy',
     PRECISION = 'precision',
     RECALL = 'recall',
+    JACCARD_INDEX = 'jaccard_index',
+    DICE = 'dice',
 }
+
+export enum QualityMetricAggregation {
+    MICRO = 'micro',
+    MEAN = 'mean',
+    LABEL = 'label',
+}
+
+type PrefixedQualityMetricAggregation = Exclude<
+    QualityMetricAggregation,
+    QualityMetricAggregation.MICRO
+>;
+
+export type QualityRequirementMetric = QualityMetric | `${PrefixedQualityMetricAggregation}_${QualityMetric}`;
+
+// Preserve the existing value-level API for base metrics, e.g. QualityRequirementMetric.ACCURACY.
+export const QualityRequirementMetric = QualityMetric;
 
 export enum QualityReportRequirementCalculationStatus {
     COMPUTED = 'computed',
@@ -39,12 +57,31 @@ export enum QualityRequirementPointSizeBase {
     GROUP_BBOX_SIZE = 'group_bbox_size',
 }
 
+export enum QualityRequirementSimilarityMetric {
+    IOU = 'iou',
+    OKS = 'oks',
+    BOUNDARY_F = 'boundary_f',
+    EQUALITY = 'equality',
+}
+
 export enum QualityRequirementAttributeComparator {
     EXACT = 'exact',
     LEVENSHTEIN = 'levenshtein',
 }
 
 export type QualityRequirementJsonLogicFilter = string;
+
+export type SimilarityThresholdPolicy = {
+    type: 'iou';
+    mode: 'constant';
+    value: number;
+} | {
+    type: 'iou';
+    mode: 'linear';
+    input: 'gt.shape_area';
+    extrapolation: 'clamp';
+    points: { x: number; y: number }[];
+};
 
 export interface SerializedQualityRequirementAttributeRule {
     spec_id: number;
@@ -72,7 +109,11 @@ export interface SerializedEffectiveQualityRequirementData {
     annotation_type: QualityRequirementAnnotationType;
     metric: QualityRequirementMetric;
     required_score: number;
-    iou_threshold: number | null;
+    similarity_metric: QualityRequirementSimilarityMetric | null;
+    iou_threshold: number | SimilarityThresholdPolicy | null;
+    oks_threshold: number | null;
+    boundary_f_threshold: number | null;
+    boundary_f_tolerance: number | null;
     point_size: number | null;
     point_size_base: QualityRequirementPointSizeBase | null;
     line_thickness: number | null;
@@ -107,7 +148,11 @@ export interface SerializedQualityRequirementData {
     required_score: number | null;
     parent_requirement: number | null;
     effective?: SerializedEffectiveQualityRequirementData;
-    iou_threshold: number | null;
+    similarity_metric: QualityRequirementSimilarityMetric | null;
+    iou_threshold: number | SimilarityThresholdPolicy | null;
+    oks_threshold: number | null;
+    boundary_f_threshold: number | null;
+    boundary_f_tolerance: number | null;
     point_size: number | null;
     point_size_base: QualityRequirementPointSizeBase | null;
     line_thickness: number | null;
@@ -178,6 +223,17 @@ export interface SerializedQualityConfusionMatrixData {
     recall: (number | null)[];
     accuracy: (number | null)[];
     jaccard_index: (number | null)[];
+    dice: (number | null)[];
+    target_metric_summary: {
+        metric: 'accuracy' | 'precision' | 'recall' | 'jaccard_index' | 'dice';
+        aggregation: 'micro' | 'mean' | 'label';
+        values: {
+            micro: number | null;
+            mean: number | null;
+            label: number | null;
+        };
+        worst_labels: string[];
+    };
 }
 
 export interface SerializedQualitySettingsData {
