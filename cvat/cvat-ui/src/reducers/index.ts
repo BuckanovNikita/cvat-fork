@@ -13,7 +13,7 @@ import {
     QualityConflict, FramesMetaData, RQStatus, Event, Invitation, SerializedAPISchema,
     Request, JobValidationLayout, QualitySettings, TaskValidationLayout, ObjectState,
     ConsensusSettings, AboutData, ShapeType, ObjectType, ApiToken, AudioIntervalState,
-    Membership, AnnotationFormats, CloudStorage, UserGrowthData,
+    Membership, AnnotationFormats, CloudStorage, UserGrowthData, JobStage, JobState,
 } from 'cvat-core-wrapper';
 
 import type { IntelligentScissors, OpenCVTracker } from 'utils/opencv-wrapper/opencv-wrapper';
@@ -177,11 +177,7 @@ export interface JobsState {
 }
 
 export interface TaskJobsSummary {
-    annotationNew: number;
-    annotating: number;
-    validation: number;
-    acceptance: number;
-    rejected: number;
+    counts: Record<JobStage, Record<JobState, number>>;
     fetched: number;
 }
 

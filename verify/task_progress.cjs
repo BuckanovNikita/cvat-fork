@@ -37,29 +37,35 @@ const summaryModule = loadSource('cvat-ui/src/utils/task-jobs-summary.ts', {
     'cvat-core-wrapper': enums,
 });
 const aggregate = summaryModule.default;
-const Progress = loadSource('cvat-ui/src/components/tasks-page/task-jobs-progress.tsx').default;
+const Progress = loadSource('cvat-ui/src/components/tasks-page/task-jobs-progress.tsx', {
+    'cvat-core-wrapper': enums,
+    'utils/task-jobs-summary': summaryModule,
+}).default;
 
 const cases = [
-    [JobStage.ANNOTATION, JobState.NEW, 'annotationNew'],
-    [JobStage.ANNOTATION, JobState.IN_PROGRESS, 'annotating'],
-    [JobStage.ANNOTATION, JobState.COMPLETED, 'annotating'],
-    [JobStage.ANNOTATION, JobState.REJECTED, 'rejected'],
-    [JobStage.VALIDATION, JobState.NEW, 'validation'],
-    [JobStage.VALIDATION, JobState.IN_PROGRESS, 'validation'],
-    [JobStage.VALIDATION, JobState.COMPLETED, 'validation'],
-    [JobStage.VALIDATION, JobState.REJECTED, 'rejected'],
-    [JobStage.ACCEPTANCE, JobState.NEW, 'acceptance'],
-    [JobStage.ACCEPTANCE, JobState.IN_PROGRESS, 'acceptance'],
-    [JobStage.ACCEPTANCE, JobState.COMPLETED, 'acceptance'],
-    [JobStage.ACCEPTANCE, JobState.REJECTED, 'rejected'],
+    [JobStage.ANNOTATION, JobState.NEW, '#fafbb1'],
+    [JobStage.ANNOTATION, JobState.IN_PROGRESS, '#faad14'],
+    [JobStage.ANNOTATION, JobState.COMPLETED, '#fafe01'],
+    [JobStage.ANNOTATION, JobState.REJECTED, '#ff4136'],
+    [JobStage.VALIDATION, JobState.NEW, '#b4dafd'],
+    [JobStage.VALIDATION, JobState.IN_PROGRESS, '#1890ff'],
+    [JobStage.VALIDATION, JobState.COMPLETED, '#00478a'],
+    [JobStage.VALIDATION, JobState.REJECTED, '#ff4136'],
+    [JobStage.ACCEPTANCE, JobState.NEW, '#b3ff66'],
+    [JobStage.ACCEPTANCE, JobState.IN_PROGRESS, '#b3ff66'],
+    [JobStage.ACCEPTANCE, JobState.COMPLETED, '#61c200'],
+    [JobStage.ACCEPTANCE, JobState.REJECTED, '#ff4136'],
 ];
 
-for (const [stage, state, bucket] of cases) {
-    test(`classifies ${stage}/${state} as ${bucket}`, () => {
+for (const [stage, state] of cases) {
+    test(`preserves the independent count for ${stage}/${state}`, () => {
         const result = aggregate([{ taskId: 7, stage, state }], [7])[7];
-        assert.equal(result[bucket], 1);
+        assert.ok(result.counts, 'expected separate counts for every stage and state');
+        assert.equal(result.counts[stage][state], 1);
         assert.equal(result.fetched, 1);
-        assert.equal(Object.values(result).reduce((sum, count) => sum + count, 0), 2);
+        for (const [otherStage, otherState] of cases) {
+            assert.equal(result.counts[otherStage][otherState], otherStage === stage && otherState === state ? 1 : 0);
+        }
     });
 }
 
@@ -67,9 +73,11 @@ test('isolates tasks, initializes missing jobs, and ignores unrelated/null task 
     const job = { stage: JobStage.ANNOTATION, state: JobState.NEW };
     const result = aggregate([7, 7, 8, 999, null].map((taskId) => ({ ...job, taskId })), [7, 8, 9]);
     assert.deepEqual(Object.keys(result), ['7', '8', '9']);
-    assert.equal(result[7].annotationNew, 2);
-    assert.equal(result[8].annotationNew, 1);
-    assert.ok(Object.values(result[9]).every((count) => count === 0));
+    assert.ok(result[7].counts, 'expected stage/state counts');
+    assert.equal(result[7].counts.annotation.new, 2);
+    assert.equal(result[8].counts.annotation.new, 1);
+    assert.ok(Object.values(result[9].counts).flatMap(Object.values).every((count) => count === 0));
+    assert.equal(result[9].fetched, 0);
     assert.deepEqual(aggregate([], []), {});
 });
 
@@ -120,7 +128,7 @@ test('fetches all page jobs and publishes summaries through the actual reducer',
         return [{ taskId: 7, stage: JobStage.ACCEPTANCE, state: JobState.COMPLETED }];
     });
     await h.run([7, 8]);
-    assert.equal(h.state().jobsSummary.data[7].acceptance, 1);
+    assert.equal(h.state().jobsSummary.data[7].counts?.acceptance.completed, 1);
     assert.equal(h.state().jobsSummary.data[8].fetched, 0);
     assert.equal(h.state().jobsSummary.fetching, false);
     h.page(200);
@@ -141,7 +149,7 @@ test('API failure clears summary data to restore the stock progress fallback', a
         return [{ taskId: 7, stage: JobStage.ANNOTATION, state: JobState.NEW }];
     });
     await h.run([7]);
-    assert.equal(h.state().jobsSummary.data[7].annotationNew, 1);
+    assert.equal(h.state().jobsSummary.data[7].counts?.annotation.new, 1);
     fail = true;
     await h.run([7]);
     assert.deepEqual(h.state().jobsSummary, { fetching: false, data: {} });
@@ -169,18 +177,28 @@ for (const outcome of ['success', 'failure']) {
     });
 }
 
-test('renders matching legend counts and bar weights including inaccessible jobs', () => {
-    const summary = { annotationNew: 1, annotating: 2, validation: 3, acceptance: 4, rejected: 5, fetched: 15 };
-    const html = renderToStaticMarkup(React.createElement(Progress, { summary, totalJobs: 21 }));
-    for (const [key, label, count] of [
-        ['annotation-new', 'not started', 1], ['annotating', 'annotating', 2],
-        ['validation', 'on review', 3], ['acceptance', 'accepted', 4],
-        ['rejected', 'rejected', 5], ['inaccessible', 'not available', 6],
-    ]) {
+test('renders all 12 selected colors with separate legend counts and bar weights', () => {
+    const jobs = cases.flatMap(([stage, state], index) => (
+        Array.from({ length: index + 1 }, () => ({ taskId: 7, stage, state }))
+    ));
+    const summary = aggregate(jobs, [7])[7];
+    const html = renderToStaticMarkup(React.createElement(Progress, { summary, totalJobs: 84 }));
+    const expected = cases.map(([stage, state, color], index) => [
+        `${stage}-${state.replace(/ /g, '-')}`, `${stage} / ${state}`, index + 1, color,
+    ]).concat([['inaccessible', 'not available', 6, '#c1c1c1']]);
+    for (const [key, label, count, color] of expected) {
+        const legend = html.match(new RegExp(`<span[^>]*class="[^"]*cvat-jobs-legend-${key}(?: |\")[^>]*>`));
+        assert.ok(legend, `missing legend for ${label}`);
+        assert.match(legend[0], new RegExp(`color:${color}(?:;|\")`));
         assert.match(html, new RegExp(`cvat-jobs-legend-${key}[^>]*><strong>• ${count} ${label} `));
-        assert.match(html, new RegExp(`cvat-jobs-progress-${key}" style="flex-grow:${count}" title="${count} ${label}"`));
+        const segment = html.match(new RegExp(`<div[^>]*class="[^"]*cvat-jobs-progress-${key}(?: |\")[^>]*>`));
+        assert.ok(segment, `missing segment for ${label}`);
+        assert.match(segment[0], new RegExp(`flex-grow:${count}(?:;|\")`));
+        assert.match(segment[0], new RegExp(`background-color:${color}(?:;|\")`));
+        assert.match(segment[0], new RegExp(`title="${count} ${label}"`));
     }
-    assert.match(html, /• 21 total/);
+    assert.equal((html.match(/cvat-task-item-jobs-progress-segment/g) || []).length, 13);
+    assert.match(html, /• 84 total/);
 });
 
 test('omits zero buckets and never renders a negative inaccessible segment', () => {
@@ -188,7 +206,7 @@ test('omits zero buckets and never renders a negative inaccessible segment', () 
     const html = renderToStaticMarkup(React.createElement(Progress, { summary: empty, totalJobs: 0 }));
     assert.doesNotMatch(html, /cvat-jobs-legend-|cvat-task-item-jobs-progress-segment/);
     assert.match(html, /• 0 total/);
-    const summary = { ...empty, annotationNew: 1, fetched: 1 };
+    const summary = aggregate([{ taskId: 7, stage: JobStage.ANNOTATION, state: JobState.NEW }], [7])[7];
     const extraJob = renderToStaticMarkup(React.createElement(Progress, { summary, totalJobs: 0 }));
     assert.doesNotMatch(extraJob, /inaccessible|not available/);
 });
