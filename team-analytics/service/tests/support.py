@@ -106,6 +106,8 @@ class FakeUser:
     groups: list[str] = field(default_factory=lambda: ["user"])
     # org slug -> (org id, role, is_active)
     memberships: dict[str, tuple[int, str, bool]] = field(default_factory=dict)
+    # CVAT's is_staff/is_superuser flags; None = the usual case, set exactly when in the admin group
+    superuser: bool | None = None
 
 
 class FakeCvat:
@@ -115,6 +117,7 @@ class FakeCvat:
         self.users: dict[str, FakeUser] = {}  # sessionid -> user
         self.organizations: dict[str, int] = {}  # slug -> id
         self.requests: list[dict] = []
+        self.down = False
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -122,6 +125,9 @@ class FakeCvat:
                 pass
 
             def do_GET(self):  # noqa: N802 - http.server API
+                if fake.down:  # drop the connection without an answer, as an unreachable CVAT would
+                    self.close_connection = True
+                    return
                 url = urlsplit(self.path)
                 query = {k: v[-1] for k, v in parse_qs(url.query, keep_blank_values=True).items()}
                 fake.requests.append({"path": url.path, "query": query, "headers": dict(self.headers.items())})
@@ -166,8 +172,9 @@ class FakeCvat:
             return 404, {"detail": f"{slug} organization does not exist."}
         is_admin = "admin" in user.groups
         if path == "/api/users/self":
+            superuser = is_admin if user.superuser is None else user.superuser
             return 200, {"id": user.id, "username": user.username, "groups": user.groups,
-                         "is_staff": is_admin, "is_superuser": is_admin, "is_active": True}
+                         "is_staff": superuser, "is_superuser": superuser, "is_active": True}
         if path == "/api/organizations":
             visible = [s for s in self.organizations if is_admin or s in user.memberships]
             if "slug" in query:
@@ -177,8 +184,15 @@ class FakeCvat:
             if slug and not is_admin and slug not in user.memberships:
                 return 403, {"detail": "You do not have permission to perform this action."}
             rows = []
+            # CVAT's memberships.rego: without an organization a non-admin sees only their own
+            # active memberships, across all organizations
+            sandbox = not slug and not is_admin
             for owner in self.users.values():
+                if sandbox and owner is not user:
+                    continue
                 for s, (org_id, role, active) in owner.memberships.items():
+                    if sandbox and not active:
+                        continue
                     if (not slug or s == slug) and query.get("user") in (None, owner.username):
                         rows.append({"id": len(rows) + 1, "organization": org_id, "role": role, "is_active": active,
                                      "user": {"id": owner.id, "username": owner.username}})
