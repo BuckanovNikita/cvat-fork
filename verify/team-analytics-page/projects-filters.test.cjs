@@ -178,62 +178,73 @@ function rowNamed(container, kind, name) {
     return row;
 }
 
+// Mounts the page, runs `check` on it and always unmounts (the status timer would keep node alive).
+async function opened(Page, check) {
+    const view = await mount(React.createElement(Page));
+    try {
+        await view.settle();
+        await check(view);
+    } finally {
+        await view.unmount();
+    }
+}
+
 domTest('clicking a row filters the whole page; clicking it again or the clear control removes it', async () => {
     const { history, requests, Page } = mountPage({ names: async () => ({ 1: 'Street scenes', 2: 'Retail shelves' }) });
-    const view = await mount(React.createElement(Page));
-    await view.settle();
-    assert.deepEqual(filterParams(requests.at(-1)), [null, null]);
+    await opened(Page, async (view) => {
+        assert.deepEqual(filterParams(requests.at(-1)), [null, null]);
 
-    await click(rowNamed(view.container, 'project', 'Retail shelves'));
-    await view.settle();
-    assert.equal(history.location.search, '?project=2&period=week');
-    assert.deepEqual(filterParams(requests.at(-1)), ['2', null]);
-    assert.match(view.container.querySelector('.cvat-team-analytics-filter-project').textContent, /Retail shelves/);
+        await click(rowNamed(view.container, 'project', 'Retail shelves'));
+        await view.settle();
+        assert.equal(history.location.search, '?project=2&period=week');
+        assert.deepEqual(filterParams(requests.at(-1)), ['2', null]);
+        assert.match(view.container.querySelector('.cvat-team-analytics-filter-project').textContent, /Retail shelves/);
 
-    await click(rowNamed(view.container, 'annotator', 'bob'));
-    await view.settle();
-    assert.equal(history.location.search, '?project=2&period=week&annotator=12');
-    assert.deepEqual(filterParams(requests.at(-1)), ['2', '12'], 'the two filters combine');
+        await click(rowNamed(view.container, 'annotator', 'bob'));
+        await view.settle();
+        assert.equal(history.location.search, '?project=2&period=week&annotator=12');
+        assert.deepEqual(filterParams(requests.at(-1)), ['2', '12'], 'the two filters combine');
 
-    await click(rowNamed(view.container, 'project', 'Retail shelves'));
-    await view.settle();
-    assert.equal(history.location.search, '?period=week&annotator=12');
+        await click(rowNamed(view.container, 'project', 'Retail shelves'));
+        await view.settle();
+        assert.equal(history.location.search, '?period=week&annotator=12');
 
-    await click(view.container.querySelector('.cvat-team-analytics-filter-annotator .cvat-team-analytics-filter-clear'));
-    await view.settle();
-    assert.equal(history.location.search, '?period=week');
-    assert.deepEqual(filterParams(requests.at(-1)), [null, null]);
+        await click(view.container.querySelector('.cvat-team-analytics-filter-annotator .cvat-team-analytics-filter-clear'));
+        await view.settle();
+        assert.equal(history.location.search, '?period=week');
+        assert.deepEqual(filterParams(requests.at(-1)), [null, null]);
 
-    await act(async () => { history.goBack(); });
-    await view.settle();
-    assert.equal(history.location.search, '?period=week&annotator=12', 'Back restores the previous filter');
-    assert.deepEqual(filterParams(requests.at(-1)), [null, '12']);
-    await view.unmount();
+        await act(async () => { history.goBack(); });
+        await view.settle();
+        assert.equal(history.location.search, '?period=week&annotator=12', 'Back restores the previous filter');
+        assert.deepEqual(filterParams(requests.at(-1)), [null, '12']);
+    });
 });
 
-domTest('a shared address opens with its filters, keeping keys it does not own', async () => {
+domTest('a shared address opens with its filters; a filter change keeps the period and other keys', async () => {
     const overview = { ...OVERVIEW, filters: { project: 0, annotator: { user_id: 40, user_name: 'zoe' } } };
     const { history, requests, Page } = mountPage({
-        search: '?period=week&project=0&annotator=40', answer: () => ({ body: overview }),
+        search: '?period=month&month=2026-10&project=0&annotator=40&tab=x', answer: () => ({ body: overview }),
     });
-    const view = await mount(React.createElement(Page));
-    await view.settle();
-    assert.deepEqual(filterParams(requests[0]), ['0', '40']);
-    assert.equal(view.container.querySelector('.cvat-team-analytics-filter-chips').textContent,
-        'ProjectNo project×Annotatorzoe×');
-    await click(view.container.querySelector('.cvat-team-analytics-filter-project .cvat-team-analytics-filter-clear'));
-    await view.settle();
-    assert.equal(history.location.search, '?period=week&annotator=40');
-    await view.unmount();
+    await opened(Page, async (view) => {
+        assert.deepEqual(filterParams(requests[0]), ['0', '40']);
+        assert.equal(view.container.querySelector('.cvat-team-analytics-filter-chips').textContent,
+            'ProjectNo project×Annotatorzoe×');
+        await click(view.container.querySelector('.cvat-team-analytics-filter-project .cvat-team-analytics-filter-clear'));
+        await view.settle();
+        assert.equal(history.location.search, '?period=month&month=2026-10&annotator=40&tab=x');
+        const params = new URL(requests.at(-1).url, 'http://localhost').searchParams;
+        assert.deepEqual([params.get('period'), params.get('month'), params.get('project'), params.get('annotator')],
+            ['month', '2026-10', null, '40']);
+    });
 });
 
 domTest('project names are asked of CVAT for the shown and selected projects; a failed lookup shows identifiers', async () => {
     const { lookups, Page } = mountPage({ search: '?project=7', names: async () => { throw new Error('403'); } });
-    const view = await mount(React.createElement(Page));
-    await view.settle();
-    assert.deepEqual([...lookups.at(-1)].sort(), [1, 2, 7]);
-    assert.deepEqual([...view.container.querySelectorAll('.cvat-team-analytics-project-row .cvat-team-analytics-name')]
-        .map((element) => element.textContent), ['Project #1', 'Project #2', 'No project']);
-    assert.match(view.container.querySelector('.cvat-team-analytics-filter-project').textContent, /Project #7/);
-    await view.unmount();
+    await opened(Page, async (view) => {
+        assert.deepEqual([...lookups.at(-1)].sort(), [1, 2, 7]);
+        assert.deepEqual([...view.container.querySelectorAll('.cvat-team-analytics-project-row .cvat-team-analytics-name')]
+            .map((element) => element.textContent), ['Project #1', 'Project #2', 'No project']);
+        assert.match(view.container.querySelector('.cvat-team-analytics-filter-project').textContent, /Project #7/);
+    });
 });

@@ -100,6 +100,8 @@ class FilterTest(FiltersCase):
 
         body = self.overview(project="9", annotator="13")
         self.assertEqual((self.annotators(body), self.projects(body)), ([], []))
+        # nor names someone from another organization
+        self.assertEqual(body["filters"]["annotator"], {"user_id": 13, "user_name": None})
         self.assertEqual(self.annotators(self.overview(org="org8", project="9")), [("carol", HOUR)])
 
     def test_a_filter_that_is_not_an_identifier_is_refused(self):
