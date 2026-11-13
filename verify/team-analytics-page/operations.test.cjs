@@ -119,11 +119,11 @@ function tableRows(html) {
 
 test('a table lists each operation with its count, average time, total time and share of working time', () => {
     assert.deepEqual(tableRows(render(View, ready(OPERATIONS))), [
-        ['Operation', 'Objects', 'Avg time', 'Total time', 'Share'],
-        ['Creation', '3,456', '4.2 s', '4.0 h', '40%'],
-        ['Alignment', '900', '2.0 s', '0.5 h', '5%'],
-        ['Class change', '0', '—', '0.0 h', '0%'],
-        ['Deletion', '120', '9.0 s', '0.3 h', '3%'],
+        ['Operation', 'Objects', 'Avg time', 'Total time', 'Share', 'Started by hotkey / mouse'],
+        ['Creation', '3,456', '4.2 s', '4.0 h', '40%', '—'],
+        ['Alignment', '900', '2.0 s', '0.5 h', '5%', 'Mouse only'],
+        ['Class change', '0', '—', '0.0 h', '0%', '—'],
+        ['Deletion', '120', '9.0 s', '0.3 h', '3%', '—'],
     ]);
 });
 
@@ -136,7 +136,7 @@ test('a legacy period shows the notice and marks class change as not recorded', 
         'Old events do not say which shape was edited, so operations and timing below cover all shapes. ' +
         'Class changes and hotkey use were not recorded and start from the day the new UI is deployed. ' +
         'Projects, sessions, working time and the number of boxes saved are complete.');
-    assert.deepEqual(tableRows(html)[3], ['Class change', 'Not recorded', '—', '—', '—']);
+    assert.deepEqual(tableRows(html)[3], ['Class change', 'Not recorded', '—', '—', '—', 'Not recorded']);
     // the split leaves out what was not recorded instead of showing it as zero
     assert.deepEqual(legend(html).map((item) => item.split(' ')[0]), ['Creation', 'Alignment', 'Deletion', 'Other']);
 });
@@ -144,7 +144,7 @@ test('a legacy period shows the notice and marks class change as not recorded', 
 test('a period with shape-tagged events shows no legacy notice and counts class changes', () => {
     const html = render(View, ready(OPERATIONS));
     assert.doesNotMatch(html, /cvat-team-analytics-legacy-notice/);
-    assert.deepEqual(tableRows(html)[3], ['Class change', '0', '—', '0.0 h', '0%']);
+    assert.deepEqual(tableRows(html)[3], ['Class change', '0', '—', '0.0 h', '0%', '—']);
 });
 
 test('operations with no measured time and no working time show no shares', () => {

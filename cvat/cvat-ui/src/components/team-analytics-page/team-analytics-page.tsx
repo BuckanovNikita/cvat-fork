@@ -18,6 +18,7 @@ import { currentMonth, useAddress } from './address';
 import { agedStatus } from './freshness';
 import { monthAvailable, periodAvailable } from './history';
 import { lookupProjectNames } from './project-names';
+import { hotkeyLabels } from './hotkeys';
 import TeamAnalyticsView from './team-analytics-view';
 
 // The status (last refresh) is read again this often while the page is open.
@@ -30,6 +31,9 @@ const STATUS_INTERVAL_MS = 60000;
 export default function TeamAnalyticsPage(): JSX.Element {
     const organization = useSelector((state: CombinedState) => state.organizations.current?.slug ?? null);
     const history = useHistory();
+    // hotkeys are labelled with the viewer's own keymap
+    const shortcuts = useSelector((state: CombinedState) => state.shortcuts);
+    const labels = useMemo(() => hotkeyLabels(shortcuts), [shortcuts]);
     const [address, changeAddress] = useAddress(history);
     const timeZone = useMemo(viewerTimeZone, []);
     const [state, setState] = useState<PageState>({ kind: 'loading' });
@@ -125,6 +129,7 @@ export default function TeamAnalyticsPage(): JSX.Element {
             status={status}
             timeZone={timeZone}
             projectNames={projectNames}
+            hotkeyLabels={labels}
         />
     );
 }

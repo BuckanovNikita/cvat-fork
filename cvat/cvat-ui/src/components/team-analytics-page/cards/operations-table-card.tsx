@@ -9,11 +9,37 @@ import { OperationsFigures } from '../service';
 import {
     MISSING, exactHours, formatCount, formatHours, formatSeconds, formatShare,
 } from '../format';
-import { OPERATION_LOOKS, isRecorded } from '../operations';
+import {
+    InputSplit, OPERATION_LOOKS, inputSplit, isRecorded,
+} from '../operations';
 import { shapeWording } from '../shapes';
 
 interface Props {
     figures: OperationsFigures;
+}
+
+const HOTKEY_COLOR = '#2a78d6';
+const MOUSE_COLOR = '#c9c8c2';
+
+function InputSplitCell({ name, split }: { name: string; split: InputSplit }): JSX.Element {
+    if (split.kind === 'split') {
+        const hotkey = Math.round(split.hotkey * 100);
+        const mouse = 100 - hotkey;
+        return (
+            <td
+                className='cvat-team-analytics-input-split'
+                title={`${name}: ${hotkey}% by hotkey, ${mouse}% by mouse`}
+            >
+                <span className='cvat-team-analytics-input-split-bar' aria-hidden>
+                    <span style={{ flexGrow: Math.max(split.hotkey, 0.01), background: HOTKEY_COLOR }} />
+                    <span style={{ flexGrow: Math.max(split.mouse, 0.01), background: MOUSE_COLOR }} />
+                </span>
+                {`${hotkey}% / ${mouse}%`}
+            </td>
+        );
+    }
+    const label = { 'mouse-only': 'Mouse only', 'not-recorded': 'Not recorded', none: MISSING }[split.kind];
+    return <td className='cvat-team-analytics-input-split cvat-team-analytics-not-recorded'>{label}</td>;
 }
 
 // The four operations: objects, average time per object, total time and share of working time.
@@ -37,6 +63,7 @@ function OperationsTableCard({ figures }: Props): JSX.Element {
                             <th>Avg time</th>
                             <th>Total time</th>
                             <th>Share</th>
+                            <th>Started by hotkey / mouse</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -64,6 +91,7 @@ function OperationsTableCard({ figures }: Props): JSX.Element {
                                             <td>{MISSING}</td>
                                         </>
                                     )}
+                                    <InputSplitCell name={look.name} split={inputSplit(figures, row)} />
                                 </tr>
                             );
                         })}
@@ -71,7 +99,8 @@ function OperationsTableCard({ figures }: Props): JSX.Element {
                 </table>
             </div>
             <Text type='secondary' className='cvat-team-analytics-footnote'>
-                Creation covers drawn, pasted and propagated objects. Average time runs from the previous action to
+                Creation covers drawn, pasted and propagated objects. Alignment is done on the canvas, so it has no
+                hotkey. Average time runs from the previous action to
                 the end of the operation; pauses over 100 seconds are left out.
             </Text>
         </section>

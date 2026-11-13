@@ -33,3 +33,21 @@ export function isRecorded(figures: OperationsFigures, operation: OperationName)
 export function hasNoJobWork(figures: OperationsFigures): boolean {
     return figures.working_time_ms === 0 && figures.rows.every((row) => row.objects === 0);
 }
+
+// How the operation's objects were started: by hotkey or by mouse. Alignment is done on the canvas, so it
+// is mouse only; in a legacy period the input method was not recorded; without any recorded start there
+// is no split.
+export type InputSplit =
+    | { kind: 'split'; hotkey: number; mouse: number } // shares of the recorded starts
+    | { kind: 'mouse-only' }
+    | { kind: 'not-recorded' }
+    | { kind: 'none' };
+
+export function inputSplit(figures: OperationsFigures, row: OperationRow): InputSplit {
+    if (row.operation === 'alignment') return { kind: 'mouse-only' };
+    if (figures.legacy) return { kind: 'not-recorded' };
+    const hotkey = row.hotkey_objects ?? 0;
+    const mouse = row.mouse_objects ?? 0;
+    if (hotkey + mouse === 0) return { kind: 'none' };
+    return { kind: 'split', hotkey: hotkey / (hotkey + mouse), mouse: mouse / (hotkey + mouse) };
+}
