@@ -220,6 +220,24 @@ class OtherTest(OperationsCase):
         self.assertEqual(operations["active_time_ms"], 80_000)
         self.assertAlmostEqual(sum(row["share"] for row in operations["rows"]), 1.0)
 
+    def test_other_is_computed_for_the_filtered_project_and_never_below_zero(self):
+        # the batch's 100 s of working time is credited to project 1, where it started
+        self.batch_across_a_project_switch_and_an_hour_boundary(at("2026-11-13 10:59:00"))
+
+        first = self.operations(project="1")
+        # project 1: creation 30 s, the rest of the 100 s is Other
+        self.assertEqual((self.by_name(first)["creation"]["time_ms"], self.by_name(first)["other"]["time_ms"]),
+                         (30_000, 70_000))
+        self.assertEqual(first["working_time_ms"], 100_000)
+
+        second = self.operations(project="2")
+        ops = self.by_name(second)
+        # project 2: creation 20 s and deletion 30 s, with no working time of its own
+        self.assertEqual((ops["creation"]["time_ms"], ops["deletion"]["time_ms"], ops["other"]["time_ms"]),
+                         (20_000, 30_000, 0))
+        self.assertEqual(second["active_time_ms"], 50_000)
+        self.assertAlmostEqual(sum(row["share"] for row in second["rows"]), 1.0)
+
 
 class PeriodAndScopeTest(OperationsCase):
     stack_options = {"technical_accounts": ("importer",)}
