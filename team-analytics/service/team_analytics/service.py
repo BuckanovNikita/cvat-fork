@@ -28,6 +28,10 @@ log = logging.getLogger(__name__)
 
 PREFIX = "/team-analytics-api/v1/"
 
+# values of the `shapes` query parameter (the page's Bounding boxes / All shapes switch)
+SHAPES_BOUNDING_BOXES = "bounding_boxes"
+SHAPES_ALL = "all"
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
@@ -62,6 +66,13 @@ class Request:
             raise BadRequest(f"{key} must be an identifier")
         return int(value)
 
+    def shapes(self) -> str:
+        """The page's shape switch: `bounding_boxes` or `all` (the default when not given)."""
+        value = self.query.get("shapes", "") or SHAPES_ALL
+        if value not in (SHAPES_BOUNDING_BOXES, SHAPES_ALL):
+            raise BadRequest(f"shapes must be {SHAPES_BOUNDING_BOXES} or {SHAPES_ALL}")
+        return value
+
     def scope_params(self) -> dict[str, Any]:
         """Parameters every read file takes to stay inside the caller's scope and the page's filters.
 
@@ -77,6 +88,9 @@ class Request:
             "project": project or 0,
             "has_annotator": 0 if annotator is None else 1,
             "annotator": annotator or 0,
+            # shape switch: a read file of an operation figure keeps `shape = 'bounding_box'` rows when 1
+            # (unless the period is legacy); see read/overview_operations.sql
+            "bounding_boxes": 1 if self.shapes() == SHAPES_BOUNDING_BOXES else 0,
         }
 
 

@@ -1,11 +1,13 @@
--- The four operations and Other for [from, to) in the displayed scope, all shapes, in a fixed order.
+-- The four operations and Other for [from, to) in the displayed scope, in a fixed order.
+-- Shape switch: with {bounding_boxes} = 1 only bounding box rows count (shape 'bounding_box'), unless the
+-- scope has no shape-tagged row (a legacy period shows all shapes); `all_shapes` says what was applied.
 -- Other = working time - operation time over the whole displayed scope, never below zero, so that the
 -- operations and Other add up to their own total (`active_ms`) and the shares to 100 %.
 -- `legacy` = 1 when the scope (filters included) has job work in the period and no shape-tagged
 -- operation; a period with no job work is empty, not legacy.
 -- Technical accounts are left out of both operation time and working time.
 WITH
-    scoped AS (
+    in_scope AS (
         SELECT operation, shape, objects, timed_objects, time_ms
         FROM $totals_db.operations_hourly
         WHERE hour >= {from:DateTime('Etc/UTC')} AND hour < {to:DateTime('Etc/UTC')}
@@ -18,6 +20,16 @@ WITH
             AND user_name NOT IN {technical_accounts:Array(String)}
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
+    ),
+    -- job work = working time or an operation; with none, the period is empty, not legacy
+    (SELECT count() FROM in_scope) AS operation_rows,
+    (SELECT countIf(shape != 'untagged') FROM in_scope) AS tagged_rows,
+    {bounding_boxes:UInt8} = 0 OR tagged_rows = 0 AS all_shapes,
+    scoped AS (
+        SELECT operation, shape, objects, timed_objects, time_ms
+        FROM in_scope
+        WHERE ({bounding_boxes:UInt8} = 0 OR shape = 'bounding_box'
+            OR (SELECT countIf(shape != 'untagged') FROM in_scope) = 0)
     ),
     (
         SELECT toInt64(sum(working_ms))
@@ -36,9 +48,6 @@ WITH
     (SELECT toInt64(sum(time_ms)) FROM scoped) AS operations_ms,
     greatest(working_ms - operations_ms, toInt64(0)) AS other_ms,
     operations_ms + other_ms AS active_ms,
-    -- job work = working time or an operation; with none, the period is empty, not legacy
-    (SELECT count() FROM scoped) AS operation_rows,
-    (SELECT countIf(shape != 'untagged') FROM scoped) AS tagged_rows,
     (operation_rows > 0 OR working_ms > 0) AND tagged_rows = 0 AS legacy
 SELECT
     names.name AS operation,
@@ -49,7 +58,8 @@ SELECT
     if(active_ms > 0, time_ms / active_ms, NULL) AS share,
     working_ms,
     active_ms,
-    legacy
+    legacy,
+    all_shapes
 FROM (
     SELECT arrayJoin(['creation', 'alignment', 'class_change', 'deletion', 'other']) AS name
 ) AS names
