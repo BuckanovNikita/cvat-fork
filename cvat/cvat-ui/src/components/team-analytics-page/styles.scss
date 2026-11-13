@@ -84,3 +84,9 @@
     display: block;
     margin: $grid-unit-size * 8 auto;
 }
+
+.cvat-team-analytics-headline-value {
+    font-size: 28px;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
