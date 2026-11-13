@@ -4,42 +4,91 @@
 
 import './styles.scss';
 import './projects-filters.scss';
-import React, { useEffect, useState } from 'react';
+import React, {
+    useEffect, useMemo, useRef, useState,
+} from 'react';
 import { useSelector } from 'react-redux';
 import { useHistory } from 'react-router';
 
 import { CombinedState } from 'reducers';
 import {
-    PageState, ProjectNames, fetchService, loadOverview, viewerTimeZone,
+    PageState, ProjectNames, Status, fetchService, loadOverview, loadStatus, viewerTimeZone,
 } from './service';
-import { useFilters } from './filters';
+import { currentMonth, useAddress } from './address';
+import { agedStatus } from './freshness';
 import { lookupProjectNames } from './project-names';
 import TeamAnalyticsView from './team-analytics-view';
 
+// The status (last refresh) is read again this often while the page is open.
+const STATUS_INTERVAL_MS = 60000;
+
 // The page, loaded on demand by team-analytics-route.tsx. It reads the organization CVAT has
-// selected and the filters kept in the page address, asks the service for its figures and CVAT for
-// the shown projects' names; everything it shows is in TeamAnalyticsView.
+// selected and the selection kept in the page address (period and filters), asks the service for
+// its figures and status and CVAT for the shown projects' names; everything it shows is in
+// TeamAnalyticsView.
 export default function TeamAnalyticsPage(): JSX.Element {
     const organization = useSelector((state: CombinedState) => state.organizations.current?.slug ?? null);
     const history = useHistory();
-    const [filters, changeFilters] = useFilters(history);
+    const [address, changeAddress] = useAddress(history);
+    const timeZone = useMemo(viewerTimeZone, []);
     const [state, setState] = useState<PageState>({ kind: 'loading' });
+    const [pending, setPending] = useState(false);
+    const [status, setStatus] = useState<Status | null>(null);
     const [projectNames, setProjectNames] = useState<ProjectNames>({});
+    const shownOrganization = useRef<string | null>(organization);
 
     useEffect(() => {
         let current = true;
-        setState({ kind: 'loading' });
+        // a new selection keeps the shown figures (dimmed) until the new ones arrive; another
+        // organization never shows the previous one's figures
+        const sameOrganization = shownOrganization.current === organization;
+        shownOrganization.current = organization;
+        setState((shown) => (shown.kind === 'ready' && sameOrganization ? shown : { kind: 'loading' }));
+        setPending(true);
         loadOverview({
-            organization, timeZone: viewerTimeZone(), project: filters.project, annotator: filters.annotator,
+            organization,
+            timeZone,
+            period: address.period,
+            month: address.month,
+            project: address.project,
+            annotator: address.annotator,
         }, fetchService).then((next) => {
-            if (current) setState(next);
+            if (!current) return;
+            setState(next);
+            setPending(false);
         });
         return () => { current = false; };
-    }, [organization, filters.project, filters.annotator]);
+    }, [organization, address.period, address.month, address.project, address.annotator]);
+
+    const ready = state.kind === 'ready';
+    useEffect(() => {
+        if (!ready) return undefined;
+        let current = true;
+        // the last status read for this organization and when it arrived, by the page's clock
+        let last: { status: Status; at: number } | null = null;
+        const load = (): void => {
+            loadStatus({ organization, timeZone }, fetchService).then((next) => {
+                if (!current) return;
+                if (next) {
+                    last = { status: next, at: Date.now() };
+                    setStatus(next);
+                } else {
+                    // a failed read keeps the last time shown and lets it age until it is stale
+                    setStatus(last ? agedStatus(last.status, Date.now() - last.at) : null);
+                }
+            });
+        };
+        load();
+        const timer = setInterval(load, STATUS_INTERVAL_MS);
+        return () => {
+            current = false;
+            clearInterval(timer);
+        };
+    }, [organization, ready]);
 
     // names for the shown projects and the selected one; without an answer projects show their identifiers
     const shownProjects = state.kind === 'ready' ? (state.overview.by_project?.rows ?? []).map((row) => row.project_id) : [];
-    if (filters.project !== null) shownProjects.push(filters.project);
+    if (address.project !== null) shownProjects.push(address.project);
     const wanted = [...new Set(shownProjects.filter((id) => id > 0 && !(id in projectNames)))].sort((a, b) => a - b);
     const wantedKey = wanted.join(',');
     useEffect(() => {
@@ -56,8 +105,12 @@ export default function TeamAnalyticsPage(): JSX.Element {
             organization={organization}
             state={state}
             onBackToTasks={() => history.push('/tasks')}
-            filters={filters}
-            onFiltersChange={changeFilters}
+            address={address}
+            onAddressChange={changeAddress}
+            currentMonth={currentMonth()}
+            pending={pending}
+            status={status}
+            timeZone={timeZone}
             projectNames={projectNames}
         />
     );

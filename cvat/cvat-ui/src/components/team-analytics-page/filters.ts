@@ -2,11 +2,8 @@
 //
 // SPDX-License-Identifier: MIT
 
-// The project and annotator filters, kept in the page address (`project`, `annotator`: identifiers;
-// project 0 = No project) so that Back and a shared link behave as expected. Keys this module does
-// not own are left as they are. A change is a new history entry; reading never rewrites the address.
-
-import { useCallback, useEffect, useMemo, useState } from 'react';
+// The project and annotator filters as kept in the page address (`project`, `annotator`: identifiers;
+// project 0 = No project). Part of `Address` (address.ts), which owns reading and writing the address.
 
 export interface Filters {
     project: number | null;
@@ -24,35 +21,14 @@ export function readFilters(search: string): Filters {
     return { project: readId(query.get('project')), annotator: readId(query.get('annotator')) };
 }
 
-// The query string for `filters`, keeping every key of `search` this module does not own.
+// The query string for `filters`, keeping every other key of `search`.
 export function filtersSearch(filters: Filters, search: string): string {
     const query = new URLSearchParams(search);
     for (const key of ['project', 'annotator'] as const) {
         const value = filters[key];
-        if (value === null) query.delete(key);
+        if (value === null || value === undefined) query.delete(key);
         else query.set(key, String(value));
     }
     const text = query.toString();
     return text ? `?${text}` : '';
-}
-
-interface FilterHistory {
-    location?: { search: string };
-    listen?: (listener: (location: { search: string }) => void) => () => void;
-    push(location: { search: string } | string): void;
-}
-
-// The filters as state: follows Back and Forward, and records a change as a new history entry.
-export function useFilters(history: FilterHistory): [Filters, (change: Partial<Filters>) => void] {
-    const [search, setSearch] = useState(history.location?.search ?? '');
-    useEffect(() => (history.listen ? history.listen((location) => setSearch(location.search)) : undefined), [history]);
-    const filters = useMemo(() => readFilters(search), [search]);
-    const change = useCallback((next: Partial<Filters>): void => {
-        const current = history.location?.search ?? search;
-        const nextSearch = filtersSearch({ ...readFilters(current), ...next }, current);
-        if (nextSearch === current) return;
-        history.push({ ...(history.location ?? {}), search: nextSearch });
-        if (!history.listen) setSearch(nextSearch);
-    }, [history, search]);
-    return [filters, change];
 }

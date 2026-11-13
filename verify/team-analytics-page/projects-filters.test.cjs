@@ -31,6 +31,11 @@ const OVERVIEW = {
     filters: { project: null, annotator: null },
 };
 
+// the page address with the given filters (Week)
+const address = (project, annotator) => ({
+    period: 'week', month: null, project, annotator,
+});
+
 function ready(overview = OVERVIEW, props = {}) {
     return { organization: 'team-org', state: { kind: 'ready', overview }, ...props };
 }
@@ -94,9 +99,9 @@ test('the headline shows active annotators and across how many projects', () => 
         headline: { annotators: 1, projects: 2 },
         by_annotator: { ...OVERVIEW.by_annotator, rest: { count: 3, working_time_ms: HOUR } },
     };
-    assert.equal(headline(render(View, ready(filtered, { filters: { project: null, annotator: 12 } }))),
+    assert.equal(headline(render(View, ready(filtered, { address: address(null, 12) }))),
         'Active annotators 1 of 5 across 2 projects');
-    assert.equal(headline(render(View, ready(OVERVIEW, { filters: { project: 1, annotator: null } }))),
+    assert.equal(headline(render(View, ready(OVERVIEW, { address: address(1, null) }))),
         'Active annotators 2 worked in the selected project');
 });
 
@@ -109,11 +114,11 @@ function chips(html) {
 test('the filter row names the selected project and annotator, the selected rows are marked', () => {
     const overview = { ...OVERVIEW, filters: { project: 0, annotator: { user_id: 40, user_name: 'zoe' } } };
     const html = render(View, ready(overview, {
-        filters: { project: 0, annotator: 40 }, onFiltersChange() {}, projectNames: {},
+        address: address(0, 40), onAddressChange() {}, projectNames: {},
     }));
     assert.equal(chips(html), 'Project No project × Annotator zoe ×');
     assert.match(card(html, 'working-time-by-project'), /aria-pressed="true"[^>]*title="No project: 1\.00 h"/);
-    assert.equal(chips(render(View, ready(OVERVIEW, { onFiltersChange() {} }))),
+    assert.equal(chips(render(View, ready(OVERVIEW, { address: address(null, null), onAddressChange() {} }))),
         'Project All projects Annotator All annotators');
 });
 
@@ -181,27 +186,27 @@ domTest('clicking a row filters the whole page; clicking it again or the clear c
 
     await click(rowNamed(view.container, 'project', 'Retail shelves'));
     await view.settle();
-    assert.equal(history.location.search, '?project=2');
+    assert.equal(history.location.search, '?project=2&period=week');
     assert.deepEqual(filterParams(requests.at(-1)), ['2', null]);
     assert.match(view.container.querySelector('.cvat-team-analytics-filter-project').textContent, /Retail shelves/);
 
     await click(rowNamed(view.container, 'annotator', 'bob'));
     await view.settle();
-    assert.equal(history.location.search, '?project=2&annotator=12');
+    assert.equal(history.location.search, '?project=2&period=week&annotator=12');
     assert.deepEqual(filterParams(requests.at(-1)), ['2', '12'], 'the two filters combine');
 
     await click(rowNamed(view.container, 'project', 'Retail shelves'));
     await view.settle();
-    assert.equal(history.location.search, '?annotator=12');
+    assert.equal(history.location.search, '?period=week&annotator=12');
 
     await click(view.container.querySelector('.cvat-team-analytics-filter-annotator .cvat-team-analytics-filter-clear'));
     await view.settle();
-    assert.equal(history.location.search, '');
+    assert.equal(history.location.search, '?period=week');
     assert.deepEqual(filterParams(requests.at(-1)), [null, null]);
 
     await act(async () => { history.goBack(); });
     await view.settle();
-    assert.equal(history.location.search, '?annotator=12', 'Back restores the previous filter');
+    assert.equal(history.location.search, '?period=week&annotator=12', 'Back restores the previous filter');
     assert.deepEqual(filterParams(requests.at(-1)), [null, '12']);
     await view.unmount();
 });

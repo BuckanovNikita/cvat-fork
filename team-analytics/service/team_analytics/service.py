@@ -48,7 +48,8 @@ class Request:
     cache: dict[str, Any] = field(default_factory=dict)
 
     def span(self) -> Span:
-        return period_span(self.now, self.query.get("period", "week"), self.query.get("tz", "UTC"))
+        return period_span(self.now, self.query.get("period", "week"), self.query.get("tz", "UTC"),
+                           self.query.get("month"))
 
     def filter_id(self, key: str) -> int | None:
         """The page's `project` or `annotator` filter: an id (project 0 = No project) or None when not set."""

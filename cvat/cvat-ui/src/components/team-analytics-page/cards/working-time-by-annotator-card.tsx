@@ -12,17 +12,19 @@ interface Props {
     rest?: Rest;
     selected?: number | null;
     onPick?: (userId: number) => void;
+    // the selected period as the page names it
+    periodLabel?: string;
 }
 
 // Working time per annotator: the largest rows (within the project filter) and the rest as one line.
 function WorkingTimeByAnnotatorCard({
-    rows, rest, selected, onPick,
+    rows, rest, selected, onPick, periodLabel = 'Last 7 days',
 }: Props): JSX.Element {
     return (
         <WorkingTimeBreakdown
             kind='annotator'
             title='Working time by annotator'
-            subtitle='Last 7 days'
+            subtitle={periodLabel}
             rows={rows.map((row) => ({ id: row.user_id, name: row.user_name, working_time_ms: row.working_time_ms }))}
             rest={rest}
             selected={selected}
