@@ -155,6 +155,9 @@ class FakeCvat:
         return None
 
     def answer(self, path: str, query: dict, headers) -> tuple[int, dict]:
+        if (headers.get("Accept") or "").strip() == "application/json":
+            # observed on the v2.82.0 test stack: a plain JSON Accept header is not acceptable
+            return 406, {"detail": 'Could not satisfy the request Accept header.'}
         user = self._caller(headers)
         if user is None:
             return 401, {"detail": "Authentication credentials were not provided."}

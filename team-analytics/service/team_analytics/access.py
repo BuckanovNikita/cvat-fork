@@ -79,7 +79,8 @@ class Access:
     def _get(self, path: str, credentials: dict[str, str], params: dict[str, str]) -> dict[str, Any]:
         try:
             response = requests.get(
-                f"{self._config.cvat_url}{path}", headers={**credentials, "Accept": "application/json"},
+                # no Accept header: CVAT's API answers a plain application/json with 406
+                f"{self._config.cvat_url}{path}", headers=credentials,
                 params={**params, "page_size": 100} if path != "/api/users/self" else params,
                 timeout=self._config.cvat_timeout_s, allow_redirects=False,
             )
