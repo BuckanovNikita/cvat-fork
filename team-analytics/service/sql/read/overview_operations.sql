@@ -1,7 +1,8 @@
 -- The four operations and Other for [from, to) in the displayed scope, all shapes, in a fixed order.
 -- Other = working time - operation time over the whole displayed scope, never below zero, so that the
 -- operations and Other add up to their own total (`active_ms`) and the shares to 100 %.
--- `legacy` = 1 when the scope has no shape-tagged operation in the period.
+-- `legacy` = 1 when the scope (filters included) has job work in the period and no shape-tagged
+-- operation; a period with no job work is empty, not legacy.
 -- Technical accounts are left out of both operation time and working time.
 WITH
     scoped AS (
@@ -35,7 +36,10 @@ WITH
     (SELECT toInt64(sum(time_ms)) FROM scoped) AS operations_ms,
     greatest(working_ms - operations_ms, toInt64(0)) AS other_ms,
     operations_ms + other_ms AS active_ms,
-    (SELECT countIf(shape != 'untagged') = 0 FROM scoped) AS legacy
+    -- job work = working time or an operation; with none, the period is empty, not legacy
+    (SELECT count() FROM scoped) AS operation_rows,
+    (SELECT countIf(shape != 'untagged') FROM scoped) AS tagged_rows,
+    (operation_rows > 0 OR working_ms > 0) AND tagged_rows = 0 AS legacy
 SELECT
     names.name AS operation,
     if(names.name = 'other', toUInt64(0), totals.objects) AS objects,

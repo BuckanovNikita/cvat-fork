@@ -280,6 +280,24 @@ class LegacyPeriodTest(OperationsCase):
         self.assertFalse(operations["legacy"])
         self.assertEqual(self.by_name(operations)["creation"]["objects"], 1)
 
+    def test_a_period_with_no_job_work_is_not_a_legacy_period(self):
+        self.assertFalse(self.operations()["legacy"])
+
+    def test_working_time_without_shape_tagged_events_is_a_legacy_period(self):
+        self.stack.add_events([working_time(at("2026-11-13 10:00:00"), 60_000, user=ALICE, org=ORG)])
+
+        self.assertTrue(self.operations()["legacy"])
+
+    def test_a_filter_that_leaves_no_job_work_is_not_a_legacy_period(self):
+        self.stack.add_events([
+            client("load:job", at("2026-11-13 10:00:00")),
+            draw(at("2026-11-13 10:00:05")),
+            working_time(at("2026-11-13 10:00:00"), 60_000, user=ALICE, org=ORG),
+        ])
+
+        self.assertTrue(self.operations()["legacy"])
+        self.assertFalse(self.operations(project="2")["legacy"])
+
 
 class FiltersTest(OperationsCase):
     """The operations figures follow the project and annotator filters, Other included."""
