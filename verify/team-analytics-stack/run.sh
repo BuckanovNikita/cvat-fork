@@ -3,17 +3,20 @@
 # of the local docker-desktop cluster, reached at http://localhost:$TA_HOST_PORT.
 # See README.md beside this file.
 #
-#   run.sh up             namespace, chart, proxy, port-forward, seed, client-event check
+#   run.sh up             namespace, chart, service, proxy, port-forward, seed, checks
 #   run.sh down           remove everything up created (succeeds when nothing exists)
-#   run.sh cycle          up, then down
+#   run.sh cycle          up, then down (also when up fails)
 #   run.sh seed           (re)load the synthetic accounts into a running stack
 #   run.sh check-event    send a client event through the API and find it in ClickHouse
+#   run.sh check-tracer   load working time as real accounts, wait for the scheduled refresh,
+#                         check the service's figures and refusals, then the page in a browser
 #   run.sh forward        (re)start the port-forward of a running stack
 #   run.sh status         what exists now
 #   run.sh fetch-chart    only download the chart and build its pinned dependencies
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_K8S="$HERE/../../team-analytics/k8s"
 # shellcheck source=stack.env
 . "$HERE/stack.env"
 
@@ -136,6 +139,7 @@ pull_images() {
         nice -n19 docker pull -q "$(normalize_image "$image")" >&2
     done
     image_local "$TA_PROXY_IMAGE" || die "proxy image $TA_PROXY_IMAGE is not local (it is never pulled)"
+    image_local "$TA_SERVICE_IMAGE" || die "service image $TA_SERVICE_IMAGE is not local (build-team-analytics-service.sh)"
 }
 
 # ---------------------------------------------------------------- namespace
@@ -197,7 +201,7 @@ wait_ready() {
     for w in deploy/"$TA_RELEASE"-backend-server deploy/"$TA_RELEASE"-backend-worker-utils \
              deploy/"$TA_RELEASE"-backend-worker-webhooks deploy/"$TA_RELEASE"-frontend deploy/"$TA_RELEASE"-opa \
              statefulset/"$TA_RELEASE"-kvrocks statefulset/"$TA_RELEASE"-clickhouse-shard0 \
-             statefulset/"$TA_RELEASE"-vector deploy/ta-proxy; do
+             statefulset/"$TA_RELEASE"-vector deploy/team-analytics deploy/ta-proxy; do
         "${K[@]}" -n "$TA_NAMESPACE" rollout status "$w" --timeout=15m >&2 || { report_failures; die "$w not ready"; }
     done
 }
@@ -207,6 +211,22 @@ report_failures() {
     "${K[@]}" -n "$TA_NAMESPACE" get events --field-selector reason=FailedCreate -o custom-columns=OBJ:.involvedObject.name,MSG:.message --no-headers >&2 || true
     "${K[@]}" -n "$TA_NAMESPACE" describe quota >&2 || true
     "${K[@]}" -n "$TA_NAMESPACE" get pods >&2 || true
+}
+
+# The service's own manifests (team-analytics/k8s) with the stack's image, release and refresh
+# interval. Its Ingress is not applied: the proxy is the route here. Applied before the proxy,
+# whose nginx resolves the service name at start.
+apply_service() {
+    local rendered
+    rendered="$(for f in config.yaml deployment.yaml service.yaml; do cat "$SERVICE_K8S/$f"; echo ---; done |
+        sed -e "s|image: cvat/team-analytics:v2.82.0|image: $TA_SERVICE_IMAGE|" \
+            -e "s|imagePullPolicy: IfNotPresent|imagePullPolicy: Never|" \
+            -e "s|http://cvat-backend-service:8080|http://$TA_RELEASE-backend-service:8080|" \
+            -e "s|TEAM_ANALYTICS_REFRESH_INTERVAL_S: \"600\"|TEAM_ANALYTICS_REFRESH_INTERVAL_S: \"$TA_REFRESH_INTERVAL_S\"|")"
+    grep -q "image: $TA_SERVICE_IMAGE\$" <<<"$rendered" && grep -q "INTERVAL_S: \"$TA_REFRESH_INTERVAL_S\"" <<<"$rendered" \
+        || die "could not set the service image or refresh interval in team-analytics/k8s"
+    log "applying the Team Analytics service ($TA_SERVICE_IMAGE, refresh every $TA_REFRESH_INTERVAL_S s)"
+    "${K[@]}" -n "$TA_NAMESPACE" apply -f - <<<"$rendered" >&2
 }
 
 apply_proxy() {
@@ -295,6 +315,38 @@ check_event() {
     die "event $marker did not reach ClickHouse within 2 minutes"
 }
 
+# Working time loaded through the CVAT API as real accounts after the service started, so only a
+# scheduled refresh can bring it to the figures; nothing triggers one.
+check_tracer() {
+    local pod started seeded_at refreshes=0
+    pod="$("${K[@]}" -n "$TA_NAMESPACE" get pods -l app.kubernetes.io/name=team-analytics \
+        --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')"
+    container_started() {
+        "${K[@]}" -n "$TA_NAMESPACE" get pod "$pod" -o jsonpath='{.status.containerStatuses[0].state.running.startedAt}'
+    }
+    # log lines start with the container's UTC time, so they compare as text
+    refreshes_since() {
+        "${K[@]}" -n "$TA_NAMESPACE" logs "$pod" | grep ' refreshed ' | awk -v t="$1" '$1 " " substr($2, 1, 8) >= t' | wc -l
+    }
+    started="$(container_started)"
+    seeded_at="$(date -u '+%Y-%m-%d %H:%M:%S')"
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I "$HERE/stack_api.py" seed-work
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" \
+        python3 -I "$HERE/stack_api.py" check-tracer "$((TA_REFRESH_INTERVAL_S * 3 + 60))"
+    # a rerun finds the figures already there; it still sees a refresh the schedule ran after loading
+    for _ in $(seq 1 $((TA_REFRESH_INTERVAL_S * 2 / 5 + 2))); do
+        refreshes="$(refreshes_since "$seeded_at")"
+        [ "$refreshes" -ge 1 ] && break
+        sleep 5
+    done
+    "${K[@]}" -n "$TA_NAMESPACE" logs "$pod" | grep ' refreshed ' | tail -n 3 >&2
+    log "service container running since $started; $refreshes scheduled refreshes since the load at $seeded_at UTC"
+    [ -n "$started" ] && [ "$started" = "$(container_started)" ] && [ "$refreshes" -ge 1 ] \
+        || die "the figures did not come from a scheduled refresh of the running service"
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
+        nice -n19 node "$HERE/browser_check.cjs"
+}
+
 # ---------------------------------------------------------------- teardown
 
 teardown() {
@@ -336,22 +388,25 @@ up() {
     pull_images "$RENDERED"
     ensure_namespace
     install_chart
+    apply_service
     apply_proxy
     wait_ready
     start_port_forward
     seed
     check_event
+    check_tracer
     log "up: $BASE_URL (accounts: see README.md, password \$TA_SEED_PASSWORD)"
 }
 
 case "${1:-}" in
     up) up ;;
     down) teardown ;;
-    cycle) up; teardown ;;
+    cycle) rc=0; bash "$0" up || rc=$?; teardown; exit "$rc" ;;
     seed) seed ;;
     check-event) check_event ;;
+    check-tracer) check_tracer ;;
     forward) start_port_forward ;;
     status) status ;;
     fetch-chart) build_chart; echo "$CHART_DIR" ;;
-    *) sed -n '5,13p' "$0" >&2; exit 2 ;;
+    *) sed -n '5,15p' "$0" >&2; exit 2 ;;
 esac
