@@ -64,7 +64,7 @@ class Service:
         self.config = config
         self.sql = Sql(config)
         self._clock = clock
-        self.access = Access(config)
+        self.access = Access(config, lambda: self._clock().astimezone(UTC))
         self.refresher = Refresher(config, self.sql, lambda: self._clock().astimezone(UTC))
         self.endpoints = {module.PATH: module for module in discover(endpoints)}
 

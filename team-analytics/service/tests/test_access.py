@@ -1,6 +1,8 @@
 """Access rules: CVAT is asked with the caller's credentials; the scope comes from CVAT's answers."""
 
-from tests.support import FakeUser, Stack, StackTestCase, at, wait_for_clickhouse, working_time
+from datetime import timedelta
+
+from tests.support import NOW, FakeUser, Stack, StackTestCase, at, wait_for_clickhouse, working_time
 
 ORG_A, ORG_B = 7, 8
 ALICE = (11, "alice")  # works in organization A
@@ -50,6 +52,13 @@ class AccessTest(StackTestCase):
     def test_admin_group_without_an_organization_reads_instance_scope_with_personal_workspaces(self):
         self.assertEqual(self.names("admin"), ["paul", "bruno", "alice"])
 
+    def test_admin_is_decided_by_the_admin_group_not_by_the_superuser_flag(self):
+        self.stack.cvat.add_user("group-admin", FakeUser(41, "group-admin", groups=["admin"], superuser=False))
+        self.stack.cvat.add_user("flag-only", FakeUser(42, "flag-only", groups=["user"], superuser=True))
+        self.assertEqual(self.names("group-admin"), ["paul", "bruno", "alice"])
+        self.assertEqual(self.names("group-admin", org="org-b"), ["bruno"])
+        self.assertEqual(self.assertRefused("flag-only")["error"], "forbidden")
+
     def test_supervisor_worker_and_non_member_are_refused(self):
         for session in ("supervisor", "worker", "outsider"):
             with self.subTest(session=session):
@@ -66,8 +75,15 @@ class AccessTest(StackTestCase):
             with self.subTest(session=session):
                 self.assertEqual(self.assertRefused(session)["error"], "organization_required")
 
-    def test_ordinary_member_without_an_organization_is_refused(self):
-        self.assertRefused("worker")
+    def test_ordinary_member_without_an_organization_is_refused_not_asked_to_select_one(self):
+        for session in ("worker", "supervisor", "outsider", "removed"):
+            with self.subTest(session=session):
+                self.assertEqual(self.assertRefused(session)["error"], "forbidden")
+
+    def test_owner_or_maintainer_of_any_organization_is_asked_to_select_one(self):
+        self.stack.cvat.add_user("both", FakeUser(9, "both", memberships={
+            "org-a": (ORG_A, "worker", True), "org-b": (ORG_B, "maintainer", True)}))
+        self.assertEqual(self.assertRefused("both")["error"], "organization_required")
 
     def test_unknown_organization_is_refused(self):
         self.assertRefused("maintainer", org="no-such-org")
@@ -95,10 +111,49 @@ class AccessTest(StackTestCase):
         self.assertIn("/api/users/self", paths)
         self.assertIn("/api/memberships", paths)
 
-    def test_access_is_checked_on_every_request(self):
+    def test_cvats_answers_are_reused_for_at_most_one_minute(self):
         self.assertEqual(self.names("maintainer", org="org-a"), ["alice"])
         self.stack.cvat.users["maintainer"].memberships["org-a"] = (ORG_A, "maintainer", False)
+        self.stack.cvat.requests.clear()
+        self.stack.now = NOW + timedelta(seconds=59)
+        self.assertEqual(self.names("maintainer", org="org-a"), ["alice"])
+        self.assertEqual(self.stack.cvat.requests, [])
+        self.stack.now = NOW + timedelta(seconds=61)
         self.assertRefused("maintainer", org="org-a")
+
+    def test_reuse_does_not_extend_the_minute(self):
+        self.assertEqual(self.names("maintainer", org="org-a"), ["alice"])
+        del self.stack.cvat.users["maintainer"].memberships["org-a"]
+        for seconds in (20, 40, 59):
+            self.stack.now = NOW + timedelta(seconds=seconds)
+            self.assertEqual(self.names("maintainer", org="org-a"), ["alice"])
+        self.stack.now = NOW + timedelta(seconds=61)
+        self.assertRefused("maintainer", org="org-a")
+
+    def test_one_callers_answers_are_never_given_to_another(self):
+        self.assertEqual(self.names("maintainer", org="org-a"), ["alice"])
+        self.assertEqual(self.names("admin"), ["paul", "bruno", "alice"])
+        for session in ("worker", "maintainer-b", "unknown-session"):
+            with self.subTest(session=session):
+                code, body = self.stack.overview(session, org="org-a")
+                self.assertIn(code, (401, 403), body)
+        # the same caller asking about another organization is asked about anew
+        self.assertRefused("maintainer", org="org-b")
+        self.assertEqual(self.assertRefused("maintainer")["error"], "organization_required")
+
+    def test_a_clock_moved_back_does_not_keep_old_answers(self):
+        self.assertEqual(self.names("maintainer", org="org-a"), ["alice"])
+        self.stack.cvat.users["maintainer"].memberships["org-a"] = (ORG_A, "maintainer", False)
+        self.stack.now = NOW - timedelta(hours=1)
+        self.assertRefused("maintainer", org="org-a")
+
+    def test_after_the_minute_an_unreachable_cvat_means_refusal(self):
+        self.assertEqual(self.names("maintainer", org="org-a"), ["alice"])
+        self.stack.cvat.down = True
+        self.stack.now = NOW + timedelta(seconds=61)
+        status, body = self.stack.overview("maintainer", org="org-a")
+        self.assertEqual(status, 503, body)
+        self.assertEqual(body, {"error": "cvat_unavailable"})
 
 
 class CvatUnreachableTest(StackTestCase):
