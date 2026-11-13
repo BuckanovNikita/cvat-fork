@@ -167,7 +167,13 @@ export default function TeamAnalyticsView({
                 {overview.time_series ? <WorkingTimeOverPeriodCard series={overview.time_series} /> : null}
                 {overview.operations ? <WorkingTimeSplitCard figures={overview.operations} /> : null}
                 {overview.operations ? <OperationsTableCard figures={overview.operations} /> : null}
-                {overview.creation_methods ? <CreationMethodsCard methods={overview.creation_methods} /> : null}
+                {overview.creation_methods ? (
+                    <CreationMethodsCard
+                        methods={overview.creation_methods}
+                        legacy={!!overview.operations?.legacy}
+                        savedBoxes={overview.saved_boxes}
+                    />
+                ) : null}
                 {overview.by_project ? (
                     <WorkingTimeByProjectCard
                         rows={overview.by_project.rows}

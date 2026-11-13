@@ -20,3 +20,10 @@
     border-bottom: 0;
     font-weight: 600;
 }
+
+.cvat-team-analytics-methods-note,
+.cvat-team-analytics-saved-boxes-note {
+    display: block;
+    margin-top: $grid-unit-size;
+    font-size: 12px;
+}

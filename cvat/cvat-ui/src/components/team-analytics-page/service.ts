@@ -84,6 +84,20 @@ export interface CreationMethods {
     // drawn, pasted and propagated, in that order
     rows: CreationMethodRow[];
     total: { objects: number; timed_objects: number; time_ms: number; average_ms: number | null };
+    // Model: objects no person drew (saved by technical accounts, made by the built-in detector), counts only,
+    // outside the three and their total; share of the three + Model
+    model?: { objects: number; share: number | null };
+    // how many accounts are configured as technical
+    technical_accounts?: number;
+}
+
+// Single-frame rectangles the server stored when jobs were saved, whatever their creation method
+export interface SavedBoxes {
+    boxes: number;
+    // technical accounts left out; most boxes first
+    by_annotator: { user_id: number; user_name: string; boxes: number }[];
+    // every method; most boxes first (project 0 = No project)
+    by_project: { project_id: number; boxes: number }[];
 }
 
 export interface ProjectWorkingTime {
@@ -120,6 +134,7 @@ export interface Overview {
     sessions?: SessionFigures & { by_annotator: AnnotatorSessions[] };
     operations?: OperationsFigures;
     creation_methods?: CreationMethods;
+    saved_boxes?: SavedBoxes;
     // false: the period is not wholly processed, so the figures are partial and are not shown
     processed?: boolean;
 }
