@@ -1,0 +1,30 @@
+{
+  "users": {
+    "ta-admin": {"admin": true},
+    "ta-owner": {"admin": false},
+    "ta-maintainer": {"admin": false},
+    "ta-supervisor": {"admin": false},
+    "ta-worker": {"admin": false},
+    "ta-outsider": {"admin": false},
+    "ta-owner-b": {"admin": false},
+    "ta-maintainer-b": {"admin": false}
+  },
+  "organizations": {
+    "ta-org-a": {
+      "name": "Team Analytics A",
+      "members": {
+        "ta-owner": "owner",
+        "ta-maintainer": "maintainer",
+        "ta-supervisor": "supervisor",
+        "ta-worker": "worker"
+      }
+    },
+    "ta-org-b": {
+      "name": "Team Analytics B",
+      "members": {
+        "ta-owner-b": "owner",
+        "ta-maintainer-b": "maintainer"
+      }
+    }
+  }
+}

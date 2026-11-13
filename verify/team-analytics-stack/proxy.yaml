@@ -1,0 +1,127 @@
+# Reverse proxy of the Team Analytics test stack: joins the CVAT UI, the CVAT API and
+# (later) the analytics service under one address. It replaces the chart's ingress, which
+# stays off (ADR 0003). Routing mirrors helm-chart/templates/ingress.yaml and
+# templates/analytics/{ingress.yaml,middlewares/*} of the pinned chart.
+# __RELEASE__ is replaced by run.sh with the Helm release name.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ta-proxy
+  labels:
+    app.kubernetes.io/name: ta-proxy
+data:
+  default.conf: |
+    upstream cvat_backend  { server __RELEASE__-backend-service:8080; }
+    upstream cvat_frontend { server __RELEASE__-frontend-service:8000; }
+    upstream cvat_grafana  { server __RELEASE__-grafana:80; }
+
+    server {
+        listen 8080;
+        client_max_body_size 0;
+        proxy_read_timeout 300s;
+        proxy_http_version 1.1;
+
+        # The browser's address (localhost:<port>) must reach CVAT unchanged, or Django's
+        # CSRF origin check refuses logins and other POSTs.
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Forwarded-Host  $http_host;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        location ~ ^/(api|admin|static|django-rq|profiler)(/|$) {
+            proxy_pass http://cvat_backend;
+        }
+
+        # Reserved for the Team Analytics service (ticket 03 routes it here). Until then it
+        # answers 503 instead of falling through to the UI.
+        location = /team-analytics-api {
+            return 503;
+        }
+        location ^~ /team-analytics-api/ {
+            return 503;
+        }
+
+        # Grafana: CVAT authorizes every request (chart middleware "forwardauth"), and the
+        # prefix is stripped before Grafana (chart middleware "stripprefix").
+        location = /analytics {
+            return 301 /analytics/;
+        }
+        location ^~ /analytics/ {
+            auth_request /_cvat_analytics_auth;
+            proxy_pass http://cvat_grafana/;
+        }
+        location = /_cvat_analytics_auth {
+            internal;
+            proxy_pass http://cvat_backend/analytics;
+            proxy_pass_request_body off;
+            proxy_set_header Content-Length    "";
+            proxy_set_header Host              $http_host;
+            proxy_set_header X-Forwarded-Host  $http_host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Uri   $request_uri;
+            proxy_set_header X-Forwarded-Method $request_method;
+        }
+
+        location / {
+            proxy_pass http://cvat_frontend;
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ta-proxy
+  labels:
+    app.kubernetes.io/name: ta-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ta-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ta-proxy
+      annotations:
+        ta-proxy/config-revision: "__CONFIG_REVISION__"
+    spec:
+      containers:
+        - name: nginx
+          image: __PROXY_IMAGE__
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: config
+          configMap:
+            name: ta-proxy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ta-proxy
+  labels:
+    app.kubernetes.io/name: ta-proxy
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ta-proxy
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
