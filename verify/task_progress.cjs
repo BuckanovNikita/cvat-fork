@@ -177,7 +177,7 @@ for (const outcome of ['success', 'failure']) {
     });
 }
 
-test('renders all 12 selected colors with separate legend counts and bar weights', () => {
+test('renders default legend text with all 12 selected bar colors, counts, and weights', () => {
     const jobs = cases.flatMap(([stage, state], index) => (
         Array.from({ length: index + 1 }, () => ({ taskId: 7, stage, state }))
     ));
@@ -189,7 +189,7 @@ test('renders all 12 selected colors with separate legend counts and bar weights
     for (const [key, label, count, color] of expected) {
         const legend = html.match(new RegExp(`<span[^>]*class="[^"]*cvat-jobs-legend-${key}(?: |\")[^>]*>`));
         assert.ok(legend, `missing legend for ${label}`);
-        assert.match(legend[0], new RegExp(`color:${color}(?:;|\")`));
+        assert.doesNotMatch(legend[0], /style=/, `expected default text color for ${label}`);
         assert.match(html, new RegExp(`cvat-jobs-legend-${key}[^>]*><strong>• ${count} ${label} `));
         const segment = html.match(new RegExp(`<div[^>]*class="[^"]*cvat-jobs-progress-${key}(?: |\")[^>]*>`));
         assert.ok(segment, `missing segment for ${label}`);

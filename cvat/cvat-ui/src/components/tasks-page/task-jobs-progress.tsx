@@ -39,8 +39,8 @@ function TaskJobsProgress(props: Props): JSX.Element {
     return (
         <>
             <div>
-                {buckets.map(({ key, label, count, color }: Bucket) => (
-                    <Text strong key={key} className={`cvat-jobs-legend-${key}`} style={{ color }}>
+                {buckets.map(({ key, label, count }: Bucket) => (
+                    <Text strong key={key} className={`cvat-jobs-legend-${key}`}>
                         {`• ${count} ${label} `}
                     </Text>
                 ))}
