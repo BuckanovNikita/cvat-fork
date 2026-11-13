@@ -27,6 +27,7 @@ import SessionsCard from './cards/sessions-card';
 import CreationHeadlineCards from './cards/creation-headline-cards';
 import WorkingTimeSplitCard from './cards/working-time-split-card';
 import OperationsTableCard from './cards/operations-table-card';
+import CreationMethodsCard from './cards/creation-methods-card';
 import LegacyNotice from './legacy-notice';
 import ShapeSwitch from './shape-switch';
 import { DEFAULT_SHAPES } from './shapes';
@@ -160,10 +161,13 @@ export default function TeamAnalyticsView({
                     />
                 ) : null}
                 {overview.sessions ? <SessionsCard figures={overview.sessions} /> : null}
-                {overview.operations ? <CreationHeadlineCards figures={overview.operations} /> : null}
+                {overview.operations ? (
+                    <CreationHeadlineCards figures={overview.operations} methods={overview.creation_methods} />
+                ) : null}
                 {overview.time_series ? <WorkingTimeOverPeriodCard series={overview.time_series} /> : null}
                 {overview.operations ? <WorkingTimeSplitCard figures={overview.operations} /> : null}
                 {overview.operations ? <OperationsTableCard figures={overview.operations} /> : null}
+                {overview.creation_methods ? <CreationMethodsCard methods={overview.creation_methods} /> : null}
                 {overview.by_project ? (
                     <WorkingTimeByProjectCard
                         rows={overview.by_project.rows}
