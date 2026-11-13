@@ -20,6 +20,13 @@ interface Props {
     onBackToTasks?: () => void;
 }
 
+function scopeLabel(organization: string | null, state: PageState): string {
+    if (organization) return `Organization ${organization}`;
+    // without an organization only an administrator reads instance scope
+    if (state.kind === 'select-organization') return 'No organization selected';
+    return 'All organizations and personal workspaces';
+}
+
 // Presentational: renders one page state. Data loading lives in team-analytics-page.tsx.
 export default function TeamAnalyticsView({ organization, state, onBackToTasks }: Props): JSX.Element {
     if (state.kind === 'denied') {
@@ -56,6 +63,15 @@ export default function TeamAnalyticsView({ organization, state, onBackToTasks }
         content = <Spin className='cvat-team-analytics-loading' size='large' />;
     } else if (state.kind === 'error') {
         content = <TeamAnalyticsErrorPanel />;
+    } else if (state.kind === 'signed-out') {
+        content = (
+            <Result
+                className='cvat-team-analytics-signed-out'
+                status='info'
+                title='Your session has ended'
+                subTitle='Sign in again to see team analytics.'
+            />
+        );
     } else if (state.kind === 'select-organization') {
         content = (
             <Result
@@ -79,7 +95,7 @@ export default function TeamAnalyticsView({ organization, state, onBackToTasks }
             <div className='cvat-team-analytics-header'>
                 <Title level={4}>Team analytics</Title>
                 <Text type='secondary'>
-                    {organization ? `Organization ${organization}` : 'All organizations and personal workspaces'}
+                    {scopeLabel(organization, state)}
                     {' · annotation work inside jobs'}
                 </Text>
             </div>

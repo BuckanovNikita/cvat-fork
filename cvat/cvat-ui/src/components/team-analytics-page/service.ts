@@ -35,6 +35,7 @@ export type PageState =
     | { kind: 'ready'; overview: Overview }
     | { kind: 'denied' }
     | { kind: 'select-organization' }
+    | { kind: 'signed-out' }
     | { kind: 'error' };
 
 export interface ServiceResponse {
@@ -91,7 +92,10 @@ export async function loadOverview(query: OverviewQuery, fetch: FetchService = f
     if (response.status === 403 && data?.error === 'organization_required') {
         return { kind: 'select-organization' };
     }
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
+        return { kind: 'signed-out' };
+    }
+    if (response.status === 403) {
         return { kind: 'denied' };
     }
     return { kind: 'error' };
