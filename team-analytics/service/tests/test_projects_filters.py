@@ -149,6 +149,21 @@ class SessionsUnderFiltersTest(FiltersCase):
         self.assertEqual(self.sessions(annotator="12", project="1"), (0, 0, []))
 
 
+class WorkingTimeOverThePeriodUnderFiltersTest(FiltersCase):
+    def day(self, day: str, **query) -> int:
+        buckets = self.overview(**query)["time_series"]["buckets"]
+        return next(bucket["working_time_ms"] for bucket in buckets if bucket["start"] == day)
+
+    def test_working_time_by_day_follows_both_filters(self):
+        self.add_two_project_team()
+
+        self.assertEqual(self.day("2026-11-12"), 6 * HOUR)
+        self.assertEqual(self.day("2026-11-12", project="1"), 3 * HOUR)
+        self.assertEqual(self.day("2026-11-12", annotator="12"), 2 * HOUR)
+        self.assertEqual(self.day("2026-11-12", project="0", annotator="11"), HOUR)
+        self.assertEqual(self.day("2026-11-13", project="1", annotator="11"), 0)
+
+
 class HeadlineTest(FiltersCase):
     def test_active_annotators_and_the_projects_they_worked_in(self):
         self.add_two_project_team()

@@ -22,6 +22,8 @@ FROM (
         )
         AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
         AND user_name NOT IN {technical_accounts:Array(String)}
+        AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
+        AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
 )
 GROUP BY bucket
 ORDER BY bucket
