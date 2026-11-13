@@ -53,3 +53,27 @@ ingress-nginx 80/443 and mongodb-lb 27018), no Windows TCP listener or UDP endpo
 (`netsh ... show excludedportrange`; lowest project-relevant ranges 1462, 2869, 10243,
 13508, 49733+), and below the Windows dynamic range (49152-65535) and the Linux ephemeral
 range (32768+).
+
+## Runs (2026-11-13, docker-desktop, namespace `cvat-ta-it-nkt`)
+
+1. `run.sh up` on an empty cluster: pulled `apache/kvrocks:2.15.0`, `busybox:1.36.1`,
+   `cvat/postgresql:15.2.0-debian-11-r0`, `grafana/grafana:10.1.5`, `redis:7.2.11` one at a
+   time (`cvat/server:v2.82.0` and `cvat/clickhouse:23.12.2-debian-11-r0` were already
+   local). Thirteen pods, five PVCs of class `hostpath` (2Gi backend data, 1Gi kvrocks,
+   2Gi ClickHouse, 1Gi PostgreSQL, 1Gi Redis). Quota use: pods 13/30, requests 1470m/6 CPU
+   and 3488Mi/12Gi, limits 24650m/40 CPU and 38208Mi/56Gi. Seeding failed on the first
+   attempt (`auth.User` is swapped for `iam.User`; fixed), then `seed` and `check-event`
+   passed: every account's groups and every membership role read back through the API, and
+   a `debug:info` event sent by `ta-worker` through `POST /api/events` at
+   `http://localhost:8490` appeared in `cvat.events` with its payload key
+   `shape_type = rectangle`.
+2. Proxy checks: `/team-analytics-api/x` 503 (reserved), `/team-analytics` 200 (UI),
+   `/analytics/` 401 without credentials and 200 for `ta-admin`.
+3. Namespace deleted directly with `kubectl delete ns` (as the sweeper would), then
+   `run.sh up`: namespace recreated, stale port-forward stopped by PID and start time, all
+   steps passed in 69 s.
+4. `run.sh up` again on the running stack: passed (helm upgrade, reseed, new event found).
+5. `run.sh down`: port-forward stopped, namespace and its PVs gone in 53 s. `run.sh down`
+   again: succeeded with nothing to remove. Afterwards no namespace, no PV bound to it, port
+   8490 free, no port-forward process, no cluster-scoped object named after the chart's
+   components.
