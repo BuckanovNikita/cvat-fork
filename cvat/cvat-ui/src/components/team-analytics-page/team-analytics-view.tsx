@@ -8,9 +8,14 @@ import Spin from 'antd/lib/spin';
 import Title from 'antd/lib/typography/Title';
 import Text from 'antd/lib/typography/Text';
 
-import { PageState } from './service';
+import { Overview, PageState, ProjectNames } from './service';
+import { Filters } from './filters';
+import { projectName } from './format';
 import TeamAnalyticsErrorPanel from './error-panel';
+import FilterChips from './filter-chips';
 import WorkingTimeByAnnotatorCard from './cards/working-time-by-annotator-card';
+import WorkingTimeByProjectCard from './cards/working-time-by-project-card';
+import AnnotatorsCard from './cards/annotators-card';
 import SessionsCard from './cards/sessions-card';
 
 interface Props {
@@ -18,6 +23,20 @@ interface Props {
     organization: string | null;
     state: PageState;
     onBackToTasks?: () => void;
+    // the project and annotator filters kept in the page address; without them rows are not clickable
+    filters?: Filters;
+    onFiltersChange?: (change: Partial<Filters>) => void;
+    // names of the shown projects as CVAT returns them to the viewer
+    projectNames?: ProjectNames;
+}
+
+const NO_FILTERS: Filters = { project: null, annotator: null };
+
+function annotatorLabel(id: number | null, overview: Overview | null): string {
+    if (id === null) return '';
+    const shown = overview?.by_annotator.rows.find((row) => row.user_id === id)?.user_name;
+    const echoed = overview?.filters?.annotator?.user_id === id ? overview.filters.annotator.user_name : null;
+    return shown ?? echoed ?? `Annotator #${id}`;
 }
 
 function scopeLabel(organization: string | null, state: PageState): string {
@@ -28,7 +47,13 @@ function scopeLabel(organization: string | null, state: PageState): string {
 }
 
 // Presentational: renders one page state. Data loading lives in team-analytics-page.tsx.
-export default function TeamAnalyticsView({ organization, state, onBackToTasks }: Props): JSX.Element {
+export default function TeamAnalyticsView({
+    organization, state, onBackToTasks, filters = NO_FILTERS, onFiltersChange, projectNames = {},
+}: Props): JSX.Element {
+    // clicking a row sets it as the filter; clicking the selected row again removes it
+    const pick = (key: keyof Filters) => (onFiltersChange ? (id: number): void => {
+        onFiltersChange({ [key]: filters[key] === id ? null : id });
+    } : undefined);
     if (state.kind === 'denied') {
         return (
             <div className='cvat-team-analytics-page'>
@@ -82,13 +107,40 @@ export default function TeamAnalyticsView({ organization, state, onBackToTasks }
             />
         );
     } else {
+        const { overview } = state;
+        const annotatorRest = overview.by_annotator.rest?.count ?? 0;
         content = (
             <div className='cvat-team-analytics-cards'>
-                {state.overview.sessions ? <SessionsCard figures={state.overview.sessions} /> : null}
-                <WorkingTimeByAnnotatorCard rows={state.overview.by_annotator.rows} />
+                {overview.headline ? (
+                    <AnnotatorsCard
+                        annotators={overview.headline.annotators}
+                        projects={overview.headline.projects}
+                        of={filters.annotator === null ? null : overview.by_annotator.rows.length + annotatorRest}
+                        projectSelected={filters.project !== null}
+                    />
+                ) : null}
+                {overview.sessions ? <SessionsCard figures={overview.sessions} /> : null}
+                {overview.by_project ? (
+                    <WorkingTimeByProjectCard
+                        rows={overview.by_project.rows}
+                        rest={overview.by_project.rest}
+                        names={projectNames}
+                        selected={filters.project}
+                        onPick={pick('project')}
+                    />
+                ) : null}
+                <WorkingTimeByAnnotatorCard
+                    rows={overview.by_annotator.rows}
+                    rest={overview.by_annotator.rest}
+                    selected={filters.annotator}
+                    onPick={pick('annotator')}
+                />
             </div>
         );
     }
+
+    const showFilterChips = !!onFiltersChange && ['ready', 'loading', 'error'].includes(state.kind);
+    const shownOverview = state.kind === 'ready' ? state.overview : null;
 
     return (
         <div className='cvat-team-analytics-page'>
@@ -99,6 +151,14 @@ export default function TeamAnalyticsView({ organization, state, onBackToTasks }
                     {' · annotation work inside jobs'}
                 </Text>
             </div>
+            {showFilterChips ? (
+                <FilterChips
+                    filters={filters}
+                    projectLabel={filters.project === null ? '' : projectName(filters.project, projectNames)}
+                    annotatorLabel={annotatorLabel(filters.annotator, shownOverview)}
+                    onChange={onFiltersChange as (change: Partial<Filters>) => void}
+                />
+            ) : null}
             {content}
         </div>
     );
