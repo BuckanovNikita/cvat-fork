@@ -50,12 +50,30 @@ class Request:
     def span(self) -> Span:
         return period_span(self.now, self.query.get("period", "week"), self.query.get("tz", "UTC"))
 
+    def filter_id(self, key: str) -> int | None:
+        """The page's `project` or `annotator` filter: an id (project 0 = No project) or None when not set."""
+        value = self.query.get(key, "")
+        if value == "":
+            return None
+        if not value.isdigit() or len(value) > 19:
+            raise BadRequest(f"{key} must be an identifier")
+        return int(value)
+
     def scope_params(self) -> dict[str, Any]:
-        """Parameters every read file takes to stay inside the caller's scope."""
+        """Parameters every read file takes to stay inside the caller's scope and the page's filters.
+
+        Filters only narrow: a read file adds `AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})`
+        and `AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})` beside the scope conditions.
+        """
+        project, annotator = self.filter_id("project"), self.filter_id("annotator")
         return {
             "instance": 1 if self.scope.instance else 0,
             "org_id": self.scope.org_id or 0,
             "technical_accounts": list(self.config.technical_accounts),
+            "has_project": 0 if project is None else 1,
+            "project": project or 0,
+            "has_annotator": 0 if annotator is None else 1,
+            "annotator": annotator or 0,
         }
 
 
