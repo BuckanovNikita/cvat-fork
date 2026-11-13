@@ -2,7 +2,12 @@
 // legacy-period notice, from the `operations` section the service sends.
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { loadPage, render, suppliedFetch, text } = require('./helper.cjs');
+const {
+    React, act, dependency, domAvailable, loadPage, mount, render, suppliedFetch, text,
+} = require('./helper.cjs');
+
+const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
+const { createMemoryHistory } = dependency('history');
 
 const View = loadPage('team-analytics-view.tsx').default;
 const service = loadPage('service.ts');
@@ -152,4 +157,70 @@ test('a period without working time shows no shares', () => {
     assert.deepEqual(legend(render(View, ready(empty))), [
         'Creation 0.0 h —', 'Alignment 0.0 h —', 'Class change 0.0 h —', 'Deletion 0.0 h —', 'Other 0.0 h —',
     ]);
+});
+
+// --- the mounted page: the operations cards follow the project and annotator filters -------------
+
+// the service's answer for a request: creation figures depend on the filters it carries
+function filteredAnswer(url) {
+    if (url.includes('/status')) return { body: {} };
+    const params = new URL(url, 'http://localhost').searchParams;
+    const created = { 'null null': 3456, '2 null': 40, '2 12': 7 }[`${params.get('project')} ${params.get('annotator')}`];
+    return {
+        body: {
+            by_annotator: {
+                rows: [{ user_id: 12, user_name: 'bob', working_time_ms: HOUR }],
+                rest: { count: 0, working_time_ms: 0 },
+            },
+            by_project: { rows: [{ project_id: 2, working_time_ms: HOUR }], rest: { count: 0, working_time_ms: 0 } },
+            filters: { project: null, annotator: null },
+            operations: {
+                ...OPERATIONS,
+                rows: OPERATIONS.rows.map((r) => (r.operation === 'creation' ? { ...r, objects: created } : r)),
+            },
+        },
+    };
+}
+
+domTest('the operations cards show the figures read with the chosen project and annotator', async () => {
+    const history = createMemoryHistory({ initialEntries: ['/team-analytics'] });
+    const { fetch, requests } = suppliedFetch(filteredAnswer);
+    const Page = loadPage('team-analytics-page.tsx', {
+        'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
+        'react-router': { useHistory: () => history },
+        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './project-names': { lookupProjectNames: async () => ({ 2: 'Retail shelves' }) },
+    }).default;
+    const click = async (element) => {
+        await act(async () => { element.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+    };
+    const created = (container) => text(container.querySelector('.cvat-team-analytics-objects-created').innerHTML);
+    const creationRow = (container) => text(
+        container.querySelector('.cvat-team-analytics-operations tbody tr').innerHTML,
+    );
+    const lastOverview = () => {
+        const url = requests.filter((request) => !request.url.includes('/status')).at(-1).url;
+        const params = new URL(url, 'http://localhost').searchParams;
+        return [params.get('project'), params.get('annotator')];
+    };
+
+    const view = await mount(React.createElement(Page));
+    try {
+        await view.settle();
+        assert.equal(created(view.container), 'Objects created 3,456 by annotators');
+
+        await click(view.container.querySelector('.cvat-team-analytics-project-row'));
+        await view.settle();
+        assert.deepEqual(lastOverview(), ['2', null]);
+        assert.equal(created(view.container), 'Objects created 40 by annotators');
+        assert.match(creationRow(view.container), /^Creation 40 /);
+
+        await click(view.container.querySelector('.cvat-team-analytics-annotator-row'));
+        await view.settle();
+        assert.deepEqual(lastOverview(), ['2', '12']);
+        assert.equal(created(view.container), 'Objects created 7 by annotators');
+        assert.match(creationRow(view.container), /^Creation 7 /);
+    } finally {
+        await view.unmount();
+    }
 });
