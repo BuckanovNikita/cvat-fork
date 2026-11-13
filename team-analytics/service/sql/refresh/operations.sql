@@ -23,6 +23,10 @@
 -- inside that interval (zooming, moving between frames) give their gap to that operation, and the
 -- operation is untimed if any of those gaps is an idle pause. An alignment runs from the action before
 -- its first drag or resize to the end of its last: every gap in between is its time.
+-- Input method: hotkey_objects / mouse_objects count the objects of operations whose payload
+-- `input_method` is 'hotkey' / 'mouse'; operations without it (legacy, redone) are in neither.
+-- The UI's input summary records (team_analytics:input_summary) are no action: they are written at the
+-- moment of one, so they are left out of the stream and never take an operation's gap.
 -- Events are read from `read_from` (look-back before the window) to 300 s after the window (look-ahead),
 -- so gaps at the window's start are exact and an alignment going on at the window's end is left to the
 -- window holding its end. Only operations ending inside [window_from, window_to) are stored, in the hour,
@@ -38,8 +42,8 @@ SELECT
     sum(part_objects),
     sumIf(part_objects, timed),
     sumIf(part_time, timed),
-    0,
-    0,
+    sumIf(part_objects, op_input = 'hotkey'),
+    sumIf(part_objects, op_input = 'mouse'),
     {version:UInt64}
 FROM
 (
@@ -57,12 +61,13 @@ FROM
         anyIf(shape, rn = credited) AS op_shape,
         anyIf(objects, rn = credited) AS op_objects,
         anyIf(box_objects, rn = credited) AS op_box_objects,
+        anyIf(input, rn = credited) AS op_input,
         max(dt) <= 100000 AS timed,
         sum(dt) AS op_time
     FROM
     (
         SELECT
-            user_id, rn, ts, dt, org, project, task, user_name, op, method, shape, objects, box_objects,
+            user_id, rn, ts, dt, org, project, task, user_name, op, method, shape, objects, box_objects, input,
             multiIf(
                 op != '', target,
                 -- between the first and last adjustment of one alignment
@@ -156,6 +161,8 @@ FROM
                                             concat(toString(assumeNotNull(job_id)), '/', JSONExtractRaw(body, 'client_id'), '/',
                                                    JSONExtractRaw(body, 'object_ref'), '/', JSONExtractRaw(body, 'frame')),
                                             '') AS align_key,
+                                        -- what started the operation: 'hotkey' | 'mouse' | '' (not recorded)
+                                        if(op = '', '', JSONExtractString(body, 'input_method')) AS input,
                                         op != '' OR (scope = 'change:frame' AND job_id IS NOT NULL) AS ends_alignment,
                                         if(scope IN ('draw:object', 'paste:object', 'drag:object', 'resize:object'),
                                            ts - toInt64(duration), ts) AS start,
@@ -166,6 +173,9 @@ FROM
                                         AND timestamp < {window_to:DateTime64(3, 'Etc/UTC')} + toIntervalMillisecond(300000)
                                         AND source = 'client'
                                         AND user_id IS NOT NULL
+                                        -- the input summary is written at the moment of an action, not as one
+                                        AND NOT (scope = 'debug:info'
+                                            AND ifNull(obj_name, '') = 'team_analytics:input_summary')
                                 )
                                 WINDOW oldest_first AS (PARTITION BY user_id ORDER BY ts ASC, op != '' ASC, tiebreak ASC)
                             )
