@@ -1,0 +1,59 @@
+"""How far history is processed, and which periods (in the viewer's time zone, query `tz`) are fully available.
+
+A period is offered only when every hour of it is processed; trends need three complete weeks.
+"""
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+
+from team_analytics.history import load_state
+from team_analytics.periods import PERIODS, midnight, monday, today, zone
+from team_analytics.service import Request
+
+KEY = "history"
+
+# Trends show twelve buckets and need at least three complete weeks.
+TREND_WEEKS = 12
+TREND_MIN_WEEKS = 3
+
+
+def _first_month(day: date) -> date:
+    """The first month that starts on or after `day`."""
+    if day.day == 1:
+        return day
+    return date(day.year + day.month // 12, day.month % 12 + 1, 1)
+
+
+def build(request: Request) -> dict:
+    tz_name = request.query.get("tz", "UTC") or "UTC"
+    tz = zone(tz_name)
+    state = load_state(request.sql, request.now)
+    current = today(request.now, tz)
+    periods = {key: state.covers(builder(request.now, tz, tz_name, None).start) for key, builder in PERIODS.items()}
+    ready_from = state.ready_from
+    ready_day = None  # the viewer's first whole day that is processed
+    earliest_month = None
+    weeks = TREND_WEEKS if state.complete else 0
+    if ready_from is not None:
+        ready_day = ready_from.astimezone(tz).date()
+        if midnight(ready_day, tz) < ready_from:
+            ready_day += timedelta(days=1)
+        month = _first_month(ready_day)
+        earliest_month = month.strftime("%Y-%m") if month <= current else None
+        first_monday = monday(ready_day + timedelta(days=6))  # the first Monday on or after ready_day
+        weeks = max(0, min(TREND_WEEKS, (monday(current) - first_monday).days // 7))
+    done, total = state.days()
+    return {
+        "complete": state.complete,
+        "ready_from": ready_from.isoformat() if ready_from else None,
+        "ready_from_day": ready_day.isoformat() if ready_day else None,
+        "first_day": state.first_day.isoformat() if state.first_day else None,
+        "days_ready": done,
+        "days_total": total,
+        "periods": periods,
+        # with history complete every month is available (null); otherwise the earliest one, or null for none
+        "earliest_month": earliest_month,
+        "complete_weeks": weeks,
+        "trends_ready": weeks >= TREND_MIN_WEEKS,
+    }

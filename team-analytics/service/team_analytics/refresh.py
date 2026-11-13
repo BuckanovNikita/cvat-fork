@@ -18,11 +18,14 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import TypeVar
 
 from team_analytics.config import Config
 from team_analytics.sql import Sql
 
 log = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 LEASE_S = 1800
 # Time for a concurrent claim to land before the earliest claim is read back.
@@ -50,14 +53,20 @@ class Refresher:
         self._holder = f"{uuid.uuid4().hex[:8]}"
 
     def run(self) -> RefreshResult:
+        """The ten-minute refresh: recompute the trailing window and record it as the latest refresh."""
+        ran, result = self.leased(self._recompute)
+        return result if ran else RefreshResult(ran=False)
+
+    def leased(self, work: Callable[[], T]) -> tuple[bool, T | None]:
+        """Runs `work` holding the refresh lease; (False, None) when a refresh or history step holds it."""
         if not self._local.acquire(blocking=False):
-            return RefreshResult(ran=False)
+            return False, None
         try:
             token = uuid.uuid4().hex
             if not self._claim(token):
-                return RefreshResult(ran=False)
+                return False, None
             try:
-                return self._recompute()
+                return True, work()
             finally:
                 self._sql.statements("control/lock_release.sql", {"token": token, "holder": self._holder})
         finally:
@@ -75,9 +84,19 @@ class Refresher:
     def _recompute(self) -> RefreshResult:
         now = self._clock()
         current_hour = now.replace(minute=0, second=0, microsecond=0)
-        hours = self._config.refresh_window_hours
-        window_from = current_hour - timedelta(hours=hours - 1)
+        window_from = current_hour - timedelta(hours=self._config.refresh_window_hours - 1)
         window_to = current_hour + timedelta(hours=1)
+        params = self.recompute(window_from, window_to)
+        self._sql.statements("control/record_refresh.sql",
+                             {**params, "data_as_of": now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]})
+        log.info("refreshed %s .. %s as version %s", window_from, window_to, params["version"])
+        return RefreshResult(ran=True, version=params["version"], window_from=window_from, window_to=window_to)
+
+    def recompute(self, window_from: datetime, window_to: datetime) -> dict:
+        """Runs every refresh file over [window_from, window_to) (whole hours) and hands those hours to the
+        result. The ten-minute refresh and each day of history use it alike; call it holding the lease.
+        Returns the parameters the files ran with (`version` among them)."""
+        hours = int((window_to - window_from).total_seconds() // 3600)
         read_from = window_from - timedelta(seconds=self._config.lookback_s)
         latest = self._sql.rows("control/latest_version.sql")[0]["version"] or 0
         version = max(int(time.time() * 1000), latest + 1)
@@ -85,13 +104,13 @@ class Refresher:
             "window_from": _text(window_from), "window_to": _text(window_to), "read_from": _text(read_from),
             "version": version, "window_hours": hours,
         }
+        # hours no refresh has marked before hold nothing to supersede (most days of a history fill)
+        marked = self._sql.rows("control/window_marked.sql", params)[0]["marked"]
         for name in self._sql.files("refresh"):
             self._sql.statements(name, params)
         self._sql.statements("control/mark_hours.sql", params)
-        tables = self._sql.rows("control/versioned_tables.sql", {"totals_db": self._config.totals_db})
-        for row in tables:
-            self._sql.statements("control/drop_superseded.sql", params, table=row["table"])
-        self._sql.statements("control/record_refresh.sql",
-                             {**params, "data_as_of": now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]})
-        log.info("refreshed %s .. %s as version %s", window_from, window_to, version)
-        return RefreshResult(ran=True, version=version, window_from=window_from, window_to=window_to)
+        if marked:
+            tables = self._sql.rows("control/versioned_tables.sql", {"totals_db": self._config.totals_db})
+            for row in tables:
+                self._sql.statements("control/drop_superseded.sql", params, table=row["table"])
+        return params
