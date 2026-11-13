@@ -16,6 +16,9 @@ Team Analytics gets its figures from a small dedicated service, not from the exi
 ## Consequences
 
 - Access control is this fork's own code. The stock events policy no longer protects these figures, so the role and organization check needs negative tests and an independent review.
+- "Administrator" means membership of CVAT's admin group, which is what the stock policies test, not only the superuser flag.
+- Neither the page address nor the service address may start with `/analytics`. The proxy in front of CVAT sends that prefix to Grafana.
+- A failure stays inside the feature. The page loads on demand behind its own error boundary, its header link appears only when analytics is enabled and the role allows it, and an unreachable service produces an error panel on that page and nothing else.
 - The session gap and the idle pause are fixed when totals are computed. Changing either means recomputing history.
 - A refresh must read a few minutes before its window, or sessions and time per operation break at the window edge. History is filled one day at a time; a single year-long fill that reads event payloads exhausts memory with default settings.
 - "Changed since the last run" cannot be a timestamp cut-off. Events carry the browser's clock and a failed batch is resent later, so rows can land behind any cut-off. Each refresh therefore redoes a trailing window and replaces those hours; older days are redone when their raw row count no longer matches.

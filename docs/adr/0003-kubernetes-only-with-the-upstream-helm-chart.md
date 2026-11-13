@@ -13,7 +13,8 @@ The feature is delivered and verified on Kubernetes against CVAT v2.82.0 and not
 
 ## Consequences
 
-- The chart is not part of the fork's filtered source tree, so it has to be obtained from the matching upstream release.
+- The chart is not part of the fork's filtered source tree, so it has to be obtained from the matching upstream release. Adding it to the filtered import would rewrite the fork's recorded import identifiers, so how it is obtained is a decision for the specification.
+- The chart ships no lock file. Its dependency versions resolve on the day of download and must be pinned to the versions recorded in the dated evidence.
 - The stack needs network access when it is built and when it starts: chart dependencies, stock images, and Grafana's ClickHouse plugin.
 - With the chart's ingress off, nothing joins the UI, the API and the service under one address. The reverse proxy in the namespace does that, reached through a forwarded host port. The chart's Traefik option was not used because it adds cluster-wide objects to a shared cluster.
 - Most chart pods declare no resource requests, so the namespace needs default limits alongside its quota.
