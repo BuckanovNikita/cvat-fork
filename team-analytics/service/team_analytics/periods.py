@@ -95,7 +95,8 @@ def _month(now: datetime, tz: ZoneInfo, tz_name: str, month: str | None) -> Span
     current = today(now, tz)
     if month:
         match = _MONTH.match(month)
-        if not match or not 1 <= int(match.group(2)) <= 12:
+        # ClickHouse dates start in 1970, so no earlier month can hold figures
+        if not match or not 1 <= int(match.group(2)) <= 12 or int(match.group(1)) < 1970:
             raise BadRequest(f"not a month (YYYY-MM): {month}")
         first = date(int(match.group(1)), int(match.group(2)), 1)
     else:

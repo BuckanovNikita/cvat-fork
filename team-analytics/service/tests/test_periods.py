@@ -100,7 +100,7 @@ class PeriodSpanTest(PeriodCase):
         self.overview(period="month", month="2026-11", tz="Pacific/Kiritimati")
 
     def test_a_malformed_month_is_refused(self):
-        for month in ("2026-13", "2026-1", "November", "2026-11-01"):
+        for month in ("2026-13", "2026-1", "November", "2026-11-01", "0000-05", "1969-12", "2026-00"):
             with self.subTest(month=month):
                 self.refused(period="month", month=month)
 
