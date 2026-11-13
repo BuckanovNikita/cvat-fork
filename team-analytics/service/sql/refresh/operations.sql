@@ -13,6 +13,8 @@
 --              other operation, a change:frame, or a pause longer than the session gap (300 s, also the
 --              look-back) between two of them ends it. Events without `object_ref` (legacy) are one
 --              alignment each.
+--   class_change: the UI's debug:info record named 'team_analytics:class_change'; objects = the
+--              record's count (only objects whose label changed; a change back is another record).
 --   deletion:  delete:object; objects = the event's count. action:undo is no operation, so an undone
 --              creation is not a deletion.
 -- Shapes: an event without shape_type is 'untagged' (legacy). A tagged event's objects split into
@@ -150,6 +152,8 @@ FROM
                                             scope IN ('draw:object', 'paste:object', 'propagate:object'), 'creation',
                                             scope IN ('drag:object', 'resize:object'), 'alignment',
                                             scope = 'delete:object', 'deletion',
+                                            scope = 'debug:info'
+                                                AND obj_name = 'team_analytics:class_change', 'class_change',
                                             scope = 'action:redo'
                                                 AND JSONExtractString(body, 'name') = 'Created objects', 'creation',
                                             '') AS op,

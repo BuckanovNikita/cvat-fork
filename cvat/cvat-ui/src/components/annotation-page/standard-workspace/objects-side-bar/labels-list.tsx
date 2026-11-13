@@ -29,6 +29,7 @@ import {
 } from 'utils/multi-selection';
 import { filterAnnotations } from 'utils/filter-annotations';
 import getHiddenZLayers from 'utils/get-hidden-z-layers';
+import { recordClassChange } from 'utils/team-analytics-logging';
 
 const INTERACTIVE_ELEMENT_SELECTOR = 'a, button, input, textarea, [role="button"], .ant-select, .anticon';
 
@@ -143,6 +144,7 @@ function LabelsListComponent(): JSX.Element {
                 const statesToUpdate = selectedStates.filter(
                     (state: ObjectState): boolean => state.label.id !== label.id,
                 );
+                recordClassChange(relevantAppState.annotation.job.instance, statesToUpdate, label, 'hotkey');
                 for (const selectedState of statesToUpdate) {
                     selectedState.label = label;
                 }
@@ -156,6 +158,7 @@ function LabelsListComponent(): JSX.Element {
                     (activatedState.shapeType === label.type && activatedState.shapeType !== ShapeType.SKELETON) ||
                     bothAreTags;
                 if (activatedState && labelIsApplicable) {
+                    recordClassChange(relevantAppState.annotation.job.instance, [activatedState], label, 'hotkey');
                     activatedState.label = label;
                     dispatch(updateAnnotationsAsync([activatedState]));
                 }

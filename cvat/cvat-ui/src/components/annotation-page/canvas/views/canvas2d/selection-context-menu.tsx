@@ -23,6 +23,7 @@ import {
 } from 'cvat-core-wrapper';
 import { Canvas } from 'cvat-canvas-wrapper';
 import { ThunkDispatch } from 'utils/redux';
+import { recordClassChange } from 'utils/team-analytics-logging';
 import { filterApplicableLabels } from 'utils/filter-applicable-labels';
 import {
     getSelectedStates,
@@ -61,6 +62,7 @@ export default function SelectionContextMenu(): JSX.Element | null {
         maxZLayer,
         canvasInstance,
         normalizedKeyMap,
+        jobInstance,
     } = useSelector((state: CombinedState) => ({
         annotations: state.annotation.annotations.states,
         selectedStatesID: state.annotation.annotations.selectedStatesID,
@@ -69,6 +71,7 @@ export default function SelectionContextMenu(): JSX.Element | null {
         maxZLayer: state.annotation.annotations.zLayer.max,
         canvasInstance: state.annotation.canvas.instance,
         normalizedKeyMap: state.shortcuts.normalizedKeyMap,
+        jobInstance: state.annotation.job.instance,
     }));
     const [attributesCollapsed, setAttributesCollapsed] = useState(true);
     const [layerPickerVisible, setLayerPickerVisible] = useState(false);
@@ -365,6 +368,7 @@ export default function SelectionContextMenu(): JSX.Element | null {
                             value={selectedLabelID}
                             placeholder={selectedLabelID === null ? 'Multiple labels' : 'Select label'}
                             onChange={(label: Label): void => {
+                                recordClassChange(jobInstance, selectedStates, label, 'mouse');
                                 for (const selectedState of selectedStates) selectedState.label = label;
                                 updateSelection(selectedStates);
                             }}

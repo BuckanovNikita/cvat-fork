@@ -10,7 +10,8 @@ import Layout, { SiderProps } from 'antd/lib/layout';
 import Text from 'antd/lib/typography/Text';
 
 import { filterApplicableLabels } from 'utils/filter-applicable-labels';
-import { Label, ObjectType } from 'cvat-core-wrapper';
+import { Job, Label, ObjectType } from 'cvat-core-wrapper';
+import { recordClassChange } from 'utils/team-analytics-logging';
 import {
     activateObject as activateObjectAction,
     changeFrameAsync,
@@ -40,6 +41,7 @@ interface StateToProps {
     normalizedKeyMap: Record<string, string>;
     canvasIsReady: boolean;
     hiddenZLayers: Set<number>;
+    jobInstance: Job | null;
 }
 
 interface DispatchToProps {
@@ -107,7 +109,7 @@ function mapStateToProps(state: CombinedState): StateToProps {
                 activatedAttributeID,
                 states,
             },
-            job: { labels },
+            job: { labels, instance: jobInstance },
             canvas: { ready: canvasIsReady },
         },
         shortcuts: { keyMap, normalizedKeyMap },
@@ -122,6 +124,7 @@ function mapStateToProps(state: CombinedState): StateToProps {
         normalizedKeyMap,
         canvasIsReady,
         hiddenZLayers: getHiddenZLayers(state),
+        jobInstance,
     };
 }
 
@@ -152,6 +155,7 @@ function AttributeAnnotationSidebar(props: StateToProps & DispatchToProps): JSX.
         normalizedKeyMap,
         canvasIsReady,
         hiddenZLayers,
+        jobInstance,
     } = props;
 
     const filteredStates = states.filter((state) => (
@@ -340,6 +344,7 @@ function AttributeAnnotationSidebar(props: StateToProps & DispatchToProps): JSX.
                     currentLabel={activeObjectState.label.id}
                     labels={applicableLabels}
                     changeLabel={(value: Label): void => {
+                        recordClassChange(jobInstance, [activeObjectState], value, 'mouse');
                         activeObjectState.label = value;
                         updateAnnotations([activeObjectState]);
                     }}
