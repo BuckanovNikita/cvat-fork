@@ -28,3 +28,8 @@ export function operationRow(figures: OperationsFigures, operation: OperationNam
 export function isRecorded(figures: OperationsFigures, operation: OperationName): boolean {
     return !(figures.legacy && operation === 'class_change');
 }
+
+// No job work in the scope and period: no working time and no operation at all.
+export function hasNoJobWork(figures: OperationsFigures): boolean {
+    return figures.working_time_ms === 0 && figures.rows.every((row) => row.objects === 0);
+}

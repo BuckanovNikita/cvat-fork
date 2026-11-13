@@ -147,16 +147,30 @@ test('a period with shape-tagged events shows no legacy notice and counts class 
     assert.deepEqual(tableRows(html)[3], ['Class change', '0', '—', '0.0 h', '0%']);
 });
 
-test('a period without working time shows no shares', () => {
+test('operations with no measured time and no working time show no shares', () => {
+    const untimed = {
+        legacy: false,
+        working_time_ms: 0,
+        active_time_ms: 0,
+        rows: ['creation', 'alignment', 'class_change', 'deletion', 'other'].map((name) => (
+            { ...row(name, name === 'creation' ? 2 : 0, 0, null, null), timed_objects: 0 }
+        )),
+    };
+    assert.deepEqual(legend(render(View, ready(untimed))), [
+        'Creation 0.0 h —', 'Alignment 0.0 h —', 'Class change 0.0 h —', 'Deletion 0.0 h —', 'Other 0.0 h —',
+    ]);
+});
+
+test('a period with no job work shows the empty state, not the legacy notice', () => {
     const empty = {
         legacy: false,
         working_time_ms: 0,
         active_time_ms: 0,
         rows: ['creation', 'alignment', 'class_change', 'deletion', 'other'].map((name) => row(name, 0, 0, null, null)),
     };
-    assert.deepEqual(legend(render(View, ready(empty))), [
-        'Creation 0.0 h —', 'Alignment 0.0 h —', 'Class change 0.0 h —', 'Deletion 0.0 h —', 'Other 0.0 h —',
-    ]);
+    const html = render(View, ready(empty));
+    assert.doesNotMatch(html, /cvat-team-analytics-legacy-notice/);
+    assert.equal(section(html, 'cvat-team-analytics-split'), 'Where working time goes No job work in this period');
 });
 
 // --- the mounted page: the operations cards follow the project and annotator filters -------------

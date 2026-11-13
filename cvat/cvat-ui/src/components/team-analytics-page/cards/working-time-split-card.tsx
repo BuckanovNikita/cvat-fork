@@ -7,7 +7,7 @@ import Text from 'antd/lib/typography/Text';
 
 import { OperationsFigures } from '../service';
 import { formatHours, formatShare } from '../format';
-import { OPERATION_LOOKS, isRecorded } from '../operations';
+import { OPERATION_LOOKS, hasNoJobWork, isRecorded } from '../operations';
 
 interface Props {
     figures: OperationsFigures;
@@ -20,6 +20,20 @@ const SHARE_INSIDE_FROM = 0.09;
 // Where working time goes: one stacked bar of the operations and Other, with its legend (name,
 // time, share) inside the card so every share reads without hovering.
 function WorkingTimeSplitCard({ figures }: Props): JSX.Element {
+    const header = (
+        <div className='cvat-team-analytics-card-header'>
+            <Text strong>Where working time goes</Text>
+        </div>
+    );
+    if (hasNoJobWork(figures)) {
+        return (
+            <section className='cvat-team-analytics-card cvat-team-analytics-split'>
+                {header}
+                <Text type='secondary' className='cvat-team-analytics-empty'>No job work in this period</Text>
+            </section>
+        );
+    }
+
     const parts = figures.rows.filter((row) => isRecorded(figures, row.operation)).map((row) => {
         const look = OPERATION_LOOKS[row.operation];
         return {
@@ -33,9 +47,7 @@ function WorkingTimeSplitCard({ figures }: Props): JSX.Element {
     });
     return (
         <section className='cvat-team-analytics-card cvat-team-analytics-split'>
-            <div className='cvat-team-analytics-card-header'>
-                <Text strong>Where working time goes</Text>
-            </div>
+            {header}
             <Text type='secondary'>{`All shapes · ${formatHours(figures.active_time_ms)} of working time`}</Text>
             <div className='cvat-team-analytics-split-bar'>
                 {parts.map((part) => (
