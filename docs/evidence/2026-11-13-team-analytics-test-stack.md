@@ -29,8 +29,8 @@ Lock digest `sha256:c44563b1315781bc38610e1575f6d096d1495eafaa2c362cbeebbacbbb4e
 The generated lock is committed as `verify/team-analytics-stack/Chart.lock` and the archive
 hashes as `verify/team-analytics-stack/chart-deps.sha256`. The tooling copies the lock into
 the cached chart, runs `helm dependency build` (exact versions, private repository list)
-and refuses archives whose hashes differ. A rebuild from the lock at 20:4x gave identical
-hashes. nuclio and traefik are downloaded but disabled.
+and refuses archives whose hashes differ. Two later builds from the lock the same evening gave
+identical hashes. nuclio and traefik are downloaded but disabled.
 
 ## Images of the render
 
