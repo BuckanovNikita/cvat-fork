@@ -64,13 +64,15 @@ build_chart() {
     cp "$HERE/Chart.lock" "$tmp/helm-chart/Chart.lock"
     log "building chart dependencies from the pinned Chart.lock"
     # A private repository list, so the user's own helm repositories stay untouched.
-    export HELM_REPOSITORY_CONFIG="$tmp/repositories.yaml" HELM_REPOSITORY_CACHE="$TA_CACHE_DIR/helm-repository-cache"
-    local url i=0
-    for url in $(awk '/repository:/{print $2}' "$HERE/Chart.lock" | sort -u); do
-        i=$((i + 1))
-        helm repo add "ta-dep-$i" "$url" --force-update >&2
-    done
-    nice -n19 helm dependency build "$tmp/helm-chart" >&2
+    (
+        export HELM_REPOSITORY_CONFIG="$tmp/repositories.yaml" HELM_REPOSITORY_CACHE="$TA_CACHE_DIR/helm-repository-cache"
+        i=0
+        for url in $(awk '/repository:/{print $2}' "$HERE/Chart.lock" | sort -u); do
+            i=$((i + 1))
+            helm repo add "ta-dep-$i" "$url" --force-update >&2
+        done
+        nice -n19 helm dependency build "$tmp/helm-chart" >&2
+    ) || die "chart dependency build failed"
     rm -f "$tmp/repositories.yaml" "$tmp/repositories.lock"
     # Every locked dependency must be exactly the archive recorded in the dated evidence.
     (cd "$tmp/helm-chart" && sha256sum --quiet -c "$HERE/chart-deps.sha256") \
@@ -93,14 +95,16 @@ helm_args() {
 render() {
     local args
     mapfile -t args < <(helm_args)
-    nice -n19 "${H[@]}" template "${args[@]}" 2>/dev/null
+    # helm notes the chart's analytics symlink on every call; keep only real messages
+    nice -n19 "${H[@]}" template "${args[@]}" 2> >(grep -v 'found symbolic link in path' >&2)
 }
 
 # Refuses a render that would create cluster-wide objects, pull from outside the approved
 # list, or force pulls.
 guard_render() {
     local rendered="$1" kinds cluster_kinds image bad=0
-    cluster_kinds="$("${K[@]}" api-resources --namespaced=false --no-headers -o wide | awk '{print $(NF-1)}' | sort -u)"
+    cluster_kinds="$("${K[@]}" api-resources --namespaced=false --no-headers | awk '{print $NF}' | sort -u)"
+    grep -qx CustomResourceDefinition <<<"$cluster_kinds" || die "could not list cluster-scoped kinds"
     kinds="$(grep -h '^kind:' "$rendered" | awk '{print $2}' | sort -u)"
     for k in $kinds; do
         if grep -qx "$k" <<<"$cluster_kinds"; then log "cluster-wide kind in render: $k"; bad=1; fi
@@ -325,12 +329,11 @@ status() {
 
 up() {
     build_chart
-    local rendered
-    rendered="$(mktemp)"
-    trap 'rm -f "$rendered"' RETURN
-    render >"$rendered"
-    guard_render "$rendered"
-    pull_images "$rendered"
+    RENDERED="$(mktemp)"
+    trap 'rm -f "$RENDERED"' EXIT
+    render >"$RENDERED"
+    guard_render "$RENDERED"
+    pull_images "$RENDERED"
     ensure_namespace
     install_chart
     apply_proxy

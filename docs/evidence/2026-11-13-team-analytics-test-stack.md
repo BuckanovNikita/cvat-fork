@@ -45,14 +45,16 @@ The render has no cluster-scoped kinds (checked against `kubectl api-resources
 
 ## Host port
 
-Reserved 8490 (TCP) in the k8s-infra host port table under its `flock` on 2026-11-13.
-Snapshot taken under the lock just before reserving: no WSL listener on 8480-8499
+Reserved 8490 (TCP) in the k8s-infra host port table on 2026-11-13. A first hold of the
+table's `flock` took this snapshot: no WSL listener on 8480-8499
 (`ss -ltnup`), no Docker published port, no Kubernetes LoadBalancer/NodePort on it (only
 ingress-nginx 80/443 and mongodb-lb 27018), no Windows TCP listener or UDP endpoint on
 8480-8500 (`Get-NetTCPConnection`, `Get-NetUDPEndpoint`), not in a Windows excluded range
 (`netsh ... show excludedportrange`; lowest project-relevant ranges 1462, 2869, 10243,
 13508, 49733+), and below the Windows dynamic range (49152-65535) and the Linux ephemeral
-range (32768+).
+range (32768+). The table edit ran under a second hold of the lock, which re-read the
+table (no 848x/849x row) and rechecked the WSL listeners only. The row is live in the
+installed skill (read back through its link) but not committed in the k8s-infra checkout.
 
 ## Runs (2026-11-13, docker-desktop, namespace `cvat-ta-it-nkt`)
 
@@ -77,3 +79,12 @@ range (32768+).
    again: succeeded with nothing to remove. Afterwards no namespace, no PV bound to it, port
    8490 free, no port-forward process, no cluster-scoped object named after the chart's
    components.
+6. Fixes after review: the cluster-scoped kind list now takes the KIND column without
+   `-o wide` (the earlier parse missed kinds that have categories, such as
+   CustomResourceDefinition; the post-teardown listing above is independent of it), the
+   private helm repository list is scoped to the dependency build, and the temporary render
+   is removed on exit. Then `run.sh cycle` from an empty build cache (dependencies rebuilt
+   from the lock, hashes matched): passed in 2 min 19 s; a second `cycle` and a `down` on
+   nothing passed; namespace, PVs, port-forward and port 8490 gone afterwards. The user's
+   helm repository list was unchanged (ingress-nginx, external-secrets, minio, lakefs,
+   clearml).
