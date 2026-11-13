@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, domAvailable, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
 
 const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
@@ -121,6 +121,40 @@ test('trends are replaced by a short notice until three complete weeks are ready
 
     for (const status of [{ history: history({ complete_weeks: 3, trends_ready: true }) }, null]) {
         assert.doesNotMatch(text(view({ status })), /Trends appear as history is processed/);
+    }
+});
+
+domTest('an open page shows the figures once its period has been processed meanwhile', async (t) => {
+    t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.parse('2026-11-13T15:30:00Z') });
+    let processed = false;
+    const { fetch, requests } = suppliedFetch((url) => {
+        if (url.includes('/status')) {
+            return { body: { history: processed ? history({ complete: true }) : history({ periods: { week: false } }) } };
+        }
+        return { body: { ...FIGURES, processed } };
+    });
+    const Page = loadPage('team-analytics-page.tsx', {
+        'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
+        'react-router': { useHistory: () => ({ push() {} }) },
+        './service': { ...loadPage('service.ts'), fetchService: fetch, viewerTimeZone: () => 'UTC' },
+    }).default;
+    const view = await mount(React.createElement(Page));
+    const overviews = () => requests.filter((request) => request.url.includes('/overview')).length;
+    try {
+        await view.settle();
+        assert.match(view.container.textContent, /This period is not processed yet/);
+        await act(async () => { t.mock.timers.tick(60000); }); // still not processed: no new request
+        await view.settle();
+        assert.equal(overviews(), 1);
+
+        processed = true;
+        await act(async () => { t.mock.timers.tick(60000); });
+        await view.settle();
+        assert.equal(overviews(), 2);
+        assert.match(view.container.textContent, /alice-figures/);
+        assert.doesNotMatch(view.container.textContent, /This period is not processed yet|Processing history/);
+    } finally {
+        await view.unmount();
     }
 });
 

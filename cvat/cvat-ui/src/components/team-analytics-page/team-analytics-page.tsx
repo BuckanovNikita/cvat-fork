@@ -16,6 +16,7 @@ import {
 } from './service';
 import { currentMonth, useAddress } from './address';
 import { agedStatus } from './freshness';
+import { monthAvailable, periodAvailable } from './history';
 import { lookupProjectNames } from './project-names';
 import TeamAnalyticsView from './team-analytics-view';
 
@@ -35,6 +36,8 @@ export default function TeamAnalyticsPage(): JSX.Element {
     const [pending, setPending] = useState(false);
     const [status, setStatus] = useState<Status | null>(null);
     const [projectNames, setProjectNames] = useState<ProjectNames>({});
+    // bumped to load the figures of the same selection again
+    const [reloads, setReloads] = useState(0);
     const shownOrganization = useRef<string | null>(organization);
 
     useEffect(() => {
@@ -58,7 +61,16 @@ export default function TeamAnalyticsPage(): JSX.Element {
             setPending(false);
         });
         return () => { current = false; };
-    }, [organization, address.period, address.month, address.project, address.annotator]);
+    }, [organization, address.period, address.month, address.project, address.annotator, reloads]);
+
+    // the shown period was not wholly processed; once a status read says it is, its figures are loaded
+    const waitingForHistory = state.kind === 'ready' && state.overview.processed === false;
+    useEffect(() => {
+        if (!waitingForHistory || !status?.history) return;
+        const available = address.period === 'month' && address.month ?
+            monthAvailable(status.history, address.month) : periodAvailable(status.history, address.period);
+        if (available) setReloads((count) => count + 1);
+    }, [status]);
 
     const ready = state.kind === 'ready';
     useEffect(() => {
