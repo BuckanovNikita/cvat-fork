@@ -13,7 +13,7 @@ PATH = "overview"
 
 def handle(request: Request) -> dict:
     span = request.span()
-    body: dict = {"period": {"from": span.start.isoformat(), "to": span.end.isoformat()}}
+    body: dict = {"period": span.describe()}
     for section in discover(overview):
         body[section.KEY] = section.build(request)
     return body

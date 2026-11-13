@@ -8,9 +8,13 @@ import Spin from 'antd/lib/spin';
 import Title from 'antd/lib/typography/Title';
 import Text from 'antd/lib/typography/Text';
 
-import { PageState } from './service';
+import { PageState, Period, Status } from './service';
+import { Address, currentMonth } from './address';
 import TeamAnalyticsErrorPanel from './error-panel';
+import PeriodControl, { periodLabel } from './period-control';
+import { FreshnessStamp, StaleWarning } from './freshness';
 import WorkingTimeByAnnotatorCard from './cards/working-time-by-annotator-card';
+import WorkingTimeOverPeriodCard from './cards/working-time-over-period-card';
 import SessionsCard from './cards/sessions-card';
 
 interface Props {
@@ -18,6 +22,24 @@ interface Props {
     organization: string | null;
     state: PageState;
     onBackToTasks?: () => void;
+    // the selection kept in the page address; without it there is no filter row
+    address?: Address;
+    onAddressChange?: (change: Partial<Address>) => void;
+    // the viewer's current month (YYYY-MM)
+    currentMonth?: string;
+    // figures for a new selection are loading: the shown ones are kept, dimmed
+    pending?: boolean;
+    status?: Status | null;
+    timeZone?: string;
+}
+
+const WEEK: Address = { period: 'week', month: null };
+
+// The selection the shown figures cover: the period the service echoed, which differs from the
+// address while figures for a new selection load.
+function shownAddress(period: Period | undefined, address: Address | undefined): Address {
+    if (period) return { ...(address ?? WEEK), period: period.name as Address['period'], month: period.month };
+    return address ?? WEEK;
 }
 
 function scopeLabel(organization: string | null, state: PageState): string {
@@ -28,7 +50,10 @@ function scopeLabel(organization: string | null, state: PageState): string {
 }
 
 // Presentational: renders one page state. Data loading lives in team-analytics-page.tsx.
-export default function TeamAnalyticsView({ organization, state, onBackToTasks }: Props): JSX.Element {
+export default function TeamAnalyticsView({
+    organization, state, onBackToTasks, address, onAddressChange, pending = false, status = null,
+    timeZone = 'UTC', currentMonth: latestMonth = currentMonth(),
+}: Props): JSX.Element {
     if (state.kind === 'denied') {
         return (
             <div className='cvat-team-analytics-page'>
@@ -83,13 +108,22 @@ export default function TeamAnalyticsView({ organization, state, onBackToTasks }
         );
     } else {
         content = (
-            <div className='cvat-team-analytics-cards'>
+            <div
+                className={`cvat-team-analytics-cards${pending ? ' cvat-team-analytics-pending' : ''}`}
+                aria-busy={pending}
+            >
                 {state.overview.sessions ? <SessionsCard figures={state.overview.sessions} /> : null}
-                <WorkingTimeByAnnotatorCard rows={state.overview.by_annotator.rows} />
+                {state.overview.time_series ? <WorkingTimeOverPeriodCard series={state.overview.time_series} /> : null}
+                <WorkingTimeByAnnotatorCard
+                    rows={state.overview.by_annotator.rows}
+                    periodLabel={periodLabel(shownAddress(state.overview.period, address), latestMonth)}
+                />
             </div>
         );
     }
 
+    const showFilters = !!address && !!onAddressChange && ['ready', 'loading', 'error'].includes(state.kind);
+    const refresh = state.kind === 'ready' ? status?.refresh : undefined;
     return (
         <div className='cvat-team-analytics-page'>
             <div className='cvat-team-analytics-header'>
@@ -99,6 +133,18 @@ export default function TeamAnalyticsView({ organization, state, onBackToTasks }
                     {' · annotation work inside jobs'}
                 </Text>
             </div>
+            {showFilters ? (
+                <div className='cvat-team-analytics-filters'>
+                    <PeriodControl
+                        address={address as Address}
+                        latestMonth={latestMonth}
+                        period={state.kind === 'ready' ? state.overview.period : undefined}
+                        onChange={onAddressChange as (change: Partial<Address>) => void}
+                    />
+                    {refresh ? <FreshnessStamp refresh={refresh} timeZone={timeZone} /> : null}
+                </div>
+            ) : null}
+            {refresh ? <StaleWarning refresh={refresh} timeZone={timeZone} /> : null}
             {content}
         </div>
     );
