@@ -43,6 +43,8 @@ import { useIsMounted, usePlugins } from 'utils/hooks';
 import GlobalHotKeys, { KeyMap } from 'utils/mousetrap-react';
 import { ShortcutScope } from 'utils/enums';
 import { subKeyMap } from 'utils/component-subkeymap';
+import { canOpenTeamAnalytics } from 'components/team-analytics-page/access';
+import { TEAM_ANALYTICS_PATH } from 'components/team-analytics-page/service';
 import SettingsModal from './settings-modal/settings-modal';
 
 interface StateToProps {
@@ -55,6 +57,7 @@ interface StateToProps {
     changePasswordDialogShown: boolean;
     logoutFetching: boolean;
     isAnalyticsPluginActive: boolean;
+    currentOrganizationRole: string | null;
     organizationFetching: boolean;
     currentOrganization: any | null;
     organizationsList: Organization[];
@@ -102,6 +105,7 @@ function mapStateToProps(state: CombinedState): StateToProps {
         organizations: {
             fetching: organizationFetching,
             current: currentOrganization,
+            currentRole: currentOrganizationRole,
             currentArray: organizationsList,
             currentArrayFetching: organizationsListFetching,
             gettingQuery: {
@@ -121,6 +125,7 @@ function mapStateToProps(state: CombinedState): StateToProps {
         changePasswordDialogShown,
         logoutFetching,
         isAnalyticsPluginActive: list.ANALYTICS,
+        currentOrganizationRole,
         organizationFetching,
         currentOrganization,
         organizationsList,
@@ -162,6 +167,7 @@ function HeaderComponent(props: Props): JSX.Element {
         shortcutsModalVisible,
         switchSettingsShortcut,
         isAnalyticsPluginActive,
+        currentOrganizationRole,
         organizationFetching,
         currentOrganization,
         organizationsList,
@@ -486,9 +492,27 @@ function HeaderComponent(props: Props): JSX.Element {
                             window.open('/analytics', '_blank');
                         }}
                     >
-                        Analytics
+                        Grafana
                     </Button>
                 ) : null}
+                {canOpenTeamAnalytics({
+                    analyticsEnabled: isAnalyticsPluginActive,
+                    groups: user?.groups,
+                    currentRole: currentOrganizationRole,
+                }) ? (
+                        <Button
+                            className={getButtonClassName('team-analytics')}
+                            type='link'
+                            value='team-analytics'
+                            href={TEAM_ANALYTICS_PATH}
+                            onClick={(event: React.MouseEvent): void => {
+                                event.preventDefault();
+                                history.push(TEAM_ANALYTICS_PATH);
+                            }}
+                        >
+                            Team Analytics
+                        </Button>
+                    ) : null}
             </div>
             <div className='cvat-right-header'>
                 <CVATTooltip overlay='Click to open repository'>
