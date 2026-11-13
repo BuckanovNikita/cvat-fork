@@ -12,6 +12,7 @@
 //   logRecord(job, name, payload, count?) -> sends one `debug:info` record named `name` (RECORD) through
 //                                    the job's logger, fire-and-forget (class change, model creation and
 //                                    input summary records build on it)
+//   recordClassChange(job, objects, label, inputMethod) -> class change record (class-change.ts)
 
 import { EventScope } from 'cvat-logger';
 
@@ -122,3 +123,6 @@ export function logRecord(
         });
     });
 }
+
+// Class change record (class-change.ts): call just before the new label is assigned.
+export { recordClassChange } from './class-change';
