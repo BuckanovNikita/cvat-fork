@@ -39,7 +39,7 @@ export interface LoggedObject {
 // What the module reads of the open job (a cvat-core Job).
 export interface LoggingJob {
     dimension?: string;
-    logger: { log(scope: EventScope, payload?: Record<string, unknown>, wait?: boolean): Promise<unknown> };
+    logger: { log(scope: string, payload?: Record<string, unknown>, wait?: boolean): Promise<unknown> };
 }
 
 type Objects = readonly (LoggedObject | null | undefined)[] | (() => readonly (LoggedObject | null | undefined)[]);
