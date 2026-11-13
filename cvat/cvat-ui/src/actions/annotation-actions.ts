@@ -21,6 +21,7 @@ import logger, { EventScope } from 'cvat-logger';
 import { getCVATStore } from 'cvat-store';
 import changeObjectOrientation from 'utils/change-object-orientation';
 import { sanitizeSelectedObjectIDs } from 'utils/multi-selection';
+import { operationFields } from 'utils/team-analytics-logging';
 
 import {
     ActiveControl,
@@ -573,7 +574,9 @@ export function propagateObjectAsync(from: number, to: number): ThunkAction {
 
             const states = cvat.utils.propagateShapes<ObjectState>([objectState], from, to, frameNumbers);
             if (states.length) {
-                await sessionInstance.logger.log(EventScope.propagateObject, { count: states.length });
+                await sessionInstance.logger.log(EventScope.propagateObject, {
+                    count: states.length, ...operationFields(sessionInstance, states),
+                });
                 await sessionInstance.annotations.put(states);
             }
 
@@ -596,7 +599,9 @@ export function removeObjectAsync(objectState: ObjectState, force: boolean): Thu
         try {
             const { frame, jobInstance } = receiveAnnotationsParameters();
             const { selectedStatesID } = getStore().getState().annotation.annotations;
-            await jobInstance.logger.log(EventScope.deleteObject, { count: 1 });
+            await jobInstance.logger.log(EventScope.deleteObject, {
+                count: 1, ...operationFields(jobInstance, [objectState]),
+            });
 
             const objectIsSelected = selectedStatesID.includes(objectState.clientID as number);
             const removed = objectIsSelected ?
@@ -756,8 +761,13 @@ export function removeSelectionAsync(force: boolean): ThunkAction {
         try {
             const removedIDs: number[] = await jobInstance.annotations.removeBatch(selectedStates, force);
             if (removedIDs.length) {
-                await jobInstance.logger.log(EventScope.deleteObject, { count: removedIDs.length });
                 const removedIDSet = new Set(removedIDs);
+                await jobInstance.logger.log(EventScope.deleteObject, {
+                    count: removedIDs.length,
+                    ...operationFields(jobInstance, () => selectedStates.filter((state: ObjectState): boolean => (
+                        removedIDSet.has(state.clientID as number)
+                    ))),
+                });
                 dispatch(selectObjects(selectedStatesID.filter((clientID: number): boolean => (
                     !removedIDSet.has(clientID)
                 ))));
@@ -864,7 +874,9 @@ function placeCopiedStatesAsync(
 
         try {
             const clientIDs: number[] = await jobInstance.annotations.put(statesToCreate);
-            await jobInstance.logger.log(EventScope.pasteObject, { count: clientIDs.length });
+            await jobInstance.logger.log(EventScope.pasteObject, {
+                count: clientIDs.length, ...operationFields(jobInstance, statesToCreate),
+            });
             await dispatch(fetchAnnotationsAsync());
             if (selectCreated) {
                 dispatch(selectObjects(clientIDs));

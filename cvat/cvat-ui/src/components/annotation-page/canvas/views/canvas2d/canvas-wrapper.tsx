@@ -68,6 +68,7 @@ import {
 import { reviewActions } from 'actions/review-actions';
 
 import { filterAnnotations } from 'utils/filter-annotations';
+import { alignmentFields, operationFields } from 'utils/team-analytics-logging';
 import { ImageFilter } from 'utils/image-processing';
 import { ShortcutScope } from 'utils/enums';
 import { registerComponentShortcuts } from 'actions/shortcuts-actions';
@@ -782,9 +783,13 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
         }
 
         if (isDrawnFromScratch) {
-            jobInstance.logger.log(EventScope.drawObject, { count: 1, duration });
+            jobInstance.logger.log(EventScope.drawObject, {
+                count: 1, duration, ...operationFields(jobInstance, [state]),
+            });
         } else {
-            jobInstance.logger.log(EventScope.pasteObject, { count: 1, duration });
+            jobInstance.logger.log(EventScope.pasteObject, {
+                count: 1, duration, ...operationFields(jobInstance, [state]),
+            });
         }
         const objectState = new cvat.classes.ObjectState(state);
 
@@ -907,10 +912,11 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
 
     private onCanvasShapeDragged = (e: CustomEvent<{ duration: number; state: ObjectState }>): void => {
         const { jobInstance } = this.props;
-        const { detail: { duration, state: { serverID } } } = e;
+        const { detail: { duration, state } } = e;
+        const { serverID } = state;
         jobInstance.logger.log(
             EventScope.dragObject,
-            { duration, ...(serverID ? { obj_id: serverID } : {}) },
+            { duration, ...(serverID ? { obj_id: serverID } : {}), ...alignmentFields(jobInstance, state) },
         );
     };
 
@@ -934,11 +940,12 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
 
     private onCanvasShapeResized = (e: CustomEvent<{ duration: number; state: ObjectState }>): void => {
         const { jobInstance } = this.props;
-        const { detail: { duration, state: { serverID } } } = e;
+        const { detail: { duration, state } } = e;
+        const { serverID } = state;
 
         jobInstance.logger.log(
             EventScope.resizeObject,
-            { duration, ...(serverID ? { obj_id: serverID } : {}) },
+            { duration, ...(serverID ? { obj_id: serverID } : {}), ...alignmentFields(jobInstance, state) },
         );
     };
 

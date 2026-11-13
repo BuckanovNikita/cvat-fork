@@ -1,4 +1,7 @@
-"""Operations and Other for the period: count, average and total time, share of working time."""
+"""Operations and Other for the period: count, average and total time, share of working time.
+
+The `shapes` query (bounding_boxes | all) narrows every operation figure; see read/overview_operations.sql.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +15,8 @@ def build(request: Request) -> dict:
     first = rows[0]
     return {
         "legacy": bool(first["legacy"]),
+        # the shapes the figures cover: what was asked for, or all shapes in a legacy period
+        "shapes": "all" if first["all_shapes"] else "bounding_boxes",
         "working_time_ms": int(first["working_ms"] or 0),
         "active_time_ms": int(first["active_ms"] or 0),
         "rows": [

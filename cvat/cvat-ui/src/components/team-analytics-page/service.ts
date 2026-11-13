@@ -56,6 +56,8 @@ export interface OperationRow {
 export interface OperationsFigures {
     // the scope has no shape-tagged event in the period
     legacy: boolean;
+    // the shapes the figures cover: the switch asked for, or all shapes in a legacy period
+    shapes?: 'bounding_boxes' | 'all';
     working_time_ms: number;
     // operations + Other, the denominator of every share
     active_time_ms: number;
@@ -154,6 +156,8 @@ export interface OverviewQuery {
     // the page's filters (see filters.ts); project 0 = No project
     project?: number | null;
     annotator?: number | null;
+    // the Bounding boxes / All shapes switch (see shapes.ts)
+    shapes?: 'bounding_boxes' | 'all';
 }
 
 export function viewerTimeZone(): string {
@@ -181,6 +185,7 @@ function serviceParams(query: OverviewQuery): URLSearchParams {
     if (query.month) params.set('month', query.month);
     if (query.project !== null && query.project !== undefined) params.set('project', String(query.project));
     if (query.annotator !== null && query.annotator !== undefined) params.set('annotator', String(query.annotator));
+    if (query.shapes) params.set('shapes', query.shapes);
     return params;
 }
 

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Filters, filtersSearch, readFilters } from './filters';
+import { Shapes, readShapes, shapesSearch } from './shapes';
 
 export const PERIODS = [
     { key: 'week', label: 'Week' },
@@ -25,6 +26,8 @@ export interface Address extends Filters {
     period: PeriodKey;
     // YYYY-MM when the period is a month, otherwise null
     month: string | null;
+    // the Bounding boxes / All shapes switch (shapes.ts)
+    shapes: Shapes;
 }
 
 const pad = (value: number): string => String(value).padStart(2, '0');
@@ -45,7 +48,7 @@ const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 export function readAddress(search: string, now: Date = new Date()): Address {
     const query = new URLSearchParams(search);
     const period = PERIODS.find(({ key }) => key === query.get('period'))?.key ?? 'week';
-    const filters = readFilters(search);
+    const filters = { ...readFilters(search), shapes: readShapes(search) };
     if (period !== 'month') return { period, month: null, ...filters };
     const latest = currentMonth(now);
     const month = query.get('month') ?? '';
@@ -55,7 +58,7 @@ export function readAddress(search: string, now: Date = new Date()): Address {
 
 // The query string for `address`, keeping every key of `search` this module does not own.
 export function addressSearch(address: Address, search: string): string {
-    const query = new URLSearchParams(filtersSearch(address, search));
+    const query = new URLSearchParams(filtersSearch(address, shapesSearch(address.shapes, search)));
     query.set('period', address.period);
     if (address.period === 'month' && address.month) query.set('month', address.month);
     else query.delete('month');

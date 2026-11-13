@@ -10,6 +10,7 @@ import {
     MISSING, exactHours, formatCount, formatHours, formatSeconds, formatShare,
 } from '../format';
 import { OPERATION_LOOKS, isRecorded } from '../operations';
+import { shapeWording } from '../shapes';
 
 interface Props {
     figures: OperationsFigures;
@@ -18,18 +19,21 @@ interface Props {
 // The four operations: objects, average time per object, total time and share of working time.
 function OperationsTableCard({ figures }: Props): JSX.Element {
     const rows = figures.rows.filter((row) => row.operation !== 'other');
+    const wording = shapeWording(figures);
     return (
         <section className='cvat-team-analytics-card cvat-team-analytics-operations'>
             <div className='cvat-team-analytics-card-header'>
-                <Text strong>Object operations</Text>
+                <Text strong>{wording.operations}</Text>
             </div>
-            <Text type='secondary'>Counts and average time per object · all shapes</Text>
+            <Text type='secondary'>
+                {`Counts and average time per ${wording.noun} · ${wording.label.toLowerCase()}`}
+            </Text>
             <div className='cvat-team-analytics-table-scroll'>
                 <table className='cvat-team-analytics-table'>
                     <thead>
                         <tr>
                             <th>Operation</th>
-                            <th>Objects</th>
+                            <th>{wording.nouns}</th>
                             <th>Avg time</th>
                             <th>Total time</th>
                             <th>Share</th>
