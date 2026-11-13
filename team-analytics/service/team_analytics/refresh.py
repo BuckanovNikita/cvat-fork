@@ -91,5 +91,7 @@ class Refresher:
         tables = self._sql.rows("control/versioned_tables.sql", {"totals_db": self._config.totals_db})
         for row in tables:
             self._sql.statements("control/drop_superseded.sql", params, table=row["table"])
+        self._sql.statements("control/record_refresh.sql",
+                             {**params, "data_as_of": now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]})
         log.info("refreshed %s .. %s as version %s", window_from, window_to, version)
         return RefreshResult(ran=True, version=version, window_from=window_from, window_to=window_to)
