@@ -34,7 +34,7 @@ test('neither the page nor the service address starts with the Grafana prefix', 
 const answers = [
     ['figures', { status: 200, body: { by_annotator: { rows: ROWS } } }, { kind: 'ready', overview: { by_annotator: { rows: ROWS } } }],
     ['a refusal', { status: 403, body: { error: 'forbidden' } }, { kind: 'denied' }],
-    ['an unauthenticated answer', { status: 401, body: { error: 'not_authenticated' } }, { kind: 'denied' }],
+    ['an unauthenticated answer', { status: 401, body: { error: 'not_authenticated' } }, { kind: 'signed-out' }],
     ['a request to select an organization', { status: 403, body: { error: 'organization_required' } }, { kind: 'select-organization' }],
     ['CVAT unavailable behind the service', { status: 503, body: { error: 'cvat_unavailable' } }, { kind: 'error' }],
     ['a server error', { status: 502, body: 'not json' }, { kind: 'error' }],
