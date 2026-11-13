@@ -45,10 +45,27 @@ export interface Overview {
     time_series?: TimeSeries;
     // the scope's figures plus the same per annotator (most sessions first)
     sessions?: SessionFigures & { by_annotator: AnnotatorSessions[] };
+    // false: the period is not wholly processed, so the figures are partial and are not shown
+    processed?: boolean;
+}
+
+// How far history is processed (status section `history`), in the viewer's time zone.
+export interface HistoryStatus {
+    complete: boolean;
+    ready_from: string | null; // ISO time from which everything is processed; null when complete or nothing is
+    ready_from_day: string | null; // YYYY-MM-DD: the viewer's first whole processed day
+    first_day: string | null; // YYYY-MM-DD: the first day with events
+    days_ready: number;
+    days_total: number;
+    periods: Record<string, boolean>; // period key -> wholly processed
+    earliest_month: string | null; // YYYY-MM: the earliest wholly processed month (null: none, or all when complete)
+    complete_weeks: number;
+    trends_ready: boolean;
 }
 
 // GET status; each key is one status section of the service.
 export interface Status {
+    history?: HistoryStatus | null;
     refresh?: {
         last_success_at: string | null; // ISO time of the last successful refresh
         now: string; // the service's time
@@ -113,7 +130,7 @@ function serviceParams(query: OverviewQuery): URLSearchParams {
 
 // The status of the figures, or null when it cannot be read (the page then shows no freshness).
 export async function loadStatus(query: OverviewQuery, fetch: FetchService = fetchService): Promise<Status | null> {
-    const params = new URLSearchParams({ org: query.organization ?? '' });
+    const params = new URLSearchParams({ org: query.organization ?? '', tz: query.timeZone });
     try {
         const response = await fetch(`${SERVICE_PREFIX}status?${params}`, {
             credentials: 'same-origin',

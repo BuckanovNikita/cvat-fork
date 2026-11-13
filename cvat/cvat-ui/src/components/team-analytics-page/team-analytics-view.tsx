@@ -13,6 +13,7 @@ import { Address, currentMonth } from './address';
 import TeamAnalyticsErrorPanel from './error-panel';
 import PeriodControl, { periodLabel } from './period-control';
 import { FreshnessStamp, StaleWarning } from './freshness';
+import { HistoryProgress, NotProcessedNotice, TrendsGate } from './history';
 import WorkingTimeByAnnotatorCard from './cards/working-time-by-annotator-card';
 import WorkingTimeOverPeriodCard from './cards/working-time-over-period-card';
 import SessionsCard from './cards/sessions-card';
@@ -106,6 +107,9 @@ export default function TeamAnalyticsView({
                 subTitle='Team analytics shows one organization at a time. Choose it in the organization menu at the top right.'
             />
         );
+    } else if (state.overview.processed === false) {
+        // partial figures are never shown: one gate for every card
+        content = <NotProcessedNotice />;
     } else {
         content = (
             <div
@@ -118,12 +122,14 @@ export default function TeamAnalyticsView({
                     rows={state.overview.by_annotator.rows}
                     periodLabel={periodLabel(shownAddress(state.overview.period, address), latestMonth)}
                 />
+                <TrendsGate history={status?.history} />
             </div>
         );
     }
 
     const showFilters = !!address && !!onAddressChange && ['ready', 'loading', 'error'].includes(state.kind);
     const refresh = state.kind === 'ready' ? status?.refresh : undefined;
+    const history = state.kind === 'ready' ? status?.history : undefined;
     return (
         <div className='cvat-team-analytics-page'>
             <div className='cvat-team-analytics-header'>
@@ -139,12 +145,14 @@ export default function TeamAnalyticsView({
                         address={address as Address}
                         latestMonth={latestMonth}
                         period={state.kind === 'ready' ? state.overview.period : undefined}
+                        history={history}
                         onChange={onAddressChange as (change: Partial<Address>) => void}
                     />
                     {refresh ? <FreshnessStamp refresh={refresh} timeZone={timeZone} /> : null}
                 </div>
             ) : null}
             {refresh ? <StaleWarning refresh={refresh} timeZone={timeZone} /> : null}
+            <HistoryProgress history={history} />
             {content}
         </div>
     );

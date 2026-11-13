@@ -1,0 +1,149 @@
+// Processed history on the page: one progress bar while history is processed, periods offered only
+// when all of them is processed, no figure for a period that is not, and trends held back until three
+// complete weeks are ready.
+const assert = require('node:assert/strict');
+const test = require('node:test');
+const {
+    React, domAvailable, loadPage, mount, render, suppliedFetch, text,
+} = require('./helper.cjs');
+
+const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
+
+const View = loadPage('team-analytics-view.tsx').default;
+
+const FIGURES = { by_annotator: { rows: [{ user_id: 11, user_name: 'alice-figures', working_time_ms: 3600000 }] } };
+
+function history(overrides = {}) {
+    return {
+        complete: false,
+        ready_from: '2026-11-02T00:00:00+00:00',
+        ready_from_day: '2026-11-02',
+        first_day: '2026-04-30',
+        days_ready: 12,
+        days_total: 198,
+        periods: {
+            week: true, two_weeks: false, month: false, year: false,
+        },
+        earliest_month: null,
+        complete_weeks: 1,
+        trends_ready: false,
+        ...overrides,
+    };
+}
+
+function view({ status = { history: history() }, overview = FIGURES, address = { period: 'week', month: null } } = {}) {
+    return render(View, {
+        organization: 'team-org',
+        state: { kind: 'ready', overview },
+        address,
+        onAddressChange() {},
+        currentMonth: '2026-11',
+        status,
+        timeZone: 'UTC',
+    });
+}
+
+function buttons(html) {
+    // [label or aria-label, disabled, title] of every button
+    return [...html.matchAll(/<button([^>]*)>(.*?)<\/button>/g)].map(([, attributes, inner]) => ({
+        name: (attributes.match(/aria-label="([^"]*)"/) || [])[1] || text(inner),
+        disabled: /\sdisabled=""/.test(attributes),
+        title: (attributes.match(/title="([^"]*)"/) || [])[1] || null,
+    }));
+}
+
+test('while history is processed one progress bar shows the earliest ready date and how far it is', () => {
+    const html = view();
+    const shown = text(html);
+    assert.match(shown, /Processing history/);
+    assert.match(shown, /Ready from Nov 2, 2026 · 12 of 198 days/);
+    assert.match(shown, /6%/);
+    assert.equal((html.match(/role="progressbar"/g) || []).length, 1);
+    assert.match(html, /aria-valuenow="6"/);
+    assert.match(shown, /Recent days are processed first\./);
+});
+
+test('no progress bar once history is complete, or when the status is not known', () => {
+    for (const status of [{ history: history({ complete: true, ready_from: null, ready_from_day: null }) }, null, {}]) {
+        const html = view({ status });
+        assert.doesNotMatch(text(html), /Processing history/);
+        assert.doesNotMatch(html, /role="progressbar"/);
+    }
+});
+
+test('before anything is processed the bar says nothing is ready yet', () => {
+    const shown = text(view({ status: { history: history({ ready_from: null, ready_from_day: null, days_ready: 0 }) } }));
+    assert.match(shown, /Nothing ready yet · 0 of 198 days/);
+    assert.match(shown, /0%/);
+});
+
+test('periods not wholly processed are disabled with an explanation', () => {
+    const periods = buttons(view()).filter((b) => ['Week', 'Two weeks', 'Month', 'Year'].includes(b.name));
+    assert.deepEqual(periods.map((b) => [b.name, b.disabled, b.title]), [
+        ['Week', false, null],
+        ['Two weeks', true, 'Not processed yet'],
+        ['Month', true, 'Not processed yet'],
+        ['Year', true, 'Not processed yet'],
+    ]);
+});
+
+test('every period is offered once history is complete, or when the status is not known', () => {
+    for (const status of [{ history: history({ complete: true, periods: { week: true, two_weeks: true, month: true, year: true } }) }, null]) {
+        assert.ok(buttons(view({ status })).every((b) => !b.disabled || b.name === 'Next month'));
+    }
+});
+
+test('an earlier month is offered only when all of it is processed', () => {
+    const month = { period: 'month', month: '2026-10' };
+    const status = (overrides) => ({ history: history({ periods: { week: true, two_weeks: true, month: true, year: false }, ...overrides }) });
+    const previous = (html) => buttons(html).find((b) => b.name === 'Previous month');
+    assert.equal(previous(view({ address: month, status: status({ earliest_month: '2026-10' }) })).disabled, true);
+    assert.equal(previous(view({ address: month, status: status({ earliest_month: '2026-10' }) })).title, 'Not processed yet');
+    assert.equal(previous(view({ address: month, status: status({ earliest_month: '2026-09' }) })).disabled, false);
+    assert.equal(previous(view({ address: month, status: status({ complete: true, earliest_month: null }) })).disabled, false);
+});
+
+test('a period that is not wholly processed shows no figure, only why', () => {
+    const shown = text(view({ overview: { ...FIGURES, processed: false } }));
+    assert.doesNotMatch(shown, /alice-figures|1\.0 h/);
+    assert.match(shown, /This period is not processed yet/);
+
+    assert.match(text(view({ overview: { ...FIGURES, processed: true } })), /alice-figures/);
+    assert.match(text(view({ overview: FIGURES })), /alice-figures/); // a service that does not say
+});
+
+test('trends are replaced by a short notice until three complete weeks are ready', () => {
+    const shown = text(view({ status: { history: history({ complete_weeks: 2 }) } }));
+    assert.match(shown, /Trends appear as history is processed/);
+    assert.match(shown, /A trend needs at least three complete weeks\. Two are ready so far\./);
+    assert.match(text(view({ status: { history: history({ complete_weeks: 0 }) } })), /None are ready so far\./);
+    assert.match(text(view({ status: { history: history({ complete_weeks: 1 }) } })), /One is ready so far\./);
+
+    for (const status of [{ history: history({ complete_weeks: 3, trends_ready: true }) }, null]) {
+        assert.doesNotMatch(text(view({ status })), /Trends appear as history is processed/);
+    }
+});
+
+domTest('the page asks for the status in the viewer time zone and shows the bar beside the notice', async () => {
+    const { fetch, requests } = suppliedFetch((url) => (url.includes('/status') ?
+        { body: { history: history() } } :
+        { body: { ...FIGURES, processed: false } }));
+    const Page = loadPage('team-analytics-page.tsx', {
+        'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
+        'react-router': { useHistory: () => ({ push() {} }) },
+        './service': { ...loadPage('service.ts'), fetchService: fetch, viewerTimeZone: () => 'Asia/Tokyo' },
+    }).default;
+    const view = await mount(React.createElement(Page));
+    try {
+        await view.settle();
+        const status = requests.find((request) => request.url.includes('/status'));
+        assert.ok(status, 'status is requested');
+        assert.equal(new URL(status.url, 'http://localhost').searchParams.get('tz'), 'Asia/Tokyo');
+        const shown = view.container.textContent;
+        assert.match(shown, /Processing history/);
+        assert.match(shown, /This period is not processed yet/);
+        assert.doesNotMatch(shown, /alice-figures/);
+    } finally {
+        await view.unmount();
+    }
+});
