@@ -28,8 +28,8 @@ timings were not measured.
 2.44 GiB on disk, 10.07 GiB uncompressed (`payload` alone: 1.26 GiB / 4.94 GiB).
 Weekdays ~136k rows/day, weekends ~7k. 100 users, 40 projects, 796 tasks, 2383 jobs.
 About 8 sessions per user per working day (5-minute rule). No per-user timestamp ties.
-Payload text uses `": "` / `", "` separators, as the repository's fixture generator
-(`verify/mk_team_analytics_fixture.py`, `json.dumps`) writes it.
+Payload text uses `": "` / `", "` separators, as Python's `json.dumps` writes it; the stock
+server re-serialises client payloads that way (`cvat/apps/events/serializers.py`).
 
 ## Fixture expectations (all reproduced by the queries)
 

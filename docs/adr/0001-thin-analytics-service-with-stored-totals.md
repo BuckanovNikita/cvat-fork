@@ -18,6 +18,9 @@ Team Analytics gets its figures from a small dedicated service, not from the exi
 - Access control is this fork's own code. The stock events policy no longer protects these figures, so the role and organization check needs negative tests and an independent review.
 - The session gap and the idle pause are fixed when totals are computed. Changing either means recomputing history.
 - A refresh must read a few minutes before its window, or sessions and time per operation break at the window edge. History is filled one day at a time; a single year-long fill that reads event payloads exhausts memory with default settings.
+- "Changed since the last run" cannot be a timestamp cut-off. Events carry the browser's clock and a failed batch is resent later, so rows can land behind any cut-off. Each refresh therefore redoes a trailing window and replaces those hours; older days are redone when their raw row count no longer matches.
+- Totals are stored per task although the page stops at projects, so a task or job view can be added without recomputing history.
+- Working time and operation time come from different records: the server stamps working time with the first event of a batch and the job of the preceding event, while an operation carries its own time and job. Over a narrow slice (one hour, one project) operations can therefore exceed working time. Other is computed for the scope being displayed and is never shown below zero.
 - One rule is approximate in SQL: time spent on navigation while a box is being drawn goes to that drawing only when the navigation lies wholly inside one drawing or alignment.
 - ClickHouse in this deployment cannot schedule a refresh itself, which is why the service triggers it.
 

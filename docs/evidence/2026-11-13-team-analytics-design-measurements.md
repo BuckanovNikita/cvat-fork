@@ -39,8 +39,12 @@ Observed:
   with "Memory limit (total) exceeded". With `query_plan_execute_functions_after_sorting = 0`
   they ran as in the table, with identical results.
 - `simpleJSONExtractString` returned an empty string on payload text with a space after
-  the colon; `JSONExtractString` worked. The spacing was taken from this repository's
-  fixture generator, not from a production row.
+  the colon; `JSONExtractString` worked. The spacing matches how the stock server stores
+  client payloads: `cvat/apps/events/serializers.py` re-serialises them with Python's
+  `json.dumps`, which puts a space after each colon, while server-written events go
+  through a compact renderer in `cvat/apps/events/event.py`. Both forms occur in one
+  table, so queries must parse payloads as JSON rather than match text. No production
+  row was inspected.
 - `CREATE MATERIALIZED VIEW ... REFRESH EVERY` is a syntax error in 23.11.5.29 and the
   experimental setting is unknown, so this version cannot schedule a refresh itself.
 
