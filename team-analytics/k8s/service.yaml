@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: team-analytics
+  labels:
+    app.kubernetes.io/name: team-analytics
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: team-analytics
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

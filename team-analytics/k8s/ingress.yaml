@@ -1,0 +1,23 @@
+# Route of the service under its prefix, beside the CVAT chart's own Ingress
+# (helm-chart/templates/ingress.yaml). Host and class must equal the chart's
+# `ingress.hostname` and `ingress.className`; the values below are the chart defaults.
+# The longest matching prefix wins, so this path is taken before the chart's "/" to the UI.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: team-analytics
+  labels:
+    app.kubernetes.io/name: team-analytics
+spec:
+  # ingressClassName: <the chart's ingress.className, when it sets one>
+  rules:
+    - host: cvat.local
+      http:
+        paths:
+          - path: /team-analytics-api
+            pathType: Prefix
+            backend:
+              service:
+                name: team-analytics
+                port:
+                  name: http
