@@ -19,7 +19,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 BASE_URL = os.environ["TA_BASE_URL"]
@@ -102,7 +102,7 @@ def seed_check() -> None:
 
 
 def send_event(marker: str) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     payload = {"source": "team-analytics-stack-check", **EXTRA_PAYLOAD}
     body = {
         "events": [
@@ -154,7 +154,9 @@ def upload_images(session: Session, task_id: int, org: str, count: int) -> None:
     for i in range(count):
         parts.append(
             f'--{boundary}\r\nContent-Disposition: form-data; name="client_files[{i}]"; filename="frame{i}.png"\r\n'
-            "Content-Type: image/png\r\n\r\n".encode() + tiny_png(40 + 60 * i) + b"\r\n"
+            "Content-Type: image/png\r\n\r\n".encode()
+            + tiny_png(40 + 60 * i)
+            + b"\r\n"
         )
     parts.append(f"--{boundary}--\r\n".encode())
     req = urllib.request.Request(f"{BASE_URL}/api/tasks/{task_id}/data?org={org}", data=b"".join(parts), method="POST")
@@ -173,7 +175,9 @@ def create_jobs(org: str, annotators: list[str]) -> list[dict]:
     owner = Session(owner_of(org))
     project = owner.request("POST", f"/api/projects?org={org}", {"name": TRACER_PROJECT, "labels": [{"name": "box"}]})
     task = owner.request(
-        "POST", f"/api/tasks?org={org}", {"name": f"{TRACER_PROJECT}-task", "project_id": project["id"], "segment_size": 1}
+        "POST",
+        f"/api/tasks?org={org}",
+        {"name": f"{TRACER_PROJECT}-task", "project_id": project["id"], "segment_size": 1},
     )
     upload_images(owner, task["id"], org, len(annotators))
     for _ in range(120):
@@ -193,7 +197,7 @@ def create_jobs(org: str, annotators: list[str]) -> list[dict]:
 def send_work(username: str, org: str, ids: dict, minutes: int) -> None:
     """Events in the annotator's job EVENT_GAP_S apart, ending a minute ago, sent in one batch the
     way the UI sends them; CVAT itself turns the gaps into a working-time record."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     steps = minutes * 60 // EVENT_GAP_S
     start = now - timedelta(seconds=60 + steps * EVENT_GAP_S)
     events = [
@@ -262,7 +266,10 @@ def check_tracer(timeout_s: int) -> None:
     for username, org, want_status, want_body in cases:
         status, body = Session(username).call(OVERVIEW + urllib.parse.quote(org))
         got = figures(body) if status == 200 else body.get("error") if isinstance(body, dict) else body
-        check((status, got) == (want_status, want_body), f"{username} org={org!r}: {status} {got}, expected {want_status} {want_body}")
+        check(
+            (status, got) == (want_status, want_body),
+            f"{username} org={org!r}: {status} {got}, expected {want_status} {want_body}",
+        )
         print(f"  {username}, org={org or '-'}: {status} {got}")
 
 
