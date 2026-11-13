@@ -1,14 +1,14 @@
 """Entry point: `python -m team_analytics` (cwd = team-analytics/service, or on PYTHONPATH).
 
-Applies the schema, starts the refresh loop (every TEAM_ANALYTICS_REFRESH_INTERVAL_S seconds,
-first run at start) and serves HTTP.
+Applies the schema, starts the refresh loop (the refresh of recent hours every
+TEAM_ANALYTICS_REFRESH_INTERVAL_S seconds, first run at start; history one day at a time in between)
+and serves HTTP.
 """
 
 from __future__ import annotations
 
 import logging
 import threading
-import time
 
 from team_analytics.config import Config
 from team_analytics.http_server import make_server
@@ -16,17 +16,20 @@ from team_analytics.service import Service
 
 log = logging.getLogger("team_analytics")
 
+# Seconds before trying again after a failed step (e.g. ClickHouse not up yet).
+FAILURE_RETRY_S = 30
+
 
 def refresh_loop(service: Service, interval_s: int, stop: threading.Event) -> None:
+    """Runs the service's steps (worker.py): the ten-minute refresh when due, else history, one day at a time."""
     while not stop.is_set():
-        started = time.monotonic()
         try:
-            result = service.refresh()
-            if not result.ran:
-                log.info("refresh skipped: another refresh is running")
+            wait = service.step()
         except Exception:
             log.exception("refresh failed")
-        stop.wait(max(1.0, interval_s - (time.monotonic() - started)))
+            wait = min(interval_s, FAILURE_RETRY_S)
+        if wait > 0:
+            stop.wait(wait)
 
 
 def main() -> None:

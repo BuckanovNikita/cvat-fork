@@ -4,12 +4,24 @@ The service works in steps (`Service.step()`), as its loop runs them: the ten-mi
 when it is due, else the daily check when it is due, else one day of history.
 """
 
-from datetime import timedelta
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
+import traceback
+from datetime import UTC, datetime, timedelta
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from tests.support import NOW, FakeUser, StackTestCase, at, working_time
+from tests.test_entry_point import SERVICE_DIR, free_port
+from tests.test_sessions import client
 
 ORG = 7
 ALICE = (11, "alice")
+BOB = (12, "bob")
 MINUTE = 60_000
 
 
@@ -35,6 +47,13 @@ class HistoryCase(StackTestCase):
     def alice_ms(self, **query) -> int:
         rows = self.overview(**query)["by_annotator"]["rows"]
         return sum(row["working_time_ms"] for row in rows if row["user_id"] == ALICE[0])
+
+    def settle(self) -> None:
+        """Steps until the service has nothing more to do (it would wait for the next refresh)."""
+        for _ in range(40):
+            if self.stack.service.step() >= 1:
+                return
+        self.fail("the service kept working")
 
     def fill(self) -> None:
         """Steps until history is complete (bounded, so a fill that never ends fails the test)."""
@@ -113,6 +132,16 @@ class FillTest(HistoryCase):
         self.assertTrue(self.overview(period="year")["processed"])
 
 
+    def test_a_new_day_does_not_take_any_period_away(self):
+        self.fill()
+        self.settle()
+        self.stack.now = NOW + timedelta(hours=25)  # past midnight: the 13th is now an older day
+        self.step()
+        history = self.history()
+        self.assertTrue(history["complete"], history)
+        self.assertEqual(history["periods"], {"week": True, "two_weeks": True, "month": True, "year": True})
+
+
 class NothingToProcessTest(HistoryCase):
     def test_before_the_first_refresh_nothing_is_available(self):
         history = self.history()
@@ -153,3 +182,175 @@ class TrendsReadinessTest(HistoryCase):
             (3, True),  # from Oct 15: and the week of Oct 19
             (12, True),  # complete
         ])
+
+
+class LateEventTest(HistoryCase):
+    """A day computed earlier is computed again once the daily check finds its raw count changed."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.stack.add_events([
+            working_time(at("2026-11-08 10:00:00"), 2 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-11 10:00:00"), 4 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-13 10:00:00"), 8 * MINUTE, user=ALICE, org=ORG),
+        ])
+        self.fill()
+        self.settle()  # includes the first daily check
+
+    def test_an_event_that_arrives_two_days_late_is_counted_once_the_next_check_runs(self):
+        self.assertEqual(self.alice_ms(period="two_weeks"), 14 * MINUTE)
+        # happened two days ago, before the hours the ten-minute refresh recomputes
+        self.stack.add_events([working_time(at("2026-11-11 15:20:00"), 16 * MINUTE, user=ALICE, org=ORG)])
+        self.stack.now = NOW + timedelta(minutes=10)
+        self.settle()  # ten-minute refresh only: the daily check ran less than a day ago
+        self.assertEqual(self.alice_ms(period="two_weeks"), 14 * MINUTE)
+
+        self.stack.now = NOW + timedelta(days=1)
+        self.settle()  # the next daily check finds the 11th changed and computes it again
+        self.assertEqual(self.alice_ms(period="two_weeks"), 30 * MINUTE)
+
+    def test_computing_a_day_again_replaces_its_totals(self):
+        self.stack.add_events([working_time(at("2026-11-08 12:00:00"), 16 * MINUTE, user=ALICE, org=ORG)])
+        for day in range(1, 4):  # the change is found by the first check; later checks find nothing new
+            self.stack.now = NOW + timedelta(days=day)
+            self.settle()
+            self.assertEqual(self.alice_ms(period="two_weeks"), 30 * MINUTE)
+            self.assertEqual(self.alice_ms(period="month", month="2026-11"), 30 * MINUTE)
+
+    def test_an_unchanged_day_is_left_alone_and_history_stays_complete(self):
+        self.stack.now = NOW + timedelta(days=1)
+        self.settle()
+        self.assertTrue(self.history()["complete"])
+        self.assertEqual(self.alice_ms(period="two_weeks"), 14 * MINUTE)
+
+
+class LateEventInASessionTest(HistoryCase):
+    def test_a_late_event_that_joins_a_session_across_midnight_keeps_it_one_session(self):
+        self.stack.add_events([
+            client(at("2026-11-08 23:54:00")),
+            client(at("2026-11-08 23:58:00")),
+        ])
+        self.fill()
+        self.settle()
+        self.assertEqual(self.sessions(), (1, 4 * MINUTE))
+
+        # arrives late, four minutes after the session's last event, on the next day
+        self.stack.add_events([client(at("2026-11-09 00:02:00"))])
+        self.stack.now = NOW + timedelta(days=1)
+        self.settle()
+        self.assertEqual(self.sessions(), (1, 8 * MINUTE))
+
+    def sessions(self) -> tuple[int, int]:
+        sessions = self.overview(period="two_weeks")["sessions"]
+        return sessions["sessions"], sessions["total_ms"]
+
+
+class RefreshPriorityTest(HistoryCase):
+    """Processing history does not delay the ten-minute refresh of recent hours."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        start = at("2026-10-01 10:00:00")
+        self.stack.add_events([working_time(start + timedelta(days=n), MINUTE, user=ALICE, org=ORG)
+                               for n in range(44)])
+
+    def last_refresh_age(self) -> timedelta:
+        status, body = self.stack.get("/team-analytics-api/v1/status", "lead", org="org7")
+        self.assertEqual(status, 200, body)
+        return self.stack.now - datetime.fromisoformat(body["refresh"]["last_success_at"])
+
+    def test_a_due_refresh_comes_before_the_next_day_of_history(self):
+        self.step()
+        ready = [self.history()["ready_from"]]
+        bob = []
+        for n in range(1, 13):  # a step every four minutes, from 15:24
+            self.stack.now = NOW + timedelta(minutes=4 * n)
+            if n == 2:  # recent work, at 15:28
+                self.stack.add_events([working_time(self.stack.now, 64 * MINUTE, user=BOB, org=ORG)])
+            self.step()
+            self.assertLess(self.last_refresh_age(), timedelta(minutes=10))
+            ready.append(self.history()["ready_from"])
+            rows = self.overview()["by_annotator"]["rows"]
+            bob.append(sum(row["working_time_ms"] for row in rows if row["user_id"] == BOB[0]))
+        # counted by the refresh at 15:32, while history was still being processed
+        self.assertEqual(bob[:3], [0, 0, 64 * MINUTE])
+        self.assertFalse(self.history()["complete"])
+        self.assertLess(ready[-1], ready[1])  # history kept moving back meanwhile
+
+    def test_a_refresh_due_while_another_replica_processes_a_day_is_retried_soon(self):
+        self.step()  # the refresh at 15:20
+        inside, release = threading.Event(), threading.Event()
+
+        def clock_holding_a_day_of_history():
+            names = {frame.name for frame in traceback.extract_stack()}
+            if threading.current_thread().name == "replica-a" and "process_next" in names:
+                inside.set()
+                release.wait(30)
+            return self.stack.now
+
+        replica_a = self.stack.new_service(clock=clock_holding_a_day_of_history)
+        replica_b = self.stack.new_service()
+        self.stack.now = NOW + timedelta(minutes=9)
+        thread = threading.Thread(target=replica_a.step, name="replica-a")
+        thread.start()
+        try:
+            self.assertTrue(inside.wait(30), "replica A did not start a day of history")
+            self.stack.now = NOW + timedelta(minutes=11)  # the refresh is now due
+            self.assertLessEqual(replica_b.step(), 5)  # the lease is taken: try again in seconds, not minutes
+        finally:
+            release.set()
+            thread.join(30)
+        self.assertEqual(replica_b.step(), 0)  # the refresh ran
+        self.assertEqual(self.last_refresh_age(), timedelta(0))
+
+
+class RunningServiceTest(HistoryCase):
+    """The service as deployed (`python -m team_analytics`) processes history on its own."""
+
+    def test_the_running_service_processes_older_days_without_being_asked(self):
+        now = datetime.now(UTC)
+        self.stack.add_events([
+            working_time(now - timedelta(days=5), 100_000, user=ALICE, org=ORG),
+            working_time(now, 1_000, user=ALICE, org=ORG),
+        ])
+        port = free_port()
+        env = {
+            **os.environ,
+            "CLICKHOUSE_DB": self.stack.events_db,
+            "TEAM_ANALYTICS_DB": self.stack.totals_db,
+            "TEAM_ANALYTICS_CVAT_URL": self.stack.cvat.url,
+            "TEAM_ANALYTICS_LISTEN_HOST": "127.0.0.1",
+            "TEAM_ANALYTICS_LISTEN_PORT": str(port),
+        }
+        process = subprocess.Popen(  # noqa: S603 - our own module
+            [sys.executable, "-B", "-m", "team_analytics"], cwd=SERVICE_DIR, env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        try:
+            history = None
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                history = self.read(port, "status").get("history")
+                if history and history["complete"]:
+                    break
+                time.sleep(0.5)
+            self.assertTrue(history and history["complete"], history)
+            rows = self.read(port, "overview", "&period=two_weeks")["by_annotator"]["rows"]
+            self.assertEqual(rows, [{"user_id": ALICE[0], "user_name": "alice", "working_time_ms": 101_000}])
+        finally:
+            process.terminate()
+            try:
+                process.wait(10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+    @staticmethod
+    def read(port: int, path: str, query: str = "") -> dict:
+        request = Request(f"http://127.0.0.1:{port}/team-analytics-api/v1/{path}?org=org7{query}",
+                          headers={"Cookie": "sessionid=lead"})
+        try:
+            with urlopen(request, timeout=5) as response:
+                return json.loads(response.read())
+        except (URLError, ConnectionError):
+            return {}

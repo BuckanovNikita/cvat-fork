@@ -19,10 +19,10 @@ from team_analytics import endpoints
 from team_analytics.access import Access, Refused, Scope
 from team_analytics.config import Config
 from team_analytics.history import History
-from team_analytics.worker import Worker
 from team_analytics.periods import BadRequest, Span, period_span
 from team_analytics.refresh import Refresher, RefreshResult
 from team_analytics.sql import Sql
+from team_analytics.worker import Worker
 
 log = logging.getLogger(__name__)
 
