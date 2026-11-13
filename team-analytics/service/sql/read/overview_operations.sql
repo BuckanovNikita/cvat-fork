@@ -15,6 +15,8 @@ WITH
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
             AND user_name NOT IN {technical_accounts:Array(String)}
+            AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
+            AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     ),
     (
         SELECT toInt64(sum(working_ms))
@@ -27,6 +29,8 @@ WITH
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
             AND user_name NOT IN {technical_accounts:Array(String)}
+            AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
+            AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     ) AS working_ms,
     (SELECT toInt64(sum(time_ms)) FROM scoped) AS operations_ms,
     greatest(working_ms - operations_ms, toInt64(0)) AS other_ms,

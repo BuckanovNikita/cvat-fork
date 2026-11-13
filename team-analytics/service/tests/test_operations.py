@@ -279,3 +279,43 @@ class LegacyPeriodTest(OperationsCase):
 
         self.assertFalse(operations["legacy"])
         self.assertEqual(self.by_name(operations)["creation"]["objects"], 1)
+
+
+class FiltersTest(OperationsCase):
+    """The operations figures follow the project and annotator filters, Other included."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.stack.add_events([
+            # alice in project 1: a drawing (10 s) and a deletion (4 s); 60 s of working time
+            client("load:job", at("2026-11-13 10:00:00")),
+            draw(at("2026-11-13 10:00:10")),
+            client("delete:object", at("2026-11-13 10:00:14"), count=1),
+            working_time(at("2026-11-13 10:00:00"), 60_000, user=ALICE, org=ORG, project=1, task=1, job=1),
+            # alice in project 2: a drawing (20 s); 100 s of working time
+            client("load:job", at("2026-11-13 10:30:00"), project=2, task=2, job=2),
+            draw(at("2026-11-13 10:30:20"), project=2, task=2, job=2),
+            working_time(at("2026-11-13 10:30:00"), 100_000, user=ALICE, org=ORG, project=2, task=2, job=2),
+            # bob in project 1: a drawing (30 s); 50 s of working time
+            client("load:job", at("2026-11-13 11:00:00"), user=BOB, job=3),
+            draw(at("2026-11-13 11:00:30"), user=BOB, job=3),
+            working_time(at("2026-11-13 11:00:00"), 50_000, user=BOB, org=ORG, project=1, task=1, job=3),
+        ])
+
+    def figures(self, **query) -> tuple:
+        operations = self.operations(**query)
+        ops = self.by_name(operations)
+        return (ops["creation"]["objects"], ops["creation"]["time_ms"], ops["deletion"]["objects"],
+                ops["deletion"]["time_ms"], ops["other"]["time_ms"], operations["working_time_ms"])
+
+    def test_no_filter_covers_the_whole_scope(self):
+        self.assertEqual(self.figures(), (3, 60_000, 1, 4_000, 146_000, 210_000))
+
+    def test_a_project_filter_keeps_that_projects_operations_and_working_time(self):
+        self.assertEqual(self.figures(project="1"), (2, 40_000, 1, 4_000, 66_000, 110_000))
+
+    def test_an_annotator_filter_keeps_that_persons_operations_and_working_time(self):
+        self.assertEqual(self.figures(annotator="11"), (2, 30_000, 1, 4_000, 126_000, 160_000))
+
+    def test_both_filters_keep_that_persons_work_in_that_project(self):
+        self.assertEqual(self.figures(project="1", annotator="11"), (1, 10_000, 1, 4_000, 46_000, 60_000))
