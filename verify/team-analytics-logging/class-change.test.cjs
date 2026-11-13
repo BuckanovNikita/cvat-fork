@@ -128,11 +128,12 @@ const AAM_SIDEBAR = 'cvat-ui/src/components/annotation-page/attribute-annotation
     'attribute-annotation-sidebar/attribute-annotation-sidebar.tsx';
 
 /** Presses the label hotkey for `label` (ctrl+1 = the first label, ctrl+2 = the second). */
-function pressLabelHotkey(core, job, label, situation) {
+function pressLabelHotkey(core, job, label, situation, beforeChange = () => {}) {
     const saved = [];
     const appStore = store(job, situation);
     const { default: LabelsList } = loadSource(LABELS_LIST, siteBoundaries(core, appStore, saved));
     const hotkeys = findElement(LabelsList({}), (element) => element.type === 'GlobalHotKeys', 'GlobalHotKeys');
+    beforeChange();
     hotkeys.props.handlers[`SWITCH_LABEL_${LABELS.indexOf(label) + 1}`]({ preventDefault() {} });
     return saved;
 }
@@ -311,6 +312,37 @@ test('a label hotkey with nothing selected or activated changes the default labe
     const saved = pressLabelHotkey(core, job, BUS, { states: [labelled({ clientID: 1 })] });
 
     assert.deepEqual(saved, []);
+    assert.deepEqual(classChanges(await core.sent()), []);
+});
+
+test('a label hotkey on a locked activated object sends nothing (CVAT keeps its label)', async () => {
+    const core = coreLogger();
+    const job = openJob(core);
+    pressLabelHotkey(core, job, BUS, { states: [labelled({ clientID: 4, lock: true })], activated: 4 });
+
+    assert.deepEqual(classChanges(await core.sent()), []);
+});
+
+test('an object whose label cannot be read does not stop the label change', async () => {
+    const core = coreLogger();
+    const job = openJob(core);
+    const state = labelled({ clientID: 6 });
+    let current = CAR;
+    let failNextRead = false;
+    // once the hotkey is pressed, the next read of the label (the recording's) fails
+    Object.defineProperty(state, 'label', {
+        get() {
+            if (failNextRead) { failNextRead = false; throw new Error('cannot read label'); }
+            return current;
+        },
+        set(value) { current = value; },
+    });
+    let saved;
+    assert.doesNotThrow(() => {
+        saved = pressLabelHotkey(core, job, BUS, { states: [state], activated: 6 }, () => { failNextRead = true; });
+    });
+
+    assert.deepEqual(saved, [{ batch: false, labels: [BUS.id] }]);
     assert.deepEqual(classChanges(await core.sent()), []);
 });
 
