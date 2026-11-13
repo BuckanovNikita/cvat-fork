@@ -8,7 +8,7 @@ import Spin from 'antd/lib/spin';
 import Title from 'antd/lib/typography/Title';
 import Text from 'antd/lib/typography/Text';
 
-import { PageState, Status } from './service';
+import { PageState, Period, Status } from './service';
 import { Address, currentMonth } from './address';
 import TeamAnalyticsErrorPanel from './error-panel';
 import PeriodControl, { periodLabel } from './period-control';
@@ -34,6 +34,13 @@ interface Props {
 }
 
 const WEEK: Address = { period: 'week', month: null };
+
+// The selection the shown figures cover: the period the service echoed, which differs from the
+// address while figures for a new selection load.
+function shownAddress(period: Period | undefined, address: Address | undefined): Address {
+    if (period) return { ...(address ?? WEEK), period: period.name as Address['period'], month: period.month };
+    return address ?? WEEK;
+}
 
 function scopeLabel(organization: string | null, state: PageState): string {
     if (organization) return `Organization ${organization}`;
@@ -109,7 +116,7 @@ export default function TeamAnalyticsView({
                 {state.overview.time_series ? <WorkingTimeOverPeriodCard series={state.overview.time_series} /> : null}
                 <WorkingTimeByAnnotatorCard
                     rows={state.overview.by_annotator.rows}
-                    periodLabel={periodLabel(address ?? WEEK, latestMonth)}
+                    periodLabel={periodLabel(shownAddress(state.overview.period, address), latestMonth)}
                 />
             </div>
         );

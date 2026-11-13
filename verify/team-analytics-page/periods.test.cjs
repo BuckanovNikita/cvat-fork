@@ -180,16 +180,26 @@ domTest('while figures for a new period load, the previous ones stay on screen d
             new Promise((resolve) => { release = () => resolve({ body: overviewFor(url) }); }) :
             { body: overviewFor(url) }),
     });
-    await page.click('Year');
-    assert.match(page.text(), /alice-week/, 'the previous figures stay');
-    const cards = page.view.container.querySelector('.cvat-team-analytics-cards');
-    assert.ok(cards.classList.contains('cvat-team-analytics-pending'), 'and are dimmed');
-    assert.equal(cards.getAttribute('aria-busy'), 'true');
-    assert.equal(page.view.container.querySelector('.cvat-team-analytics-loading'), null);
+    try {
+        await page.click('Year');
+        assert.match(page.text(), /alice-week/, 'the previous figures stay');
+        const header = () => page.view.container
+            .querySelector('.cvat-team-analytics-working-time-by-annotator .cvat-team-analytics-card-header')
+            .textContent;
+        assert.match(header(), /Last 7 days/, 'still named for the period they cover');
+        const cards = page.view.container.querySelector('.cvat-team-analytics-cards');
+        assert.ok(cards.classList.contains('cvat-team-analytics-pending'), 'and are dimmed');
+        assert.equal(cards.getAttribute('aria-busy'), 'true');
+        assert.equal(page.view.container.querySelector('.cvat-team-analytics-loading'), null);
 
-    await act(async () => { release(); });
-    await page.view.settle();
-    assert.match(page.text(), /alice-year/);
-    assert.ok(!page.view.container.querySelector('.cvat-team-analytics-cards').classList.contains('cvat-team-analytics-pending'));
-    await page.view.unmount();
+        await act(async () => { release(); });
+        await page.view.settle();
+        assert.match(page.text(), /alice-year/);
+        assert.match(header(), /Last 12 months/);
+        assert.ok(!page.view.container.querySelector('.cvat-team-analytics-cards')
+            .classList.contains('cvat-team-analytics-pending'));
+    } finally {
+        if (release) await act(async () => { release(); });
+        await page.view.unmount();
+    }
 });
