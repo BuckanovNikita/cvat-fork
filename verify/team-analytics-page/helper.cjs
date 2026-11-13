@@ -84,6 +84,9 @@ function loadPage(relativePath, boundaries = {}, warnings = []) {
         const resolve = (name) => {
             if (Object.hasOwn(boundaries, name)) return boundaries[name];
             if (name.endsWith('.scss') || name.endsWith('.css')) return {};
+            // the CVAT client (a path alias of the UI build) is not loaded here: a page call into it fails,
+            // as an unreachable CVAT would; tests that need its answers supply the page module using it
+            if (name === 'cvat-core-wrapper') return { getCore() { throw new Error('cvat-core is not loaded in seam 3'); } };
             if (name.startsWith('.')) {
                 const target = resolveRelative(filename, name);
                 if (!target) throw new Error(`cannot resolve ${name} from ${filename}`);

@@ -18,9 +18,11 @@ from typing import Any
 from team_analytics import endpoints
 from team_analytics.access import Access, Refused, Scope
 from team_analytics.config import Config
+from team_analytics.history import History
 from team_analytics.periods import BadRequest, Span, period_span
 from team_analytics.refresh import Refresher, RefreshResult
 from team_analytics.sql import Sql
+from team_analytics.worker import Worker
 
 log = logging.getLogger(__name__)
 
@@ -51,12 +53,30 @@ class Request:
         return period_span(self.now, self.query.get("period", "week"), self.query.get("tz", "UTC"),
                            self.query.get("month"))
 
+    def filter_id(self, key: str) -> int | None:
+        """The page's `project` or `annotator` filter: an id (project 0 = No project) or None when not set."""
+        value = self.query.get(key, "")
+        if value == "":
+            return None
+        if not value.isdigit() or len(value) > 19:
+            raise BadRequest(f"{key} must be an identifier")
+        return int(value)
+
     def scope_params(self) -> dict[str, Any]:
-        """Parameters every read file takes to stay inside the caller's scope."""
+        """Parameters every read file takes to stay inside the caller's scope and the page's filters.
+
+        Filters only narrow: a read file adds `AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})`
+        and `AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})` beside the scope conditions.
+        """
+        project, annotator = self.filter_id("project"), self.filter_id("annotator")
         return {
             "instance": 1 if self.scope.instance else 0,
             "org_id": self.scope.org_id or 0,
             "technical_accounts": list(self.config.technical_accounts),
+            "has_project": 0 if project is None else 1,
+            "project": project or 0,
+            "has_annotator": 0 if annotator is None else 1,
+            "annotator": annotator or 0,
         }
 
 
@@ -67,6 +87,8 @@ class Service:
         self._clock = clock
         self.access = Access(config, lambda: self._clock().astimezone(UTC))
         self.refresher = Refresher(config, self.sql, lambda: self._clock().astimezone(UTC))
+        self.history = History(self.sql, self.refresher, lambda: self._clock().astimezone(UTC))
+        self.worker = Worker(config, self.sql, self.refresher, self.history, lambda: self._clock().astimezone(UTC))
         self.endpoints = {module.PATH: module for module in discover(endpoints)}
 
     def setup(self) -> None:
@@ -76,6 +98,10 @@ class Service:
 
     def refresh(self) -> RefreshResult:
         return self.refresher.run()
+
+    def step(self) -> float:
+        """One step of the service's loop (see worker.py); returns the seconds to wait before the next."""
+        return self.worker.step()
 
     def handle(self, method: str, path: str, query: dict[str, str], headers: dict[str, str]) -> tuple[int, dict]:
         if method != "GET":

@@ -63,17 +63,60 @@ export interface OperationsFigures {
     rows: OperationRow[];
 }
 
+export interface ProjectWorkingTime {
+    project_id: number; // 0 = No project
+    working_time_ms: number;
+}
+
+// the rows a chart does not show: how many and their working time
+export interface Rest {
+    count: number;
+    working_time_ms: number;
+}
+
+// the project and annotator filters the figures were read with (project 0 = No project)
+export interface AppliedFilters {
+    project: number | null;
+    annotator: { user_id: number; user_name: string | null } | null;
+}
+
+// project id -> name as CVAT returns it to the viewer; a project missing here is shown by its id
+export type ProjectNames = Record<number, string>;
+
 export interface Overview {
     period?: Period;
-    by_annotator: { rows: AnnotatorWorkingTime[] };
+    // the eight largest rows (project filter applied) and the rest
+    by_annotator: { rows: AnnotatorWorkingTime[]; rest?: Rest };
     time_series?: TimeSeries;
+    // the eight largest rows (annotator filter applied) and the rest
+    by_project?: { rows: ProjectWorkingTime[]; rest: Rest };
+    // active annotators within the scope and both filters, and the projects they worked in
+    headline?: { annotators: number; projects: number };
+    filters?: AppliedFilters;
     // the scope's figures plus the same per annotator (most sessions first)
     sessions?: SessionFigures & { by_annotator: AnnotatorSessions[] };
     operations?: OperationsFigures;
+    // false: the period is not wholly processed, so the figures are partial and are not shown
+    processed?: boolean;
+}
+
+// How far history is processed (status section `history`), in the viewer's time zone.
+export interface HistoryStatus {
+    complete: boolean;
+    ready_from: string | null; // ISO time from which everything is processed; null when complete or nothing is
+    ready_from_day: string | null; // YYYY-MM-DD: the viewer's first whole processed day
+    first_day: string | null; // YYYY-MM-DD: the first day with events
+    days_ready: number;
+    days_total: number;
+    periods: Record<string, boolean>; // period key -> wholly processed
+    earliest_month: string | null; // YYYY-MM: the earliest wholly processed month (null: none, or all when complete)
+    complete_weeks: number;
+    trends_ready: boolean;
 }
 
 // GET status; each key is one status section of the service.
 export interface Status {
+    history?: HistoryStatus | null;
     refresh?: {
         last_success_at: string | null; // ISO time of the last successful refresh
         now: string; // the service's time
@@ -108,6 +151,9 @@ export interface OverviewQuery {
     // the page address's period and month (see address.ts); Week when not given
     period?: string;
     month?: string | null;
+    // the page's filters (see filters.ts); project 0 = No project
+    project?: number | null;
+    annotator?: number | null;
 }
 
 export function viewerTimeZone(): string {
@@ -133,12 +179,14 @@ function serviceParams(query: OverviewQuery): URLSearchParams {
         tz: query.timeZone,
     });
     if (query.month) params.set('month', query.month);
+    if (query.project !== null && query.project !== undefined) params.set('project', String(query.project));
+    if (query.annotator !== null && query.annotator !== undefined) params.set('annotator', String(query.annotator));
     return params;
 }
 
 // The status of the figures, or null when it cannot be read (the page then shows no freshness).
 export async function loadStatus(query: OverviewQuery, fetch: FetchService = fetchService): Promise<Status | null> {
-    const params = new URLSearchParams({ org: query.organization ?? '' });
+    const params = new URLSearchParams({ org: query.organization ?? '', tz: query.timeZone });
     try {
         const response = await fetch(`${SERVICE_PREFIX}status?${params}`, {
             credentials: 'same-origin',

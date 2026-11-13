@@ -49,6 +49,13 @@ export function formatShare(share: number | null): string {
     return share === null ? MISSING : `${Math.round(share * 100)}%`;
 }
 
+// A project as the page names it: No project for id 0, CVAT's name when CVAT returns the project to
+// the viewer, otherwise its identifier (e.g. a deleted project stays in past figures).
+export function projectName(id: number, names: Record<number, string>): string {
+    if (id === 0) return 'No project';
+    return names[id] ?? `Project #${id}`;
+}
+
 // The exact value, for hover text.
 export function exactHours(ms: number): string {
     return `${(ms / HOUR_MS).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`;

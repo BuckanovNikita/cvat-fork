@@ -17,7 +17,7 @@ test('lists annotators in the order the service gives, with hours and bar widths
     ]));
     assert.match(text(html), /Working time by annotator/);
     assert.match(text(html), /Last 7 days/);
-    const rows = [...html.matchAll(/<div[^>]*class="cvat-team-analytics-annotator-row"[^>]*>(.*?)<\/div><\/div><\/div>/g)]
+    const rows = [...html.matchAll(/<button[^>]*class="cvat-team-analytics-annotator-row[ "][^>]*>(.*?)<\/button>/g)]
         .map((match) => text(match[1]));
     assert.deepEqual(rows, ['bob 3.0 h', 'alice 1.5 h', 'carol 0.0 h']);
     const widths = [...html.matchAll(/cvat-team-analytics-bar-fill" style="width:([\d.]+)%/g)].map((m) => Number(m[1]));
