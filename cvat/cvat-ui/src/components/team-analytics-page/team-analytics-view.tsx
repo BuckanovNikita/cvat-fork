@@ -12,6 +12,10 @@ import { PageState } from './service';
 import TeamAnalyticsErrorPanel from './error-panel';
 import WorkingTimeByAnnotatorCard from './cards/working-time-by-annotator-card';
 import SessionsCard from './cards/sessions-card';
+import CreationHeadlineCards from './cards/creation-headline-cards';
+import WorkingTimeSplitCard from './cards/working-time-split-card';
+import OperationsTableCard from './cards/operations-table-card';
+import LegacyNotice from './legacy-notice';
 
 interface Props {
     // slug of the organization selected in CVAT, null for none
@@ -84,7 +88,11 @@ export default function TeamAnalyticsView({ organization, state, onBackToTasks }
     } else {
         content = (
             <div className='cvat-team-analytics-cards'>
+                {state.overview.operations?.legacy ? <LegacyNotice /> : null}
                 {state.overview.sessions ? <SessionsCard figures={state.overview.sessions} /> : null}
+                {state.overview.operations ? <CreationHeadlineCards figures={state.overview.operations} /> : null}
+                {state.overview.operations ? <WorkingTimeSplitCard figures={state.overview.operations} /> : null}
+                {state.overview.operations ? <OperationsTableCard figures={state.overview.operations} /> : null}
                 <WorkingTimeByAnnotatorCard rows={state.overview.by_annotator.rows} />
             </div>
         );
