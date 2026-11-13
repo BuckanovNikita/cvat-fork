@@ -113,7 +113,9 @@ domTest('Month opens on the current month, to date, and later months cannot be c
     assert.deepEqual([address.get('period'), address.get('month')], ['month', CURRENT]);
     assert.match(page.text(), new RegExp(`${label(CURRENT)} · to date`));
     assert.equal(page.button('Next month').disabled, true);
-    assert.deepEqual(page.overviews().at(-1), { org: 'team-org', period: 'month', tz: page.overviews()[0].tz, month: CURRENT });
+    assert.deepEqual(page.overviews().at(-1), {
+        org: 'team-org', period: 'month', tz: page.overviews()[0].tz, month: CURRENT, shapes: 'bounding_boxes',
+    });
     await page.view.unmount();
 });
 

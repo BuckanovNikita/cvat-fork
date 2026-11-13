@@ -55,13 +55,14 @@ export default function TeamAnalyticsPage(): JSX.Element {
             month: address.month,
             project: address.project,
             annotator: address.annotator,
+            shapes: address.shapes,
         }, fetchService).then((next) => {
             if (!current) return;
             setState(next);
             setPending(false);
         });
         return () => { current = false; };
-    }, [organization, address.period, address.month, address.project, address.annotator, reloads]);
+    }, [organization, address.period, address.month, address.project, address.annotator, address.shapes, reloads]);
 
     // the shown period was not wholly processed; once a status read says it is, its figures are loaded
     const waitingForHistory = state.kind === 'ready' && state.overview.processed === false;

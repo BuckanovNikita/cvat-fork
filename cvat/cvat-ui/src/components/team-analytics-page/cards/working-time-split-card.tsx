@@ -8,6 +8,7 @@ import Text from 'antd/lib/typography/Text';
 import { OperationsFigures } from '../service';
 import { formatHours, formatShare } from '../format';
 import { OPERATION_LOOKS, hasNoJobWork, isRecorded } from '../operations';
+import { shapeWording } from '../shapes';
 
 interface Props {
     figures: OperationsFigures;
@@ -48,7 +49,9 @@ function WorkingTimeSplitCard({ figures }: Props): JSX.Element {
     return (
         <section className='cvat-team-analytics-card cvat-team-analytics-split'>
             {header}
-            <Text type='secondary'>{`All shapes · ${formatHours(figures.active_time_ms)} of working time`}</Text>
+            <Text type='secondary'>
+                {`${shapeWording(figures).label} · ${formatHours(figures.active_time_ms)} of working time`}
+            </Text>
             <div className='cvat-team-analytics-split-bar'>
                 {parts.map((part) => (
                     <div

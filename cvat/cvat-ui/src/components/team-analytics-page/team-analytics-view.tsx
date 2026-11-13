@@ -28,6 +28,8 @@ import CreationHeadlineCards from './cards/creation-headline-cards';
 import WorkingTimeSplitCard from './cards/working-time-split-card';
 import OperationsTableCard from './cards/operations-table-card';
 import LegacyNotice from './legacy-notice';
+import ShapeSwitch from './shape-switch';
+import { DEFAULT_SHAPES } from './shapes';
 
 interface Props {
     // slug of the organization selected in CVAT, null for none
@@ -49,7 +51,7 @@ interface Props {
 }
 
 const WEEK: Address = {
-    period: 'week', month: null, project: null, annotator: null,
+    period: 'week', month: null, project: null, annotator: null, shapes: DEFAULT_SHAPES,
 };
 
 // The selection the shown figures cover: the period the service echoed, which differs from the
@@ -206,6 +208,13 @@ export default function TeamAnalyticsView({
                         history={history}
                         onChange={onAddressChange as (change: Partial<Address>) => void}
                     />
+                    {/* a legacy period has all shapes only: no switch */}
+                    {shownOverview?.operations?.legacy ? null : (
+                        <ShapeSwitch
+                            shapes={(address as Address).shapes ?? DEFAULT_SHAPES}
+                            onChange={(shapes) => (onAddressChange as (change: Partial<Address>) => void)({ shapes })}
+                        />
+                    )}
                     <FilterChips
                         filters={filters}
                         projectLabel={filters.project === null ? '' : projectName(filters.project, projectNames)}
