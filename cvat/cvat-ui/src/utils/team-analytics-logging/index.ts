@@ -13,6 +13,7 @@
 //                                    the job's logger, fire-and-forget (class change, model creation and
 //                                    input summary records build on it)
 //   recordClassChange(job, objects, label, inputMethod) -> class change record (class-change.ts)
+//   recordModelCreation(job, objects) -> model creation record of a detector run (model-creation.ts)
 
 import { EventScope } from 'cvat-logger';
 
@@ -126,3 +127,5 @@ export function logRecord(
 
 // Class change record (class-change.ts): call just before the new label is assigned.
 export { recordClassChange } from './class-change';
+// Model creation record (model-creation.ts): call right after the detector's objects are created.
+export { recordModelCreation } from './model-creation';

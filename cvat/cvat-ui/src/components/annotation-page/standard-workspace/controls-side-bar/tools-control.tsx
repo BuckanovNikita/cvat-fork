@@ -52,6 +52,7 @@ import { TrackerControlsUpdateContext } from 'components/annotation-page/standar
 
 import ApproximationAccuracy from 'components/annotation-page/standard-workspace/controls-side-bar/approximation-accuracy';
 import ConfidenceThreshold from 'components/annotation-page/standard-workspace/controls-side-bar/confidence-threshold';
+import { recordModelCreation } from 'utils/team-analytics-logging';
 import withVisibilityHandling from './handle-popover-visibility';
 import ToolsTooltips from './interactor-tooltips';
 
@@ -1512,6 +1513,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                         });
 
                         createAnnotations([...tagStates, ...shapeStates]);
+                        recordModelCreation(jobInstance, [...tagStates, ...shapeStates]);
                     } catch (error: any) {
                         notification.error({
                             description: <CVATMarkdown>{error.message}</CVATMarkdown>,
