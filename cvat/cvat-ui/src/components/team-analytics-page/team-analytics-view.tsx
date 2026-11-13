@@ -17,6 +17,7 @@ import { projectName } from './format';
 import TeamAnalyticsErrorPanel from './error-panel';
 import PeriodControl, { periodLabel } from './period-control';
 import { FreshnessStamp, StaleWarning } from './freshness';
+import { HistoryProgress, NotProcessedNotice, TrendsGate } from './history';
 import FilterChips from './filter-chips';
 import WorkingTimeByAnnotatorCard from './cards/working-time-by-annotator-card';
 import WorkingTimeByProjectCard from './cards/working-time-by-project-card';
@@ -131,6 +132,9 @@ export default function TeamAnalyticsView({
                 subTitle='Team analytics shows one organization at a time. Choose it in the organization menu at the top right.'
             />
         );
+    } else if (state.overview.processed === false) {
+        // partial figures are never shown: one gate for every card
+        content = <NotProcessedNotice />;
     } else {
         const { overview } = state;
         const annotatorRest = overview.by_annotator.rest?.count ?? 0;
@@ -167,12 +171,14 @@ export default function TeamAnalyticsView({
                     onPick={pick('annotator')}
                     periodLabel={shownPeriod}
                 />
+                <TrendsGate history={status?.history} />
             </div>
         );
     }
 
     const showFilters = !!address && !!onAddressChange && ['ready', 'loading', 'error'].includes(state.kind);
     const refresh = state.kind === 'ready' ? status?.refresh : undefined;
+    const history = state.kind === 'ready' ? status?.history : undefined;
     const shownOverview = state.kind === 'ready' ? state.overview : null;
     return (
         <div className='cvat-team-analytics-page'>
@@ -189,6 +195,7 @@ export default function TeamAnalyticsView({
                         address={address as Address}
                         latestMonth={latestMonth}
                         period={state.kind === 'ready' ? state.overview.period : undefined}
+                        history={history}
                         onChange={onAddressChange as (change: Partial<Address>) => void}
                     />
                     <FilterChips
@@ -201,6 +208,7 @@ export default function TeamAnalyticsView({
                 </div>
             ) : null}
             {refresh ? <StaleWarning refresh={refresh} timeZone={timeZone} /> : null}
+            <HistoryProgress history={history} />
             {content}
         </div>
     );

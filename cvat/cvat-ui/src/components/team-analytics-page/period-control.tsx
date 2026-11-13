@@ -8,8 +8,9 @@ import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import {
     Address, PERIODS, PeriodKey, shiftMonth,
 } from './address';
-import { Period } from './service';
+import { HistoryStatus, Period } from './service';
 import { dayLabel, monthLabel } from './format';
+import { NOT_PROCESSED, monthAvailable, periodAvailable } from './history';
 
 // How the cards name the selected period.
 export function periodLabel(address: Address, latestMonth: string): string {
@@ -28,14 +29,17 @@ interface Props {
     latestMonth: string;
     // the days the shown figures cover, when known
     period?: Period;
+    // how far history is processed: periods and months not wholly processed are not offered
+    history?: HistoryStatus | null;
     onChange(change: Partial<Address>): void;
 }
 
 // Week, Two weeks, Month (stepping through earlier months) and Year. There is no custom range.
 export default function PeriodControl({
-    address, latestMonth, period, onChange,
+    address, latestMonth, period, history, onChange,
 }: Props): JSX.Element {
     const isMonth = address.period === 'month' && !!address.month;
+    const previousAvailable = !isMonth || monthAvailable(history, shiftMonth(address.month as string, -1));
     let range = '';
     if (isMonth) {
         range = periodLabel(address, latestMonth);
@@ -46,17 +50,22 @@ export default function PeriodControl({
     return (
         <div className='cvat-team-analytics-period-control'>
             <div className='cvat-team-analytics-periods' role='group' aria-label='Period'>
-                {PERIODS.map(({ key, label }) => (
-                    <button
-                        key={key}
-                        type='button'
-                        className='cvat-team-analytics-period'
-                        aria-pressed={address.period === key}
-                        onClick={() => onChange({ period: key as PeriodKey, month: null })}
-                    >
-                        {label}
-                    </button>
-                ))}
+                {PERIODS.map(({ key, label }) => {
+                    const available = periodAvailable(history, key);
+                    return (
+                        <button
+                            key={key}
+                            type='button'
+                            className='cvat-team-analytics-period'
+                            aria-pressed={address.period === key}
+                            disabled={!available}
+                            title={available ? undefined : NOT_PROCESSED}
+                            onClick={() => onChange({ period: key as PeriodKey, month: null })}
+                        >
+                            {label}
+                        </button>
+                    );
+                })}
             </div>
             <div className='cvat-team-analytics-range'>
                 {isMonth ? (
@@ -64,7 +73,8 @@ export default function PeriodControl({
                         type='button'
                         className='cvat-team-analytics-step'
                         aria-label='Previous month'
-                        title='Previous month'
+                        title={previousAvailable ? 'Previous month' : NOT_PROCESSED}
+                        disabled={!previousAvailable}
                         onClick={() => onChange({ month: shiftMonth(address.month as string, -1) })}
                     >
                         <LeftOutlined />

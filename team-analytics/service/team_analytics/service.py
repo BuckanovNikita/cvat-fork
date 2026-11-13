@@ -18,9 +18,11 @@ from typing import Any
 from team_analytics import endpoints
 from team_analytics.access import Access, Refused, Scope
 from team_analytics.config import Config
+from team_analytics.history import History
 from team_analytics.periods import BadRequest, Span, period_span
 from team_analytics.refresh import Refresher, RefreshResult
 from team_analytics.sql import Sql
+from team_analytics.worker import Worker
 
 log = logging.getLogger(__name__)
 
@@ -85,6 +87,8 @@ class Service:
         self._clock = clock
         self.access = Access(config, lambda: self._clock().astimezone(UTC))
         self.refresher = Refresher(config, self.sql, lambda: self._clock().astimezone(UTC))
+        self.history = History(self.sql, self.refresher, lambda: self._clock().astimezone(UTC))
+        self.worker = Worker(config, self.sql, self.refresher, self.history, lambda: self._clock().astimezone(UTC))
         self.endpoints = {module.PATH: module for module in discover(endpoints)}
 
     def setup(self) -> None:
@@ -94,6 +98,10 @@ class Service:
 
     def refresh(self) -> RefreshResult:
         return self.refresher.run()
+
+    def step(self) -> float:
+        """One step of the service's loop (see worker.py); returns the seconds to wait before the next."""
+        return self.worker.step()
 
     def handle(self, method: str, path: str, query: dict[str, str], headers: dict[str, str]) -> tuple[int, dict]:
         if method != "GET":
