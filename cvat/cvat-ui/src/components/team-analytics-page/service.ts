@@ -81,6 +81,27 @@ export interface OperationsFigures {
     rows: OperationRow[];
 }
 
+export type CreationMethodName = 'drawn' | 'pasted' | 'propagated';
+
+export interface CreationMethodRow {
+    method: CreationMethodName;
+    objects: number;
+    timed_objects: number;
+    time_ms: number;
+    // time per object with a measured time; null when none was measured
+    average_ms: number | null;
+    // of the objects of the three methods; null when there are none
+    share: number | null;
+}
+
+// The Creation operation split by method: the rows add up to it and `total.average_ms` is its average.
+export interface CreationMethods {
+    shapes?: 'bounding_boxes' | 'all';
+    // drawn, pasted and propagated, in that order
+    rows: CreationMethodRow[];
+    total: { objects: number; timed_objects: number; time_ms: number; average_ms: number | null };
+}
+
 export interface ProjectWorkingTime {
     project_id: number; // 0 = No project
     working_time_ms: number;
@@ -115,6 +136,7 @@ export interface Overview {
     sessions?: SessionFigures & { by_annotator: AnnotatorSessions[] };
     operations?: OperationsFigures;
     input?: InputFigures;
+    creation_methods?: CreationMethods;
     // false: the period is not wholly processed, so the figures are partial and are not shown
     processed?: boolean;
 }
