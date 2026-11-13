@@ -10,17 +10,19 @@ import { exactHours, formatHours } from '../format';
 
 interface Props {
     rows: AnnotatorWorkingTime[];
+    // the selected period as the page names it
+    periodLabel?: string;
 }
 
 // Working time per annotator, in the order the service gives (largest first). Bars are plain
 // divs in the style of the task progress widget.
-function WorkingTimeByAnnotatorCard({ rows }: Props): JSX.Element {
+function WorkingTimeByAnnotatorCard({ rows, periodLabel = 'Last 7 days' }: Props): JSX.Element {
     const largest = rows.reduce((max, row) => Math.max(max, row.working_time_ms), 0);
     return (
         <section className='cvat-team-analytics-card cvat-team-analytics-working-time-by-annotator'>
             <div className='cvat-team-analytics-card-header'>
                 <Text strong>Working time by annotator</Text>
-                <Text type='secondary'>Last 7 days</Text>
+                <Text type='secondary'>{periodLabel}</Text>
             </div>
             {rows.length === 0 ? (
                 <Text type='secondary' className='cvat-team-analytics-empty'>No job work in this period</Text>

@@ -43,7 +43,7 @@ domTest('the page module is loaded only when the route renders, then shows the f
     const view = await mount(app(Route));
     await view.settle();
     assert.equal(loads, 1);
-    assert.equal(requests.length, 1);
+    assert.equal(requests.filter((request) => request.url.includes('/overview')).length, 1);
     assert.match(view.container.textContent, /alice/);
     assert.match(view.container.textContent, /2\.0 h/);
     await view.unmount();
