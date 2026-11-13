@@ -126,6 +126,15 @@ test('a legacy period says hotkey use was not recorded', () => {
     assert.doesNotMatch(figures, /Hotkey actions 0/);
 });
 
+test('a scope without shape-tagged operations but with counted input shows its figures', () => {
+    const figures = text(card(render(View, ready({
+        operations: { ...OPERATIONS, legacy: true, shapes: 'all' },
+        input: INPUT,
+    }))));
+    assert.match(figures, /Hotkey actions 1\.23M/);
+    assert.doesNotMatch(figures, /not recorded/);
+});
+
 test('the operations table splits creation, class change and deletion into hotkey and mouse starts', () => {
     const html = render(View, ready({ input: INPUT }));
     const table = html.match(/<section[^>]*cvat-team-analytics-operations[^>]*>(.*?)<\/section>/)[1];

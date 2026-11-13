@@ -21,6 +21,7 @@ const PAGE = `<!doctype html><html><body>
   <div class="cvat-objects-sidebar"><button id="sidebar-delete" class="ant-btn">Delete</button>
     <div id="sidebar-empty"></div></div>
   <div class="ant-popover"><button id="popover-shape" class="ant-btn">Shape</button></div>
+  <div class="cvat-canvas-context-menu"><span id="context-delete" class="anticon"></span></div>
   <div class="ant-modal-root"><div class="ant-modal"><button id="modal-ok" class="ant-btn">OK</button></div></div>
 </body></html>`;
 
@@ -132,11 +133,12 @@ test('clicks on controls count per zone, canvas clicks apart, other clicks not a
     page.click('sidebar-delete');
     page.click('sidebar-empty');
     page.click('modal-ok');
+    page.click('context-delete'); // the canvas context menu renders outside the canvas
     page.logging.untrackInputJob();
 
     const [summary] = await page.summaries();
     assert.deepEqual(summary.payload.mouse, {
-        header: 1, controls_sidebar: 1, popup: 1, canvas: 2, objects_sidebar: 1, modal: 1,
+        header: 1, controls_sidebar: 1, popup: 2, canvas: 2, objects_sidebar: 1, modal: 1,
     });
     assert.deepEqual(summary.payload.hotkeys, {});
 });

@@ -13,7 +13,7 @@ import { HotkeyLabels, hotkeyLabel } from '../hotkeys';
 interface Props {
     // null: the service sent no keyboard figures
     figures: InputFigures | null;
-    // a legacy period: hotkey use was not recorded
+    // a legacy period (no shape-tagged operation): hotkey use was not recorded unless input was counted
     legacy: boolean;
     labels?: HotkeyLabels;
 }
@@ -32,7 +32,10 @@ function Figure({ label, value, title }: { label: string; value: string; title?:
 // Hotkey actions against mouse actions, the hotkey share and the most used hotkeys of the scope.
 function KeyboardMouseCard({ figures, legacy, labels }: Props): JSX.Element {
     let body: JSX.Element;
-    if (legacy || !figures) {
+    // a scope without shape-tagged operations after deployment (navigation or review only) still has
+    // recorded input: only a legacy period with nothing counted says it was not recorded
+    const counted = !!figures && figures.hotkey_actions + figures.mouse_actions + figures.canvas_clicks > 0;
+    if (!figures || (legacy && !counted)) {
         body = (
             <div className='cvat-team-analytics-keyboard-not-recorded'>
                 <Text strong>Hotkey use was not recorded in this period</Text>

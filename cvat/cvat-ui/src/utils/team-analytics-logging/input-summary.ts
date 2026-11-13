@@ -29,7 +29,7 @@ export const SUMMARY_INTERVAL_MS = 60000;
 
 // Shortcuts that move between frames: a held key moves on every invocation, and each counts.
 export const FRAME_NAVIGATION_ACTIONS: ReadonlySet<string> = new Set([
-    'NEXT_FRAME', 'PREV_FRAME', 'FORWARD_FRAME', 'BACKWARD_FRAME',
+    'NEXT_FRAME', 'PREV_FRAME', 'FORWARD_FRAME', 'BACKWARD_FRAME', 'NEXT_KEY_FRAME', 'PREV_KEY_FRAME',
     'SEARCH_FORWARD', 'SEARCH_BACKWARD', 'CHAPTER_FORWARD', 'CHAPTER_BACKWARD',
 ]);
 
@@ -39,7 +39,7 @@ const ZONES: [string, string][] = [
     ['canvas', '.cvat-canvas-container'],
     ['modal', '.ant-modal-root, .ant-modal-wrap, .ant-modal'],
     ['popup', '.ant-popover, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-menu-submenu-popup, ' +
-        '.ant-tooltip, .ant-notification, .ant-message'],
+        '.ant-tooltip, .ant-notification, .ant-message, .cvat-canvas-context-menu'],
     ['header', '.cvat-annotation-header'],
     ['controls_sidebar', '.cvat-canvas-controls-sidebar'],
     ['objects_sidebar', '.cvat-objects-sidebar'],
