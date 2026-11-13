@@ -51,6 +51,22 @@ export interface OperationRow {
     average_ms: number | null;
     // of operations + Other; null when there is no time at all
     share: number | null;
+    // objects of operations started by hotkey / by mouse (neither when the method was not recorded)
+    hotkey_objects?: number;
+    mouse_objects?: number;
+}
+
+// Keyboard and mouse use in the scope. Hotkeys are named by action; the page labels them.
+export interface InputFigures {
+    hotkey_actions: number;
+    // clicks on controls (the canvas is left out)
+    mouse_actions: number;
+    canvas_clicks: number;
+    // hotkey actions of hotkey and mouse actions; null when there were none
+    hotkey_share: number | null;
+    // the most used hotkeys (most first) and the rest
+    top_hotkeys: { action: string; actions: number }[];
+    rest: { count: number; actions: number };
 }
 
 export interface OperationsFigures {
@@ -133,6 +149,7 @@ export interface Overview {
     // the scope's figures plus the same per annotator (most sessions first)
     sessions?: SessionFigures & { by_annotator: AnnotatorSessions[] };
     operations?: OperationsFigures;
+    input?: InputFigures;
     creation_methods?: CreationMethods;
     saved_boxes?: SavedBoxes;
     // false: the period is not wholly processed, so the figures are partial and are not shown

@@ -5,10 +5,12 @@
 -- operations and Other add up to their own total (`active_ms`) and the shares to 100 %.
 -- `legacy` = 1 when the scope (filters included) has job work in the period and no shape-tagged
 -- operation; a period with no job work is empty, not legacy.
+-- hotkey_objects / mouse_objects: objects of operations started by hotkey / by mouse (neither when the
+-- input method was not recorded).
 -- Technical accounts are left out of both operation time and working time.
 WITH
     in_scope AS (
-        SELECT operation, shape, objects, timed_objects, time_ms
+        SELECT operation, shape, objects, timed_objects, time_ms, hotkey_objects, mouse_objects
         FROM $totals_db.operations_hourly
         WHERE hour >= {from:DateTime('Etc/UTC')} AND hour < {to:DateTime('Etc/UTC')}
             AND (hour, version) IN (
@@ -26,7 +28,7 @@ WITH
     (SELECT countIf(shape != 'untagged') FROM in_scope) AS tagged_rows,
     {bounding_boxes:UInt8} = 0 OR tagged_rows = 0 AS all_shapes,
     scoped AS (
-        SELECT operation, shape, objects, timed_objects, time_ms
+        SELECT operation, shape, objects, timed_objects, time_ms, hotkey_objects, mouse_objects
         FROM in_scope
         WHERE ({bounding_boxes:UInt8} = 0 OR shape = 'bounding_box'
             OR (SELECT countIf(shape != 'untagged') FROM in_scope) = 0)
@@ -56,6 +58,8 @@ SELECT
     if(names.name = 'other', other_ms, toInt64(totals.time_ms)) AS time_ms,
     if(names.name != 'other' AND timed_objects > 0, time_ms / timed_objects, NULL) AS average_ms,
     if(active_ms > 0, time_ms / active_ms, NULL) AS share,
+    if(names.name = 'other', toUInt64(0), totals.hotkey_objects) AS hotkey_objects,
+    if(names.name = 'other', toUInt64(0), totals.mouse_objects) AS mouse_objects,
     working_ms,
     active_ms,
     legacy,
@@ -64,7 +68,8 @@ FROM (
     SELECT arrayJoin(['creation', 'alignment', 'class_change', 'deletion', 'other']) AS name
 ) AS names
 LEFT JOIN (
-    SELECT operation, sum(objects) AS objects, sum(timed_objects) AS timed_objects, sum(time_ms) AS time_ms
+    SELECT operation, sum(objects) AS objects, sum(timed_objects) AS timed_objects, sum(time_ms) AS time_ms,
+        sum(hotkey_objects) AS hotkey_objects, sum(mouse_objects) AS mouse_objects
     FROM scoped
     GROUP BY operation
 ) AS totals ON totals.operation = names.name

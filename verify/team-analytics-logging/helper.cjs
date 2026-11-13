@@ -202,8 +202,10 @@ class FakeCanvas {
  * The 2D canvas wrapper component (canvas-wrapper.tsx) with `props` for `job`. Call its handlers
  * (`onCanvasShapeDrawn`, `onCanvasShapeDragged`, ...) with canvas events; `created` collects created objects.
  */
-function canvasWrapper(core, job, props = {}) {
-    const module = loadSource(CANVAS_WRAPPER, uiBoundaries(core, { classes: { ObjectState: FakeObjectState } }));
+function canvasWrapper(core, job, props = {}, boundaries = {}) {
+    const module = loadSource(CANVAS_WRAPPER, {
+        ...uiBoundaries(core, { classes: { ObjectState: FakeObjectState } }), ...boundaries,
+    });
     const Component = module.default.WrappedComponent;
     const created = [];
     const component = new Component({
@@ -229,7 +231,7 @@ function canvasWrapper(core, job, props = {}) {
  */
 function annotationActions(core, job, {
     states = [], selected = [], activated = null, copied = [],
-} = {}, coreParts = {}) {
+} = {}, coreParts = {}, boundaries = {}) {
     const store = {
         getState: () => ({
             annotation: {
@@ -253,6 +255,7 @@ function annotationActions(core, job, {
         ...uiBoundaries(core, { classes: { ObjectState: FakeObjectState }, ...coreParts }),
         'cvat-store': { getCVATStore: () => store },
         'cvat-canvas-wrapper': withStubs({ Canvas: FakeCanvas }, 'cvat-canvas-wrapper'),
+        ...boundaries,
     });
     const dispatched = [];
     const dispatch = (action) => {
@@ -263,7 +266,30 @@ function annotationActions(core, job, {
     return { actions, dispatch, dispatched };
 }
 
-/** The one event of `scope` among `events` (fails otherwise). */
+/**
+ * A jsdom window (no Node globals are set), or null when jsdom does not load. jsdom probes the optional
+ * native canvas package, whose binary is not built here: it is hidden while jsdom loads.
+ */
+function domWindow(html = '<!doctype html><html><body></body></html>') {
+    const Module = require('node:module');
+    const resolveFilename = Module._resolveFilename;
+    Module._resolveFilename = function resolve(request, ...rest) {
+        if (request === 'canvas') {
+            throw Object.assign(new Error("Cannot find module 'canvas'"), { code: 'MODULE_NOT_FOUND' });
+        }
+        return resolveFilename.call(this, request, ...rest);
+    };
+    try {
+        const { JSDOM } = dependency('jsdom');
+        return new JSDOM(html, { url: 'http://localhost/tasks/12/jobs/13' }).window;
+    } catch {
+        return null;
+    } finally {
+        Module._resolveFilename = resolveFilename;
+    }
+}
+
+/** The one event of`scope` among `events` (fails otherwise). */
 function only(events, scope) {
     const assert = require('node:assert/strict');
     const matching = events.filter((event) => event.scope === scope);
@@ -277,6 +303,7 @@ module.exports = {
     canvasWrapper,
     coreLogger,
     dependency,
+    domWindow,
     loadSource,
     objectState,
     only,

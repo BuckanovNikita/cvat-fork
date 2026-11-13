@@ -55,7 +55,7 @@ test('class change is the fourth operation of the table, with count, average, to
     const rows = tableRows(render(View, ready(operations())));
 
     assert.deepEqual(rows.map((cells) => cells[0]), ['Operation', 'Creation', 'Alignment', 'Class change', 'Deletion']);
-    assert.deepEqual(rows[3], ['Class change', '240', '12 s', '0.8 h', '10%']);
+    assert.deepEqual(rows[3], ['Class change', '240', '12 s', '0.8 h', '10%', '—']);
 });
 
 test('class change takes its part of the split of working time', () => {
@@ -78,6 +78,6 @@ test('in a legacy period class change reads as not recorded, not as zero', () =>
         rows: operations().rows.map((r) => (r.operation === 'class_change' ? row('class_change', 0, 0, null, 0) : r)),
     })));
 
-    assert.deepEqual(tableRows(html)[3], ['Class change', 'Not recorded', '—', '—', '—']);
+    assert.deepEqual(tableRows(html)[3], ['Class change', 'Not recorded', '—', '—', '—', 'Not recorded']);
     assert.ok(legend(html).every((item) => !item.startsWith('Class change')));
 });
