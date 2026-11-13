@@ -1,0 +1,16 @@
+Row 1:
+──────
+simple_spaced:  
+simple_compact: rectangle
+json_spaced:    rectangle
+Row 1:
+──────
+kv_int64: [('client_id',12),('is_active',1),('key.A',3),('key.B',5),('mouse.canvas',12)]
+kv_raw:   [('client_id','"12"'),('key.A','3')]
+rx:       [['A','3'],['B','5']]
+Row 1:
+──────
+shape_rows:  14460
+json_rect:   11598
+simple_rect: 0
+like_rect:   11598

@@ -1,0 +1,88 @@
+┌─query────────────────────┬─days─┬─outcome──────────────────┬─sec_run2─┬─sec_run1─┬─peak_mem_run2─┬─read_rows─┬─read_bytes─┬─result_rows─┐
+│ q1a_working_time         │    7 │ QueryFinish              │     0.01 │     0.03 │ 85.21 KiB     │    689484 │ 27.55 MiB  │         474 │
+│ q1a_working_time         │   30 │ QueryFinish              │     0.01 │     0.03 │ 157.21 KiB    │   3009653 │ 120.28 MiB │        2044 │
+│ q1a_working_time         │  365 │ QueryFinish              │     0.12 │     0.12 │ 1.78 MiB      │  36326651 │ 1.42 GiB   │       24507 │
+│ q1b_counts               │    7 │ QueryFinish              │     0.01 │     0.01 │ 3.57 MiB      │    689484 │ 30.84 MiB  │        2242 │
+│ q1b_counts               │   30 │ QueryFinish              │     0.02 │     0.03 │ 6.12 MiB      │   3009653 │ 134.63 MiB │        3170 │
+│ q1b_counts               │  365 │ QueryFinish              │     0.26 │     0.26 │ 12.18 MiB     │  36326651 │ 1.59 GiB   │        3188 │
+│ q2a_sessions             │    7 │ QueryFinish              │     0.02 │     0.02 │ 24.40 MiB     │    689484 │ 26.96 MiB  │         100 │
+│ q2a_sessions             │   30 │ QueryFinish              │     0.05 │     0.06 │ 66.36 MiB     │   3009653 │ 117.68 MiB │         100 │
+│ q2a_sessions             │  365 │ QueryFinish              │     0.44 │     0.49 │ 543.08 MiB    │  36326651 │ 1.39 GiB   │         100 │
+│ q2a_sessions [fas0]      │    7 │ QueryFinish              │     0.05 │     0.05 │ 20.48 MiB     │    689484 │ 26.96 MiB  │         100 │
+│ q2a_sessions [fas0]      │   30 │ QueryFinish              │     0.05 │     0.07 │ 66.07 MiB     │   3009653 │ 117.68 MiB │         100 │
+│ q2a_sessions [fas0]      │  365 │ QueryFinish              │     0.48 │     0.56 │ 545.68 MiB    │  36326651 │ 1.39 GiB   │         100 │
+│ q2b_sessions_ids         │    7 │ QueryFinish              │     0.02 │     0.03 │ 49.02 MiB     │    689484 │ 26.96 MiB  │         100 │
+│ q2b_sessions_ids         │   30 │ QueryFinish              │     0.07 │     0.09 │ 206.31 MiB    │   3009653 │ 117.68 MiB │         100 │
+│ q2b_sessions_ids         │  365 │ QueryFinish              │     1.02 │     0.88 │ 2.48 GiB      │  36326651 │ 1.39 GiB   │         100 │
+│ q2b_sessions_ids [fas0]  │    7 │ QueryFinish              │     0.02 │     0.03 │ 24.94 MiB     │    689484 │ 26.96 MiB  │         100 │
+│ q2b_sessions_ids [fas0]  │   30 │ QueryFinish              │     0.09 │     0.08 │ 140.48 MiB    │   3009653 │ 117.68 MiB │         100 │
+│ q2b_sessions_ids [fas0]  │  365 │ QueryFinish              │     0.88 │     0.91 │ 1.52 GiB      │  36326651 │ 1.39 GiB   │         100 │
+│ q3a_no_payload           │    7 │ QueryFinish              │     0.04 │     0.04 │ 61.75 MiB     │    689484 │ 48.63 MiB  │         770 │
+│ q3a_no_payload           │   30 │ QueryFinish              │     0.13 │     0.11 │ 245.22 MiB    │   3009653 │ 212.28 MiB │        1060 │
+│ q3a_no_payload           │  365 │ QueryFinish              │     1.08 │     1.32 │ 2.24 GiB      │  36326651 │ 2.50 GiB   │        1065 │
+│ q3a_no_payload [fas0]    │    7 │ QueryFinish              │     0.04 │     0.04 │ 29.20 MiB     │    689484 │ 48.63 MiB  │         770 │
+│ q3a_no_payload [fas0]    │   30 │ QueryFinish              │     0.12 │     0.09 │ 111.17 MiB    │   3009653 │ 212.28 MiB │        1060 │
+│ q3a_no_payload [fas0]    │  365 │ QueryFinish              │     0.94 │     1.05 │ 904.63 MiB    │  36326651 │ 2.50 GiB   │        1065 │
+│ q3b_read_only            │    7 │ QueryFinish              │     0.07 │      0.2 │ 276.35 MiB    │    689484 │ 149.38 MiB │         770 │
+│ q3b_read_only            │   30 │ QueryFinish              │     0.23 │     0.25 │ 894.66 MiB    │   3009653 │ 652.05 MiB │        1060 │
+│ q3b_read_only            │  365 │ ExceptionWhileProcessing │     3.36 │      2.7 │ 8.34 GiB      │  33300911 │ 7.04 GiB   │           0 │
+│ q3b_read_only [fas0]     │    7 │ QueryFinish              │     0.04 │     0.08 │ 39.88 MiB     │    689484 │ 149.38 MiB │         770 │
+│ q3b_read_only [fas0]     │   30 │ QueryFinish              │     0.12 │     0.13 │ 125.75 MiB    │   3009653 │ 652.05 MiB │        1060 │
+│ q3b_read_only [fas0]     │  365 │ QueryFinish              │     1.46 │     1.53 │ 965.76 MiB    │  36326651 │ 7.68 GiB   │        1065 │
+│ q3c_json                 │    7 │ QueryFinish              │      0.1 │     0.35 │ 286.25 MiB    │    689484 │ 149.38 MiB │         770 │
+│ q3c_json                 │   30 │ QueryFinish              │     0.27 │     0.47 │ 929.82 MiB    │   3009653 │ 652.05 MiB │        1060 │
+│ q3c_json                 │  365 │ ExceptionWhileProcessing │     3.48 │      2.4 │ 8.77 GiB      │  35025535 │ 7.41 GiB   │           0 │
+│ q3c_json [fas0]          │    7 │ QueryFinish              │     0.05 │     0.06 │ 45.26 MiB     │    689484 │ 149.38 MiB │         770 │
+│ q3c_json [fas0]          │   30 │ QueryFinish              │     0.16 │     0.16 │ 122.95 MiB    │   3009653 │ 652.05 MiB │        1060 │
+│ q3c_json [fas0]          │  365 │ QueryFinish              │     1.94 │     1.92 │ 970.68 MiB    │  36326651 │ 7.68 GiB   │        1065 │
+│ q3d_json_ops_only        │    7 │ QueryFinish              │     0.09 │     0.93 │ 320.60 MiB    │    689484 │ 149.38 MiB │         770 │
+│ q3d_json_ops_only        │   30 │ QueryFinish              │     0.27 │     0.33 │ 986.33 MiB    │   3009653 │ 652.05 MiB │        1060 │
+│ q3d_json_ops_only        │  365 │ ExceptionWhileProcessing │     4.74 │     3.37 │ 8.72 GiB      │  34841445 │ 7.37 GiB   │           0 │
+│ q3d_json_ops_only [fas0] │    7 │ QueryFinish              │     0.06 │     0.06 │ 43.88 MiB     │    689484 │ 149.38 MiB │         770 │
+│ q3d_json_ops_only [fas0] │   30 │ QueryFinish              │     0.17 │     0.16 │ 123.23 MiB    │   3009653 │ 652.05 MiB │        1060 │
+│ q3d_json_ops_only [fas0] │  365 │ QueryFinish              │     1.73 │      1.7 │ 974.75 MiB    │  36326651 │ 7.68 GiB   │        1065 │
+│ q3e_simplejson           │    7 │ QueryFinish              │     0.08 │     0.83 │ 265.50 MiB    │    689484 │ 149.38 MiB │         234 │
+│ q3e_simplejson           │   30 │ QueryFinish              │     0.26 │     0.34 │ 909.44 MiB    │   3009653 │ 652.05 MiB │         292 │
+│ q3e_simplejson           │  365 │ ExceptionWhileProcessing │     3.74 │     3.78 │ 8.69 GiB      │  34719090 │ 7.34 GiB   │           0 │
+│ q3e_simplejson [fas0]    │    7 │ QueryFinish              │     0.04 │     0.05 │ 41.93 MiB     │    689484 │ 149.38 MiB │         234 │
+│ q3e_simplejson [fas0]    │   30 │ QueryFinish              │     0.14 │     0.14 │ 125.84 MiB    │   3009653 │ 652.05 MiB │         292 │
+│ q3e_simplejson [fas0]    │  365 │ QueryFinish              │     1.53 │     1.51 │ 965.95 MiB    │  36326651 │ 7.68 GiB   │         293 │
+│ q3f_like_ops_only        │    7 │ QueryFinish              │     0.08 │     0.11 │ 340.95 MiB    │    689484 │ 149.38 MiB │         770 │
+│ q3f_like_ops_only        │   30 │ QueryFinish              │     0.26 │     0.32 │ 951.38 MiB    │   3009653 │ 652.05 MiB │        1060 │
+│ q3f_like_ops_only        │  365 │ ExceptionWhileProcessing │     4.44 │      3.4 │ 8.78 GiB      │  35057484 │ 7.42 GiB   │           0 │
+│ q3f_like_ops_only [fas0] │    7 │ QueryFinish              │     0.05 │     0.05 │ 43.40 MiB     │    689484 │ 149.38 MiB │         770 │
+│ q3f_like_ops_only [fas0] │   30 │ QueryFinish              │     0.16 │     0.15 │ 124.44 MiB    │   3009653 │ 652.05 MiB │        1060 │
+│ q3f_like_ops_only [fas0] │  365 │ QueryFinish              │      1.7 │     1.73 │ 974.61 MiB    │  36326651 │ 7.68 GiB   │        1065 │
+│ q4_interval_rule         │    7 │ QueryFinish              │     0.11 │     0.89 │ 348.85 MiB    │    689484 │ 152.01 MiB │         954 │
+│ q4_interval_rule         │   30 │ QueryFinish              │      0.3 │     0.38 │ 1.02 GiB      │   3009653 │ 663.53 MiB │        1259 │
+│ q4_interval_rule         │  365 │ ExceptionWhileProcessing │     4.44 │     4.03 │ 8.71 GiB      │  34328264 │ 7.39 GiB   │           0 │
+│ q4_interval_rule [fas0]  │    7 │ QueryFinish              │     0.07 │     0.08 │ 60.14 MiB     │    689484 │ 152.01 MiB │         954 │
+│ q4_interval_rule [fas0]  │   30 │ QueryFinish              │      0.2 │      0.2 │ 251.62 MiB    │   3009653 │ 663.53 MiB │        1259 │
+│ q4_interval_rule [fas0]  │  365 │ QueryFinish              │     2.29 │     2.24 │ 1.61 GiB      │  36326651 │ 7.82 GiB   │        1265 │
+│ q5_one_alignment         │    7 │ QueryFinish              │     0.67 │     0.18 │ 73.48 MiB     │    689484 │ 54.55 MiB  │         134 │
+│ q5_one_alignment         │   30 │ QueryFinish              │     0.15 │     0.21 │ 314.68 MiB    │   3009653 │ 238.11 MiB │         192 │
+│ q5_one_alignment         │  365 │ QueryFinish              │     1.64 │     2.26 │ 2.66 GiB      │  36326651 │ 2.81 GiB   │         193 │
+│ q5_one_alignment [fas0]  │    7 │ QueryFinish              │     0.05 │     0.05 │ 45.03 MiB     │    689484 │ 54.55 MiB  │         134 │
+│ q5_one_alignment [fas0]  │   30 │ QueryFinish              │     0.13 │     0.13 │ 192.93 MiB    │   3009653 │ 238.11 MiB │         192 │
+│ q5_one_alignment [fas0]  │  365 │ QueryFinish              │     1.34 │     1.36 │ 1.35 GiB      │  36326651 │ 2.81 GiB   │         193 │
+│ q6a_hotkeys_jsonkv       │    7 │ QueryFinish              │     0.03 │     0.07 │ 17.00 MiB     │    689484 │ 143.46 MiB │        1600 │
+│ q6a_hotkeys_jsonkv       │   30 │ QueryFinish              │     0.06 │     0.09 │ 26.33 MiB     │   3009653 │ 626.22 MiB │        1600 │
+│ q6a_hotkeys_jsonkv       │  365 │ QueryFinish              │     0.56 │     1.97 │ 29.68 MiB     │  36326651 │ 7.38 GiB   │        1600 │
+│ q6b_hotkeys_regex        │    7 │ QueryFinish              │     0.03 │     0.03 │ 17.00 MiB     │    689484 │ 143.46 MiB │        1600 │
+│ q6b_hotkeys_regex        │   30 │ QueryFinish              │     0.06 │     0.08 │ 26.04 MiB     │   3009653 │ 626.22 MiB │        1600 │
+│ q6b_hotkeys_regex        │  365 │ QueryFinish              │     0.65 │     0.64 │ 28.79 MiB     │  36326651 │ 7.38 GiB   │        1600 │
+│ r1_rollup_working_time   │    7 │ QueryFinish              │     0.01 │        0 │ 1.20 MiB      │     16510 │ 773.91 KiB │         474 │
+│ r1_rollup_working_time   │   30 │ QueryFinish              │     0.01 │        0 │ 4.15 MiB      │     43090 │ 1.97 MiB   │        2044 │
+│ r1_rollup_working_time   │  365 │ QueryFinish              │     0.02 │     0.03 │ 32.56 MiB     │    440181 │ 20.15 MiB  │       24507 │
+│ r2_rollup_counts         │    7 │ QueryFinish              │     0.02 │     0.02 │ 4.13 MiB      │     16510 │ 1.88 MiB   │        2242 │
+│ r2_rollup_counts         │   30 │ QueryFinish              │     0.04 │     0.04 │ 18.13 MiB     │     43090 │ 4.90 MiB   │        3170 │
+│ r2_rollup_counts         │  365 │ QueryFinish              │     0.22 │      0.2 │ 114.64 MiB    │    440181 │ 51.83 MiB  │        3188 │
+│ r3_rollup_sessions       │    7 │ QueryFinish              │        0 │        0 │ 1.38 MiB      │     16510 │ 902.89 KiB │         100 │
+│ r3_rollup_sessions       │   30 │ QueryFinish              │     0.01 │        0 │ 6.21 MiB      │     43090 │ 2.30 MiB   │         100 │
+│ r3_rollup_sessions       │  365 │ QueryFinish              │     0.03 │     0.02 │ 32.44 MiB     │    440181 │ 23.51 MiB  │         100 │
+│ r4_rollup_operations     │    7 │ QueryFinish              │     0.01 │        0 │ 2.93 MiB      │     16510 │ 1.89 MiB   │         234 │
+│ r4_rollup_operations     │   30 │ QueryFinish              │     0.02 │     0.01 │ 12.14 MiB     │     43090 │ 4.93 MiB   │         292 │
+│ r4_rollup_operations     │  365 │ QueryFinish              │     0.03 │     0.05 │ 73.08 MiB     │    440181 │ 50.37 MiB  │         293 │
+│ rollup_fill_year         │  365 │ QueryFinish              │     4.14 │     4.22 │ 2.81 GiB      │  72653302 │ 10.93 GiB  │      315419 │
+│ rollup_refresh_48h       │    2 │ QueryFinish              │     0.11 │     0.14 │ 54.14 MiB     │    545174 │ 83.97 MiB  │        2356 │
+└──────────────────────────┴──────┴──────────────────────────┴──────────┴──────────┴───────────────┴───────────┴────────────┴─────────────┘

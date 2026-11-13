@@ -1,0 +1,35 @@
+### E1: hour buckets computed independently, last 30 days
+Row 1:
+──────
+sessions_true:       16173
+sessions_naive:      20960
+session_hours_true:  5799.5
+session_hours_naive: 5706
+op_hours_true:       3863.9
+op_hours_naive:      3853.8
+### E2a: refresh from 2026-11-12 10:00 (mid-workday) with NO look-back, then diff against direct
+┌─[1mcheck[0m────────────┬─[1mgroups[0m─┬─[1mmismatches[0m─┬─[1mdirect_total[0m─┬─[1mrollup_total[0m─┐
+│ q1a working time │  24507 │          0 │ 243565422826 │ 243565422826 │
+└──────────────────┴────────┴────────────┴──────────────┴──────────────┘
+┌─[1mcheck[0m──────┬─[1mgroups[0m─┬─[1mmismatches[0m─┬─[1mdirect_total[0m─┬─[1mrollup_total[0m─┐
+│ q1b counts │   3188 │          0 │     36326651 │     36326651 │
+└────────────┴────────┴────────────┴──────────────┴──────────────┘
+┌─[1mcheck[0m───────┬─[1mgroups[0m─┬─[1mmismatches[0m─┬─[1mdirect_total[0m─┬─[1mrollup_total[0m─┬────[1mdirect_ms[0m─┬────[1mrollup_ms[0m─┐
+│ q2 sessions │    100 │          7 │       194145 │       194152 │ 252478240254 │ 252477287473 │
+└─────────────┴────────┴────────────┴──────────────┴──────────────┴──────────────┴──────────────┘
+┌─[1mcheck[0m─────────┬─[1mgroups[0m─┬─[1mmismatches[0m─┬────[1mdirect_ms[0m─┬────[1mrollup_ms[0m─┬─[1mdirect_n[0m─┬─[1mrollup_n[0m─┐
+│ q3 operations │   1065 │          2 │ 156175783267 │ 156175767462 │ 29245491 │ 29245489 │
+└───────────────┴────────┴────────────┴──────────────┴──────────────┴──────────┴──────────┘
+### E2b: same refresh with 300 s look-back, then diff against direct
+┌─[1mcheck[0m────────────┬─[1mgroups[0m─┬─[1mmismatches[0m─┬─[1mdirect_total[0m─┬─[1mrollup_total[0m─┐
+│ q1a working time │  24507 │          0 │ 243565422826 │ 243565422826 │
+└──────────────────┴────────┴────────────┴──────────────┴──────────────┘
+┌─[1mcheck[0m──────┬─[1mgroups[0m─┬─[1mmismatches[0m─┬─[1mdirect_total[0m─┬─[1mrollup_total[0m─┐
+│ q1b counts │   3188 │          0 │     36326651 │     36326651 │
+└────────────┴────────┴────────────┴──────────────┴──────────────┘
+┌─[1mcheck[0m───────┬─[1mgroups[0m─┬─[1mmismatches[0m─┬─[1mdirect_total[0m─┬─[1mrollup_total[0m─┬────[1mdirect_ms[0m─┬────[1mrollup_ms[0m─┐
+│ q2 sessions │    100 │          0 │       194145 │       194145 │ 252478240254 │ 252478240254 │
+└─────────────┴────────┴────────────┴──────────────┴──────────────┴──────────────┴──────────────┘
+┌─[1mcheck[0m─────────┬─[1mgroups[0m─┬─[1mmismatches[0m─┬────[1mdirect_ms[0m─┬────[1mrollup_ms[0m─┬─[1mdirect_n[0m─┬─[1mrollup_n[0m─┐
+│ q3 operations │   1065 │          0 │ 156175783267 │ 156175783267 │ 29245491 │ 29245491 │
+└───────────────┴────────┴────────────┴──────────────┴──────────────┴──────────┴──────────┘

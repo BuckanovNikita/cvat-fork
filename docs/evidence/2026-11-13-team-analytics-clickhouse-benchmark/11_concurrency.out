@@ -1,0 +1,50 @@
+  copy 1: 4.492s
+  copy 2: 4.524s
+2 x q3c_json (365 days) wall: 4.624612470 s
+  copy 2: 15.639s
+  copy 4: 15.685s
+  copy 3: 15.708s
+  copy 1: 15.710s
+4 x q3c_json (365 days) wall: 15.852667655 s
+  copy 2: 7.852s
+  copy 3: 8.367s
+  copy 4: 8.453s
+  copy 6: 8.572s
+  copy 1: 8.664s
+  copy 7: 8.686s
+  copy 8: 8.705s
+  copy 5: 8.713s
+8 x q2a_sessions (365 days) wall: 8.885907351 s
+2	QueryFinish	2	4.52	973.40 MiB
+4	QueryFinish	4	15.71	973.81 MiB
+8	QueryFinish	8	8.71	552.13 MiB
+payload	1.26 GiB	4.94 GiB
+timestamp	157.77 MiB	277.15 MiB
+user_email	140.56 MiB	724.91 MiB
+remote_addr	112.98 MiB	411.64 MiB
+job_id	101.71 MiB	311.79 MiB
+task_id	101.53 MiB	311.79 MiB
+### repeat with cgroup cpu.stat before/after
+before:
+usage_usec 825820450
+nr_periods 7760
+nr_throttled 575
+throttled_usec 499439122
+  copy 1: 1.962s
+1 x q3c_json (365 days) wall: 2.058666774 s
+  copy 3: 15.428s
+  copy 1: 15.439s
+  copy 2: 15.474s
+  copy 4: 15.476s
+4 x q3c_json (365 days) wall: 15.593187268 s
+after:
+usage_usec 930548574
+nr_periods 7937
+nr_throttled 738
+throttled_usec 767543703
+### 4 copies with max_threads=2 each (edit: via second script arg not supported; inline)
+  copy 2 (max_threads=1): 9.338s
+  copy 1 (max_threads=1): 9.432s
+  copy 4 (max_threads=1): 9.457s
+  copy 3 (max_threads=1): 9.853s
+4 x q3c_json max_threads=1 wall: 9.968104323 s

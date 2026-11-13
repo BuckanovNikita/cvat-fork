@@ -1,0 +1,74 @@
+# Minimal local install of upstream CVAT chart v2.82.0 on docker-desktop.
+# Worker collapse mirrors upstream helm-chart/test.values.yaml:18-51.
+# Do NOT also pass cvat.values.yaml: it enables ingress and Traefik.
+cvat:
+  backend:
+    imagePullPolicy: IfNotPresent
+    defaultStorage:
+      # upstream default is ReadWriteMany / 20Gi (templates/cvat_backend/storage.yml:14-19)
+      accessModes:
+        - ReadWriteOnce
+      size: 2Gi
+    worker:
+      annotation:
+        replicas: 0
+      chunks:
+        replicas: 0
+      consensus:
+        replicas: 0
+      export:
+        replicas: 0
+      import:
+        replicas: 0
+      qualityreports:
+        replicas: 0
+      webhooks:
+        replicas: 1
+      utils:
+        replicas: 1
+        # appended to "run worker notifications cleaning"
+        # (templates/cvat_backend/worker_utils/deployment.yml:54-66)
+        extraArgs:
+          - "annotation"
+          - "chunks"
+          - "consensus"
+          - "export"
+          - "import"
+          - "quality_reports"
+          - "--with-scheduler"
+  frontend:
+    image: cvat/ui
+    tag: test-local
+    imagePullPolicy: IfNotPresent
+  kvrocks:
+    defaultStorage:
+      size: 1Gi   # upstream default 100Gi
+
+analytics:
+  enabled: true   # Vector + Grafana subcharts, CVAT_ANALYTICS=1 on backend pods
+clickhouse:
+  enabled: true
+  persistence:
+    size: 2Gi     # subchart default 8Gi
+
+postgresql:
+  primary:
+    persistence:
+      size: 1Gi   # subchart default 8Gi
+redis:
+  master:
+    persistence:
+      size: 1Gi   # subchart default 8Gi
+
+ingress:
+  enabled: false
+traefik:
+  enabled: false
+nuclio:
+  enabled: false
+
+grafana:
+  rbac:
+    # default false renders ClusterRole/ClusterRoleBinding "<release>-grafana-clusterrole(binding)"
+    # with empty rules; namespaced=true drops both (render-verified)
+    namespaced: true

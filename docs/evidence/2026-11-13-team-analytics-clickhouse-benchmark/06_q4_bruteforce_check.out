@@ -1,0 +1,8 @@
+Row 1:
+──────
+events_compared:  29876
+mismatches:       0
+covered_by_draw:  7154
+covered_by_align: 4927
+covered_by_both:  827
+0.388

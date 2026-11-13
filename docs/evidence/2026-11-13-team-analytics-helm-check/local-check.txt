@@ -1,0 +1,12 @@
+# docker image inspect (local daemon = docker-desktop 29.9.3), 2026-11-13
+LOCAL apache/kvrocks:2.15.0 :: no (Error response from daemon: No such image: apache/kvrocks:2.15.0)
+LOCAL busybox:1.36.1 :: no (Error response from daemon: No such image: busybox:1.36.1)
+LOCAL cvat/server:v2.82.0 :: no (Error response from daemon: No such image: cvat/server:v2.82.0)
+LOCAL cvat/ui:test-local :: no (Error response from daemon: No such image: cvat/ui:test-local)
+LOCAL docker.io/bats/bats:v1.4.1 :: no (Error response from daemon: No such image: bats/bats:v1.4.1)
+LOCAL docker.io/cvat/clickhouse:23.12.2-debian-11-r0 :: no (Error response from daemon: No such image: cvat/clickhouse:23.12.2-debian-11-r0)
+LOCAL docker.io/cvat/postgresql:15.2.0-debian-11-r0 :: no (Error response from daemon: No such image: cvat/postgresql:15.2.0-debian-11-r0)
+LOCAL docker.io/grafana/grafana:10.1.5 :: no (Error response from daemon: No such image: grafana/grafana:10.1.5)
+LOCAL docker.io/library/redis:7.2.11 :: no (Error response from daemon: No such image: redis:7.2.11)
+LOCAL openpolicyagent/opa:1.12.2 :: yes
+LOCAL timberio/vector:0.26.0-alpine :: yes

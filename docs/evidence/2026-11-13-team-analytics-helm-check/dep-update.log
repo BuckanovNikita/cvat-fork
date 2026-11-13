@@ -1,0 +1,17 @@
+Getting updates for unmanaged Helm repositories...
+...Successfully got an update from the "https://helm.vector.dev" chart repository
+...Successfully got an update from the "https://helm.traefik.io/traefik" chart repository
+...Successfully got an update from the "https://nuclio.github.io/nuclio/charts" chart repository
+...Successfully got an update from the "https://grafana.github.io/helm-charts" chart repository
+...Successfully got an update from the "https://charts.bitnami.com/bitnami" chart repository
+...Successfully got an update from the "https://charts.bitnami.com/bitnami" chart repository
+...Successfully got an update from the "https://charts.bitnami.com/bitnami" chart repository
+Saving 7 charts
+Downloading postgresql from repo https://charts.bitnami.com/bitnami
+Downloading nuclio from repo https://nuclio.github.io/nuclio/charts
+Downloading vector from repo https://helm.vector.dev
+Downloading clickhouse from repo https://charts.bitnami.com/bitnami
+Downloading grafana from repo https://grafana.github.io/helm-charts
+Downloading traefik from repo https://helm.traefik.io/traefik
+Downloading redis from repo https://charts.bitnami.com/bitnami
+Deleting outdated charts

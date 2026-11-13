@@ -1,0 +1,41 @@
+--- -q SELECT version()
+23.11.5.29
+
+--- -q SELECT name, value, description FROM system.settings WHERE name ILIKE '%refresh%' FORMAT Vertical
+Row 1:
+──────
+name:        max_live_view_insert_blocks_before_refresh
+value:       64
+description: Limit maximum number of inserted blocks after which mergeable blocks are dropped and query is re-executed.
+
+Row 2:
+──────
+name:        periodic_live_view_refresh
+value:       60
+description: Interval after which periodically refreshed live view is forced to refresh.
+
+--- -q SELECT name FROM system.tables WHERE database = 'system' AND name ILIKE '%refresh%'
+
+--- -q CREATE TABLE IF NOT EXISTS rmv_target (user_id UInt64, working_ms UInt64) ENGINE = MergeTree ORDER BY user_id
+
+--- -q CREATE MATERIALIZED VIEW rmv_test REFRESH EVERY 1 HOUR TO rmv_target AS SELECT ifNull(user_id, 0) AS user_id, sum(duration) AS working_ms FROM events WHERE scope = 'send:working_time' GROUP BY user_id
+Code: 62. DB::Exception: Syntax error: failed at position 35 ('REFRESH'): REFRESH EVERY 1 HOUR TO rmv_target AS SELECT ifNull(user_id, 0) AS user_id, sum(duration) AS working_ms FROM events WHERE scope = 'send:working_time' GROUP BY u. Expected one of: token, Dot, UUID, ON, TO INNER UUID, TO, OpeningRoundBracket, storage definition, ENGINE, PARTITION BY, PRIMARY KEY, ORDER BY, SAMPLE BY, TTL, POPULATE, EMPTY, AS. (SYNTAX_ERROR)
+
+
+--- --allow_experimental_refreshable_materialized_view=1 -q CREATE MATERIALIZED VIEW rmv_test REFRESH EVERY 1 HOUR TO rmv_target AS SELECT ifNull(user_id, 0) AS user_id, sum(duration) AS working_ms FROM events WHERE scope = 'send:working_time' GROUP BY user_id
+Code: 552. DB::Exception: Unrecognized option '--allow_experimental_refreshable_materialized_view=1'. (UNRECOGNIZED_ARGUMENTS)
+
+--- -q SET allow_experimental_refreshable_materialized_view = 1
+Received exception from server (version 23.11.5):
+Code: 115. DB::Exception: Received from localhost:9000. DB::Exception: Setting allow_experimental_refreshable_materialized_view is neither a builtin setting nor started with the prefix 'SQL_' registered for user-defined settings: Maybe you meant ['allow_experimental_database_materialized_mysql']. (UNKNOWN_SETTING)
+(query: SET allow_experimental_refreshable_materialized_view = 1)
+
+--- -q SYSTEM REFRESH VIEW rmv_test
+Code: 62. DB::Exception: Syntax error: failed at position 8 ('REFRESH'): REFRESH VIEW rmv_test. Expected one of: UNKNOWN, SHUTDOWN, KILL, SUSPEND, DROP DNS CACHE, DROP MARK CACHE, DROP UNCOMPRESSED CACHE, DROP INDEX MARK CACHE, DROP INDEX UNCOMPRESSED CACHE, DROP MMAP CACHE, DROP QUERY CACHE, DROP COMPILED EXPRESSION CACHE, DROP FILESYSTEM CACHE, DROP SCHEMA CACHE, DROP FORMAT SCHEMA CACHE, DROP S3 CLIENT CACHE, STOP LISTEN, START LISTEN, RESTART REPLICAS, RESTART REPLICA, RESTORE REPLICA, WAIT LOADING PARTS, DROP REPLICA, DROP DATABASE REPLICA, JEMALLOC PURGE, JEMALLOC ENABLE PROFILE, JEMALLOC DISABLE PROFILE, JEMALLOC FLUSH PROFILE, SYNC REPLICA, SYNC DATABASE REPLICA, SYNC TRANSACTION LOG, SYNC FILE CACHE, RELOAD DICTIONARY, RELOAD DICTIONARIES, RELOAD MODEL, RELOAD MODELS, RELOAD FUNCTION, RELOAD FUNCTIONS, RELOAD EMBEDDED DICTIONARIES, RELOAD CONFIG, RELOAD USERS, RESTART DISK, STOP
+--- -q EXISTS TABLE rmv_test
+0
+
+--- -q DROP TABLE IF EXISTS rmv_test
+
+--- -q DROP TABLE IF EXISTS rmv_target
+

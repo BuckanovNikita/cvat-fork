@@ -1,0 +1,12 @@
+REGISTRY apache/kvrocks:2.15.0 :: yes (application/vnd.oci.image.index.v1+json platforms=linux/amd64,linux/arm64)
+REGISTRY busybox:1.36.1 :: yes (application/vnd.oci.image.index.v1+json platforms=linux/386,linux/amd64,linux/arm,linux/arm64,linux/ppc64le,linux/riscv64,linux/s390x)
+REGISTRY cvat/server:v2.82.0 :: yes (application/vnd.oci.image.index.v1+json platforms=linux/amd64)
+REGISTRY cvat/ui:test-local :: NO rc=1: no such manifest: docker.io/cvat/ui:test-local
+REGISTRY cvat/ui:v2.82.0 :: yes (application/vnd.oci.image.index.v1+json platforms=linux/amd64)
+REGISTRY docker.io/bats/bats:v1.4.1 :: yes (application/vnd.docker.distribution.manifest.list.v2+json platforms=linux/386,linux/amd64,linux/arm,linux/arm64,linux/ppc64le,linux/s390x)
+REGISTRY docker.io/cvat/clickhouse:23.12.2-debian-11-r0 :: yes (application/vnd.docker.distribution.manifest.v2+json single-manifest)
+REGISTRY docker.io/cvat/postgresql:15.2.0-debian-11-r0 :: yes (application/vnd.docker.distribution.manifest.v2+json single-manifest)
+REGISTRY docker.io/grafana/grafana:10.1.5 :: yes (application/vnd.docker.distribution.manifest.list.v2+json platforms=linux/amd64,linux/arm64)
+REGISTRY docker.io/library/redis:7.2.11 :: yes (application/vnd.oci.image.index.v1+json platforms=linux/386,linux/amd64,linux/arm,linux/arm64,linux/mips64le,linux/ppc64le,linux/s390x)
+REGISTRY openpolicyagent/opa:1.12.2 :: yes (application/vnd.docker.distribution.manifest.list.v2+json platforms=linux/amd64,linux/arm64)
+REGISTRY timberio/vector:0.26.0-alpine :: yes (application/vnd.docker.distribution.manifest.list.v2+json platforms=linux/amd64,linux/arm,linux/arm64)
