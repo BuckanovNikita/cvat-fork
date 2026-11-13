@@ -167,10 +167,13 @@ does not satisfy that layout. The OPA verification overlay uses an absolute
 | BUILD-B | Both served rule files match the intended overlay and real requests exhibit the patched behavior | Bundle inspection plus live API, not marker presence alone |
 
 The frontend suite executes real TypeScript, Redux and server-rendered React
-with mocked boundaries. It does not exercise the full `getTasksAsync` dispatch
-path, task-item/container wiring, browser layout or a live server. Policy tests
-evaluate synthetic inputs using upstream helper rules; they do not prove bundle
-delivery or Django/API integration.
+with mocked boundaries. Its optional `BROWSER_BIN` check renders the real summary
+component with Ant Design styles and the task-card stylesheet in Chrome/Chromium,
+checking that annotation/new text has readable contrast above its yellow bar.
+It does not exercise the full `getTasksAsync` dispatch path, task-item/container
+wiring, complete page layout or a live server. Policy tests evaluate synthetic
+inputs using upstream helper rules; they do not prove bundle delivery or
+Django/API integration.
 
 The current live OPA checker prints observations rather than asserting every
 expected HTTP outcome. Its bundle marker check can pass when only one rule has

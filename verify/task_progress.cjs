@@ -1,6 +1,7 @@
 // Run after installing cvat's dependencies: node --test verify/task_progress.cjs
 // Executes the fork's TypeScript and React components; only API and unrelated
 // application boundaries are mocked. No server or browser is required.
+// Also check computed colors in Chrome/Chromium with BROWSER_BIN=google-chrome.
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { createRequire } = require('node:module');
@@ -209,4 +210,73 @@ test('omits zero buckets and never renders a negative inaccessible segment', () 
     const summary = aggregate([{ taskId: 7, stage: JobStage.ANNOTATION, state: JobState.NEW }], [7])[7];
     const extraJob = renderToStaticMarkup(React.createElement(Progress, { summary, totalJobs: 0 }));
     assert.doesNotMatch(extraJob, /inaccessible|not available/);
+});
+
+test('annotation/new text remains readable above the yellow progress bar in a browser', {
+    skip: !process.env.BROWSER_BIN && 'Set BROWSER_BIN to a Chrome/Chromium executable',
+}, () => {
+    const { execFileSync } = require('node:child_process');
+    const { mkdtempSync, rmSync, writeFileSync } = require('node:fs');
+    const { tmpdir } = require('node:os');
+    const { pathToFileURL } = require('node:url');
+    const { createCache, extractStyle, StyleProvider } = dependency('@ant-design/cssinjs');
+    const sass = dependency('sass');
+    const directory = mkdtempSync(path.join(tmpdir(), 'cvat-legend-browser-'));
+
+    try {
+        const summary = aggregate([{
+            taskId: 18594, stage: JobStage.ANNOTATION, state: JobState.NEW,
+        }], [18594])[18594];
+        const cache = createCache();
+        const markup = renderToStaticMarkup(React.createElement(StyleProvider, { cache },
+            React.createElement('div', { className: 'cvat-tasks-list-item' },
+                React.createElement('div', { className: 'cvat-task-item-progress-wrapper' },
+                    React.createElement(Progress, { summary, totalJobs: 1 })))));
+        const { css } = sass.compile(path.join(cvatRoot, 'cvat-ui/src/components/tasks-page/styles.scss'), {
+            loadPaths: [path.join(cvatRoot, 'cvat-ui/src')],
+        });
+        const fixture = path.join(directory, 'legend.html');
+        writeFileSync(fixture, `<!doctype html><html><head><meta charset="utf-8">
+            ${extractStyle(cache)}<style>${css}</style></head><body>${markup}
+            <script>
+                const legend = document.querySelector('.cvat-jobs-legend-annotation-new strong');
+                const segment = document.querySelector('.cvat-jobs-progress-annotation-new');
+                const card = document.querySelector('.cvat-tasks-list-item');
+                const result = document.createElement('pre');
+                result.id = 'browser-result';
+                result.textContent = JSON.stringify({
+                    text: legend.textContent.trim(),
+                    textColor: getComputedStyle(legend).color,
+                    background: getComputedStyle(card).backgroundColor,
+                    barColor: getComputedStyle(segment).backgroundColor,
+                });
+                document.body.append(result);
+            </script></body></html>`);
+        const output = execFileSync(process.env.BROWSER_BIN, [
+            '--headless', '--disable-gpu', '--disable-background-networking',
+            '--no-first-run', '--no-default-browser-check',
+            `--user-data-dir=${path.join(directory, 'profile')}`,
+            '--dump-dom', pathToFileURL(fixture).href,
+        ], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+        const result = output.match(/<pre id="browser-result">([^<]+)<\/pre>/);
+        assert.ok(result, 'browser did not report computed legend colors');
+        const { text, textColor, background, barColor } = JSON.parse(result[1]);
+        assert.equal(text, '• 1 annotation / new');
+        assert.equal(background, 'rgb(255, 255, 255)');
+        assert.equal(barColor, 'rgb(250, 251, 177)');
+
+        // Composite the actual text color onto the white task card before
+        // calculating contrast. This catches inherited CSS as well as inline color.
+        const [red, green, blue, alpha = 1] = textColor.match(/[\d.]+/g).map(Number);
+        const linear = [red, green, blue].map((channel) => {
+            const value = (channel * alpha + 255 * (1 - alpha)) / 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        const luminance = linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+        const contrast = 1.05 / (luminance + 0.05);
+        assert.ok(contrast >= 4.5, `unreadable legend: ${textColor}, contrast ${contrast.toFixed(2)}:1`);
+        console.log(`Browser legend: ${textColor}; bar: ${barColor}; contrast: ${contrast.toFixed(2)}:1`);
+    } finally {
+        rmSync(directory, { recursive: true, force: true });
+    }
 });

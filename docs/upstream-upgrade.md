@@ -117,6 +117,17 @@ node --test verify/task_progress.cjs
 (cd cvat && SOURCE_MAPS_ENABLED=false yarn run build:cvat-ui)
 ```
 
+For task-legend color changes, also run the browser regression with an installed
+Chrome/Chromium executable (name or absolute path):
+
+```bash
+BROWSER_BIN=google-chrome node --test verify/task_progress.cjs
+```
+
+It checks computed text contrast with the real summary component, Ant Design
+styles and task-card stylesheet in an isolated browser profile. Without
+`BROWSER_BIN`, this browser check is skipped; the other regression tests run.
+
 `DISABLE_HUSKY=1` matches the imported Dockerfile's dependency installation and
 avoids installing upstream Git hooks in the wrapper repository. The filtered
 tree may omit upstream lint configuration; report that limitation rather than
