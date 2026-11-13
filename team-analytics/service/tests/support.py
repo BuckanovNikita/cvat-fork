@@ -216,9 +216,9 @@ class Stack:
         self.url = f"http://127.0.0.1:{self.http.server_address[1]}"
         threading.Thread(target=self.http.serve_forever, daemon=True).start()
 
-    def new_service(self) -> Service:
-        """Another service instance (e.g. a second replica) on the same databases and clock."""
-        service = Service(self.config, clock=lambda: self.now)
+    def new_service(self, clock=None) -> Service:
+        """Another service instance (e.g. a second replica) on the same databases; same clock by default."""
+        service = Service(self.config, clock=clock or (lambda: self.now))
         service.setup()
         return service
 

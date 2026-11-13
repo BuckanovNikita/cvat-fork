@@ -1,6 +1,7 @@
 """Refresh of the stored totals: trailing window, whole-hour replacement, one refresh at a time."""
 
 import threading
+import time
 from datetime import timedelta
 
 from tests.support import NOW, FakeUser, StackTestCase, at, clickhouse_client, working_time
@@ -48,7 +49,33 @@ class RefreshTest(StackTestCase):
         self.stack.refresh()
         self.assertEqual(self.alice_ms(), 10_000)
 
-    def test_only_one_refresh_runs_at_a_time_across_service_instances(self):
+    def test_no_other_refresh_runs_while_one_is_in_progress_on_another_instance(self):
+        inside, release = threading.Event(), threading.Event()
+
+        def clock_that_holds_replica_a():
+            # replica A's refresh reads the clock while it holds the lease; keep it there
+            if threading.current_thread().name == "replica-a":
+                inside.set()
+                release.wait(30)
+            return self.stack.now
+
+        replica_a = self.stack.new_service(clock=clock_that_holds_replica_a)
+        replica_b = self.stack.new_service()
+        outcome = {}
+        thread = threading.Thread(target=lambda: outcome.update(a=replica_a.refresh()), name="replica-a")
+        thread.start()
+        try:
+            self.assertTrue(inside.wait(30), "replica A did not start refreshing")
+            self.assertFalse(replica_b.refresh().ran)
+            self.assertFalse(replica_a.refresh().ran)  # another thread of the same instance
+        finally:
+            release.set()
+            thread.join(30)
+        self.assertTrue(outcome["a"].ran)
+        # once it is finished, the next refresh runs
+        self.assertTrue(replica_b.refresh().ran)
+
+    def test_concurrent_refreshes_on_several_instances_do_not_overlap(self):
         replicas = [self.stack.new_service() for _ in range(3)]
         results = []
         start = threading.Barrier(len(replicas))
@@ -62,9 +89,34 @@ class RefreshTest(StackTestCase):
             thread.start()
         for thread in threads:
             thread.join()
+        # claims made together: the earliest wins, the others step aside
         self.assertEqual(sorted(results), [False, False, True])
-        # once it is finished, the next refresh runs
-        self.assertTrue(replicas[0].refresh().ran)
+
+    def test_each_stored_hour_keeps_only_the_newest_refresh(self):
+        self.stack.add_events([working_time(at("2026-11-13 14:00:00"), 100_000, user=ALICE, org=ORG)])
+        for minutes in (0, 10, 20):
+            self.stack.refresh(NOW + timedelta(minutes=minutes))
+        totals = clickhouse_client(self.stack.totals_db)
+        deadline = time.monotonic() + 60
+        while True:
+            mutations = totals.query(
+                "SELECT is_done, latest_fail_reason FROM system.mutations WHERE database = currentDatabase()"
+            ).result_rows
+            if all(done for done, _ in mutations) or time.monotonic() > deadline:
+                break
+            time.sleep(0.5)
+        self.assertTrue(mutations)
+        self.assertEqual([reason for _, reason in mutations if reason], [])
+        self.assertTrue(all(done for done, _ in mutations), mutations)
+        copies = totals.query(
+            "SELECT hour, uniqExact(version) FROM working_time_hourly GROUP BY hour HAVING uniqExact(version) > 1"
+        ).result_rows
+        self.assertEqual(copies, [])
+        markers = totals.query(
+            "SELECT hour, count() FROM hour_versions GROUP BY hour HAVING count() > 1"
+        ).result_rows
+        self.assertEqual(markers, [])
+        self.assertEqual(self.alice_ms(), 100_000)
 
     def test_totals_are_stored_in_their_own_database_and_events_are_only_read(self):
         self.stack.add_events([working_time(at("2026-11-13 14:00:00"), 100_000, user=ALICE, org=ORG)])
