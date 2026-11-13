@@ -3,46 +3,33 @@
 // SPDX-License-Identifier: MIT
 
 import React from 'react';
-import Text from 'antd/lib/typography/Text';
 
-import { AnnotatorWorkingTime } from '../service';
-import { exactHours, formatHours } from '../format';
+import { AnnotatorWorkingTime, Rest } from '../service';
+import WorkingTimeBreakdown from './working-time-breakdown';
 
 interface Props {
     rows: AnnotatorWorkingTime[];
+    rest?: Rest;
+    selected?: number | null;
+    onPick?: (userId: number) => void;
     // the selected period as the page names it
     periodLabel?: string;
 }
 
-// Working time per annotator, in the order the service gives (largest first). Bars are plain
-// divs in the style of the task progress widget.
-function WorkingTimeByAnnotatorCard({ rows, periodLabel = 'Last 7 days' }: Props): JSX.Element {
-    const largest = rows.reduce((max, row) => Math.max(max, row.working_time_ms), 0);
+// Working time per annotator: the largest rows (within the project filter) and the rest as one line.
+function WorkingTimeByAnnotatorCard({
+    rows, rest, selected, onPick, periodLabel = 'Last 7 days',
+}: Props): JSX.Element {
     return (
-        <section className='cvat-team-analytics-card cvat-team-analytics-working-time-by-annotator'>
-            <div className='cvat-team-analytics-card-header'>
-                <Text strong>Working time by annotator</Text>
-                <Text type='secondary'>{periodLabel}</Text>
-            </div>
-            {rows.length === 0 ? (
-                <Text type='secondary' className='cvat-team-analytics-empty'>No job work in this period</Text>
-            ) : rows.map((row) => (
-                <div
-                    key={row.user_id}
-                    className='cvat-team-analytics-annotator-row'
-                    title={`${row.user_name}: ${exactHours(row.working_time_ms)}`}
-                >
-                    <span className='cvat-team-analytics-name' title={row.user_name}>{row.user_name}</span>
-                    <span className='cvat-team-analytics-value'>{formatHours(row.working_time_ms)}</span>
-                    <div className='cvat-team-analytics-bar'>
-                        <div
-                            className='cvat-team-analytics-bar-fill'
-                            style={{ width: `${largest > 0 ? (row.working_time_ms / largest) * 100 : 0}%` }}
-                        />
-                    </div>
-                </div>
-            ))}
-        </section>
+        <WorkingTimeBreakdown
+            kind='annotator'
+            title='Working time by annotator'
+            subtitle={periodLabel}
+            rows={rows.map((row) => ({ id: row.user_id, name: row.user_name, working_time_ms: row.working_time_ms }))}
+            rest={rest}
+            selected={selected}
+            onPick={onPick}
+        />
     );
 }
 

@@ -1,0 +1,125 @@
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+// Working time by project and by annotator (clickable rows, legend, rest line) and the filter chips.
+
+@import 'base';
+
+.cvat-team-analytics-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: $grid-unit-size * 0.5 $grid-unit-size * 2;
+    margin-bottom: $grid-unit-size;
+    font-size: 12px;
+}
+
+.cvat-team-analytics-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: $grid-unit-size * 0.75;
+}
+
+.cvat-team-analytics-legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
+.cvat-team-analytics-working-time-swatch {
+    background: $validation-progress-color;
+}
+
+button.cvat-team-analytics-breakdown-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: $grid-unit-size;
+    width: 100%;
+    min-width: 0;
+    margin: 0 0 $grid-unit-size * 0.5;
+    padding: $grid-unit-size * 0.5 $grid-unit-size;
+    border: 0;
+    border-radius: $border-radius-base;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        background: $background-color-2;
+    }
+
+    &.cvat-team-analytics-selected {
+        background: $background-color-2;
+        font-weight: 600;
+    }
+
+    > .cvat-team-analytics-bar {
+        display: block;
+
+        > .cvat-team-analytics-bar-fill {
+            display: block;
+        }
+    }
+}
+
+.cvat-team-analytics-rest {
+    display: flex;
+    justify-content: space-between;
+    gap: $grid-unit-size;
+    margin-top: $grid-unit-size * 0.5;
+    padding: $grid-unit-size $grid-unit-size 0;
+    border-top: 1px solid $border-color-1;
+}
+
+.cvat-team-analytics-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $grid-unit-size;
+    margin-bottom: $grid-unit-size * 2;
+}
+
+.cvat-team-analytics-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: $grid-unit-size;
+    max-width: 100%;
+    min-width: 0;
+    min-height: $grid-unit-size * 5;
+    padding: 0 $grid-unit-size * 0.75 0 $grid-unit-size * 1.75;
+    border: 1px solid #c4c4c4;
+    border-radius: $border-radius-base;
+    background: $background-color-1;
+
+    &.cvat-team-analytics-filter-active {
+        border-color: $text-color;
+    }
+}
+
+.cvat-team-analytics-filter-label {
+    flex: none;
+    color: $text-color-secondary;
+}
+
+.cvat-team-analytics-filter-value {
+    min-width: 0;
+    max-width: 230px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.cvat-team-analytics-filter-clear {
+    flex: none;
+    width: $grid-unit-size * 4;
+    height: $grid-unit-size * 4;
+    border: 0;
+    border-radius: $border-radius-base;
+    background: $background-color-2;
+    cursor: pointer;
+}

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 import './styles.scss';
+import './projects-filters.scss';
 import React, {
     useEffect, useMemo, useRef, useState,
 } from 'react';
@@ -11,18 +12,20 @@ import { useHistory } from 'react-router';
 
 import { CombinedState } from 'reducers';
 import {
-    PageState, Status, fetchService, loadOverview, loadStatus, viewerTimeZone,
+    PageState, ProjectNames, Status, fetchService, loadOverview, loadStatus, viewerTimeZone,
 } from './service';
 import { currentMonth, useAddress } from './address';
 import { agedStatus } from './freshness';
+import { lookupProjectNames } from './project-names';
 import TeamAnalyticsView from './team-analytics-view';
 
 // The status (last refresh) is read again this often while the page is open.
 const STATUS_INTERVAL_MS = 60000;
 
 // The page, loaded on demand by team-analytics-route.tsx. It reads the organization CVAT has
-// selected and the selection kept in the page address, asks the service for its figures and
-// status; everything it shows is in TeamAnalyticsView.
+// selected and the selection kept in the page address (period and filters), asks the service for
+// its figures and status and CVAT for the shown projects' names; everything it shows is in
+// TeamAnalyticsView.
 export default function TeamAnalyticsPage(): JSX.Element {
     const organization = useSelector((state: CombinedState) => state.organizations.current?.slug ?? null);
     const history = useHistory();
@@ -31,6 +34,7 @@ export default function TeamAnalyticsPage(): JSX.Element {
     const [state, setState] = useState<PageState>({ kind: 'loading' });
     const [pending, setPending] = useState(false);
     const [status, setStatus] = useState<Status | null>(null);
+    const [projectNames, setProjectNames] = useState<ProjectNames>({});
     const shownOrganization = useRef<string | null>(organization);
 
     useEffect(() => {
@@ -42,14 +46,19 @@ export default function TeamAnalyticsPage(): JSX.Element {
         setState((shown) => (shown.kind === 'ready' && sameOrganization ? shown : { kind: 'loading' }));
         setPending(true);
         loadOverview({
-            organization, timeZone, period: address.period, month: address.month,
+            organization,
+            timeZone,
+            period: address.period,
+            month: address.month,
+            project: address.project,
+            annotator: address.annotator,
         }, fetchService).then((next) => {
             if (!current) return;
             setState(next);
             setPending(false);
         });
         return () => { current = false; };
-    }, [organization, address.period, address.month]);
+    }, [organization, address.period, address.month, address.project, address.annotator]);
 
     const ready = state.kind === 'ready';
     useEffect(() => {
@@ -77,6 +86,20 @@ export default function TeamAnalyticsPage(): JSX.Element {
         };
     }, [organization, ready]);
 
+    // names for the shown projects and the selected one; without an answer projects show their identifiers
+    const shownProjects = state.kind === 'ready' ? (state.overview.by_project?.rows ?? []).map((row) => row.project_id) : [];
+    if (address.project !== null) shownProjects.push(address.project);
+    const wanted = [...new Set(shownProjects.filter((id) => id > 0 && !(id in projectNames)))].sort((a, b) => a - b);
+    const wantedKey = wanted.join(',');
+    useEffect(() => {
+        if (wanted.length === 0) return undefined;
+        let current = true;
+        lookupProjectNames(wanted).then((names) => {
+            if (current) setProjectNames((known) => ({ ...known, ...names }));
+        }).catch(() => { /* shown by identifier */ });
+        return () => { current = false; };
+    }, [wantedKey]);
+
     return (
         <TeamAnalyticsView
             organization={organization}
@@ -88,6 +111,7 @@ export default function TeamAnalyticsPage(): JSX.Element {
             pending={pending}
             status={status}
             timeZone={timeZone}
+            projectNames={projectNames}
         />
     );
 }
