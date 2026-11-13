@@ -21,6 +21,19 @@ export function refreshTime(at: string, now: string, timeZone: string): string {
     return `${moment.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone })}, ${time}`;
 }
 
+// `status` as it stands `elapsedMs` after it was read: the service's clock moved on by that much,
+// so the last refresh may have become too old. Used when a newer status cannot be read.
+export function agedStatus(status: Status, elapsedMs: number): Status {
+    const { refresh } = status;
+    if (!refresh) return status;
+    const now = new Date(Date.parse(refresh.now) + elapsedMs);
+    const age = refresh.last_success_at ? now.getTime() - Date.parse(refresh.last_success_at) : Infinity;
+    return {
+        ...status,
+        refresh: { ...refresh, now: now.toISOString(), stale: refresh.stale || age > refresh.stale_after_s * 1000 },
+    };
+}
+
 interface Props {
     refresh: Refresh;
     timeZone: string;

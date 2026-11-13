@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, domAvailable, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
 
 const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
@@ -82,6 +82,70 @@ domTest('the page reads the status of the selected organization once the figures
     assert.equal(status.init.credentials, 'same-origin');
     assert.ok(view.container.querySelector('.cvat-team-analytics-stale'));
     await view.unmount();
+});
+
+// Mounts the page with the status read again every minute on a mocked clock; `answers` are the
+// successive status answers (an Error is a failed read), the last one repeating.
+async function openWithClock(t, answers) {
+    t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.parse('2026-11-13T15:30:00Z') });
+    let reads = 0;
+    const { fetch } = suppliedFetch((url) => {
+        if (!url.includes('/status')) return { body: { by_annotator: { rows: [] } } };
+        const answer = answers[Math.min(reads, answers.length - 1)];
+        reads += 1;
+        return answer instanceof Error ? answer : { body: { refresh: answer } };
+    });
+    const Page = loadPage('team-analytics-page.tsx', {
+        'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
+        'react-router': { useHistory: () => ({ push() {} }) },
+        './service': { ...loadPage('service.ts'), fetchService: fetch, viewerTimeZone: () => 'UTC' },
+    }).default;
+    const view = await mount(React.createElement(Page));
+    await view.settle();
+    const minutes = async (count) => {
+        for (let i = 0; i < count; i += 1) {
+            // eslint-disable-next-line no-await-in-loop
+            await act(async () => { t.mock.timers.tick(60000); });
+            // eslint-disable-next-line no-await-in-loop
+            await view.settle();
+        }
+    };
+    const shown = () => view.container.textContent;
+    const warned = () => !!view.container.querySelector('.cvat-team-analytics-stale');
+    return {
+        view, minutes, shown, warned, reads: () => reads,
+    };
+}
+
+domTest('an open page starts warning when the status read every minute says the figures are stale', async (t) => {
+    const page = await openWithClock(t, [
+        refresh(),
+        refresh({ now: '2026-11-13T15:51:00+00:00', stale: true }),
+    ]);
+    try {
+        assert.equal(page.warned(), false);
+        await page.minutes(1);
+        assert.equal(page.reads(), 2);
+        assert.equal(page.warned(), true);
+        assert.match(page.shown(), /last refreshed at 15:20, more than 30 minutes ago/);
+    } finally {
+        await page.view.unmount();
+    }
+});
+
+domTest('when the status cannot be read the last time stays and the warning comes once it is too old', async (t) => {
+    // fresh at 15:30 (last refresh 15:20); afterwards every read fails
+    const page = await openWithClock(t, [refresh(), new Error('network down')]);
+    try {
+        await page.minutes(1);
+        assert.match(page.shown(), /Data as of 15:20/);
+        assert.equal(page.warned(), false);
+        await page.minutes(20); // 15:51: the refresh is now 31 minutes old by the page's own clock
+        assert.match(page.shown(), /Data as of 15:20/);
+        assert.equal(page.warned(), true);
+    } finally {
+        await page.view.unmount();
+    }
 });
 
 domTest('a refused caller is not asked about freshness', async () => {

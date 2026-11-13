@@ -14,6 +14,7 @@ import {
     PageState, Status, fetchService, loadOverview, loadStatus, viewerTimeZone,
 } from './service';
 import { currentMonth, useAddress } from './address';
+import { agedStatus } from './freshness';
 import TeamAnalyticsView from './team-analytics-view';
 
 // The status (last refresh) is read again this often while the page is open.
@@ -54,9 +55,18 @@ export default function TeamAnalyticsPage(): JSX.Element {
     useEffect(() => {
         if (!ready) return undefined;
         let current = true;
+        // the last status read for this organization and when it arrived, by the page's clock
+        let last: { status: Status; at: number } | null = null;
         const load = (): void => {
             loadStatus({ organization, timeZone }, fetchService).then((next) => {
-                if (current) setStatus(next);
+                if (!current) return;
+                if (next) {
+                    last = { status: next, at: Date.now() };
+                    setStatus(next);
+                } else {
+                    // a failed read keeps the last time shown and lets it age until it is stale
+                    setStatus(last ? agedStatus(last.status, Date.now() - last.at) : null);
+                }
             });
         };
         load();
