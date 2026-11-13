@@ -39,6 +39,30 @@ export interface AnnotatorSessions extends SessionFigures {
     user_name: string;
 }
 
+export type OperationName = 'creation' | 'alignment' | 'class_change' | 'deletion' | 'other';
+
+export interface OperationRow {
+    operation: OperationName;
+    // objects the operation touched (alignment: alignments); 0 for Other
+    objects: number;
+    timed_objects: number;
+    time_ms: number;
+    // time per object with a measured time; null when none was measured
+    average_ms: number | null;
+    // of operations + Other; null when there is no time at all
+    share: number | null;
+}
+
+export interface OperationsFigures {
+    // the scope has no shape-tagged event in the period
+    legacy: boolean;
+    working_time_ms: number;
+    // operations + Other, the denominator of every share
+    active_time_ms: number;
+    // creation, alignment, class change, deletion and other, in that order
+    rows: OperationRow[];
+}
+
 export interface ProjectWorkingTime {
     project_id: number; // 0 = No project
     working_time_ms: number;
@@ -71,6 +95,7 @@ export interface Overview {
     filters?: AppliedFilters;
     // the scope's figures plus the same per annotator (most sessions first)
     sessions?: SessionFigures & { by_annotator: AnnotatorSessions[] };
+    operations?: OperationsFigures;
     // false: the period is not wholly processed, so the figures are partial and are not shown
     processed?: boolean;
 }

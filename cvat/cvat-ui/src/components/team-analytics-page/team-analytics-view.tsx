@@ -24,6 +24,10 @@ import WorkingTimeByProjectCard from './cards/working-time-by-project-card';
 import WorkingTimeOverPeriodCard from './cards/working-time-over-period-card';
 import AnnotatorsCard from './cards/annotators-card';
 import SessionsCard from './cards/sessions-card';
+import CreationHeadlineCards from './cards/creation-headline-cards';
+import WorkingTimeSplitCard from './cards/working-time-split-card';
+import OperationsTableCard from './cards/operations-table-card';
+import LegacyNotice from './legacy-notice';
 
 interface Props {
     // slug of the organization selected in CVAT, null for none
@@ -144,6 +148,7 @@ export default function TeamAnalyticsView({
                 className={`cvat-team-analytics-cards${pending ? ' cvat-team-analytics-pending' : ''}`}
                 aria-busy={pending}
             >
+                {overview.operations?.legacy ? <LegacyNotice /> : null}
                 {overview.headline ? (
                     <AnnotatorsCard
                         annotators={overview.headline.annotators}
@@ -153,7 +158,10 @@ export default function TeamAnalyticsView({
                     />
                 ) : null}
                 {overview.sessions ? <SessionsCard figures={overview.sessions} /> : null}
+                {overview.operations ? <CreationHeadlineCards figures={overview.operations} /> : null}
                 {overview.time_series ? <WorkingTimeOverPeriodCard series={overview.time_series} /> : null}
+                {overview.operations ? <WorkingTimeSplitCard figures={overview.operations} /> : null}
+                {overview.operations ? <OperationsTableCard figures={overview.operations} /> : null}
                 {overview.by_project ? (
                     <WorkingTimeByProjectCard
                         rows={overview.by_project.rows}
