@@ -38,7 +38,7 @@ annotators or projects, and open any chart in a full view that shows every row.
 
 The page reads ready-made figures, so a year loads as quickly as a week. Figures are at
 most about ten minutes behind. The UI starts recording the missing measurements from the
-day it is deployed; for earlier periods the page shows what the old data can support and
+day it is deployed; for earlier periods the page shows what a legacy period can support and
 says what is missing.
 
 The existing header link to the stock dashboards is renamed Grafana.
@@ -97,7 +97,7 @@ The existing header link to the stock dashboards is renamed Grafana.
 39. As a team lead, I want an alignment to be one uninterrupted run of adjustments to the same box, so that three small drags are not counted as three corrections.
 40. As a team lead, I want returning to a box later to count as a new alignment, so that repeated rework is visible.
 41. As a team lead, I want the number of class changes, so that I can see how often labels are corrected.
-42. As a team lead, I want a class change of several selected boxes to count each box, so that bulk relabelling is not hidden.
+42. As a team lead, I want a class change of several selected boxes to count each box, so that bulk class changes are not hidden.
 43. As a team lead, I want the number of deletions, so that I can see how much is thrown away.
 44. As a team lead, I want operations to count what people did even if it was undone, so that effort is not understated.
 45. As a team lead, I want the average time per operation, so that I can see how long each kind of step takes.
@@ -113,7 +113,7 @@ The existing header link to the stock dashboards is renamed Grafana.
 52. As a team lead, I want drawn, pasted and propagated boxes counted separately, so that I can see how boxes are really made.
 53. As a team lead, I want an average time for each of those methods and one for all three together, so that I can compare them.
 54. As a team lead, I want Model boxes shown beside them with counts only, so that automatic work is visible but not mistaken for a person's.
-55. As a team lead, I want boxes saved by technical accounts counted as Model for the project, so that pre-annotation shows up where it was applied.
+55. As a team lead, I want boxes saved by technical accounts counted as Model for the project, so that automatic work shows up where it was applied.
 56. As a team lead, I want boxes made with the built-in detector counted as Model for the annotator who ran it, so that assisted work is visible.
 57. As a team lead, I want a note that a re-upload by a technical account counts again, so that I read the Model figure correctly.
 58. As a fork maintainer, I want technical accounts to be a configured list, so that I can change it without changing code.
@@ -162,7 +162,7 @@ The existing header link to the stock dashboards is renamed Grafana.
 89. As a team lead, I want the details table paged and searchable, so that it does not grow without limit.
 90. As a team lead on a narrow window, I want cards to stack and wide tables to scroll sideways, so that the page remains usable.
 
-### Old data and processing
+### Legacy periods and processing
 
 91. As a team lead looking at a legacy period, I want a notice explaining what was not recorded, so that I do not read missing figures as zero.
 92. As a team lead looking at a legacy period, I want sessions, working time, projects and all-shape operations, so that old work is still visible.
@@ -223,7 +223,7 @@ The existing header link to the stock dashboards is renamed Grafana.
   and sent as one record at most once a minute, always at a moment when the person is
   active, and when the job is closed. A record is never written on a timer alone,
   because the server would count the wait as working time.
-- A hotkey action is counted on a key press that is not an auto-repeat. For frame
+- A hotkey action is counted when the key goes down, not for its auto-repeats. For frame
   navigation shortcuts every invocation is counted, repeats included.
 - The input method of an action is "hotkey" when a shortcut handler ran immediately
   before it; a mouse click clears that mark. For drawing, the method is that of the step
@@ -427,7 +427,7 @@ The access rules get an independent review after the end-to-end run.
   annotator.
 - Annotators seeing their own figures.
 - A comparison with the previous period.
-- Custom date ranges.
+- A period chosen by custom dates.
 - The Compose deployment and the air-gapped production installation.
 - Migrating the two existing Compose checks to Kubernetes.
 - Any change to the stock backend, its policies, Grafana's content or its access rule.
