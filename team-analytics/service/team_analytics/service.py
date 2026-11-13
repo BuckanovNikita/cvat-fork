@@ -48,7 +48,8 @@ class Request:
     cache: dict[str, Any] = field(default_factory=dict)
 
     def span(self) -> Span:
-        return period_span(self.now, self.query.get("period", "week"), self.query.get("tz", "UTC"))
+        return period_span(self.now, self.query.get("period", "week"), self.query.get("tz", "UTC"),
+                           self.query.get("month"))
 
     def scope_params(self) -> dict[str, Any]:
         """Parameters every read file takes to stay inside the caller's scope."""

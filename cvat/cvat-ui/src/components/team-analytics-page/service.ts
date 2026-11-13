@@ -13,6 +13,21 @@ export interface AnnotatorWorkingTime {
     working_time_ms: number;
 }
 
+// The period a response covers, as the service echoes it (days are the viewer's calendar days).
+export interface Period {
+    name: string;
+    first_day: string; // YYYY-MM-DD
+    last_day: string; // YYYY-MM-DD
+    month: string | null; // YYYY-MM for a month
+    to_date: boolean;
+    unit: 'day' | 'week';
+}
+
+export interface TimeSeries {
+    unit: 'day' | 'week';
+    buckets: { start: string; working_time_ms: number }[]; // start: YYYY-MM-DD
+}
+
 export interface SessionFigures {
     sessions: number;
     average_ms: number;
@@ -49,10 +64,23 @@ export interface OperationsFigures {
 }
 
 export interface Overview {
+    period?: Period;
     by_annotator: { rows: AnnotatorWorkingTime[] };
+    time_series?: TimeSeries;
     // the scope's figures plus the same per annotator (most sessions first)
     sessions?: SessionFigures & { by_annotator: AnnotatorSessions[] };
     operations?: OperationsFigures;
+}
+
+// GET status; each key is one status section of the service.
+export interface Status {
+    refresh?: {
+        last_success_at: string | null; // ISO time of the last successful refresh
+        now: string; // the service's time
+        interval_s: number;
+        stale_after_s: number;
+        stale: boolean;
+    };
 }
 
 export type PageState =
@@ -77,6 +105,9 @@ export interface OverviewQuery {
     // slug of the organization selected in CVAT, null for none
     organization: string | null;
     timeZone: string;
+    // the page address's period and month (see address.ts); Week when not given
+    period?: string;
+    month?: string | null;
 }
 
 export function viewerTimeZone(): string {
@@ -95,12 +126,33 @@ async function body(response: ServiceResponse): Promise<any> {
     }
 }
 
-export async function loadOverview(query: OverviewQuery, fetch: FetchService = fetchService): Promise<PageState> {
+function serviceParams(query: OverviewQuery): URLSearchParams {
     const params = new URLSearchParams({
         org: query.organization ?? '',
-        period: 'week',
+        period: query.period ?? 'week',
         tz: query.timeZone,
     });
+    if (query.month) params.set('month', query.month);
+    return params;
+}
+
+// The status of the figures, or null when it cannot be read (the page then shows no freshness).
+export async function loadStatus(query: OverviewQuery, fetch: FetchService = fetchService): Promise<Status | null> {
+    const params = new URLSearchParams({ org: query.organization ?? '' });
+    try {
+        const response = await fetch(`${SERVICE_PREFIX}status?${params}`, {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' },
+        });
+        const data = await body(response);
+        return response.ok && data ? data as Status : null;
+    } catch {
+        return null;
+    }
+}
+
+export async function loadOverview(query: OverviewQuery, fetch: FetchService = fetchService): Promise<PageState> {
+    const params = serviceParams(query);
     let response: ServiceResponse;
     try {
         response = await fetch(`${SERVICE_PREFIX}overview?${params}`, {

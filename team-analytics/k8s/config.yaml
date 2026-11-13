@@ -1,0 +1,18 @@
+# Configuration of the Team Analytics service (variables: README.md beside this file).
+# ClickHouse address and credentials are not here: the Deployment reads them from the CVAT
+# chart's own Secret `cvat-analytics-secret`, the account CVAT already uses.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: team-analytics
+  labels:
+    app.kubernetes.io/name: team-analytics
+data:
+  # CVAT backend Service of the chart release (release "cvat" -> cvat-backend-service)
+  TEAM_ANALYTICS_CVAT_URL: "http://cvat-backend-service:8080"
+  # comma-separated CVAT user names of accounts that stand for automated processes
+  TEAM_ANALYTICS_TECHNICAL_ACCOUNTS: ""
+  # seconds between refreshes of the stored totals
+  TEAM_ANALYTICS_REFRESH_INTERVAL_S: "600"
+  # database of the stored totals (created by the service at start)
+  TEAM_ANALYTICS_DB: "team_analytics"

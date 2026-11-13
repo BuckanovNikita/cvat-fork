@@ -85,6 +85,159 @@
     margin: $grid-unit-size * 8 auto;
 }
 
+// filter row: period, range, freshness
+.cvat-team-analytics-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $grid-unit-size $grid-unit-size * 2;
+    margin-bottom: $grid-unit-size * 2;
+}
+
+.cvat-team-analytics-period-control {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $grid-unit-size;
+}
+
+.cvat-team-analytics-periods {
+    display: inline-flex;
+    padding: 2px;
+    border-radius: $border-radius-base;
+    background: $border-color-1;
+}
+
+.cvat-team-analytics-period,
+.cvat-team-analytics-step {
+    min-height: $grid-unit-size * 4;
+    padding: 0 $grid-unit-size * 2;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: $text-color;
+    font: inherit;
+    cursor: pointer;
+
+    &[aria-pressed='true'] {
+        background: $background-color-1;
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    }
+
+    &:disabled {
+        color: $text-color-secondary;
+        cursor: not-allowed;
+    }
+}
+
+.cvat-team-analytics-step {
+    padding: 0 $grid-unit-size;
+    background: $border-color-1;
+}
+
+.cvat-team-analytics-range {
+    display: inline-flex;
+    align-items: center;
+    gap: $grid-unit-size;
+}
+
+.cvat-team-analytics-freshness {
+    display: inline-flex;
+    align-items: center;
+    gap: $grid-unit-size;
+    margin-left: auto;
+    color: $text-color-secondary;
+}
+
+.cvat-team-analytics-stale {
+    display: flex;
+    align-items: center;
+    gap: $grid-unit-size;
+    margin-bottom: $grid-unit-size * 2;
+    padding: $grid-unit-size $grid-unit-size * 2;
+    border: 1px solid #faad14;
+    border-radius: $border-radius-base;
+    background: #fffbe6;
+}
+
+// previous figures while new ones load
+.cvat-team-analytics-pending {
+    opacity: 0.45;
+    transition: opacity 0.2s;
+}
+
+// working time per day or week
+.cvat-team-analytics-time-chart {
+    grid-column: 1 / -1;
+}
+
+.cvat-team-analytics-time-plot {
+    display: flex;
+    gap: $grid-unit-size;
+    height: 200px;
+}
+
+.cvat-team-analytics-time-scale {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    color: $text-color-secondary;
+    font-size: 12px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.cvat-team-analytics-time-bars,
+.cvat-team-analytics-time-axis {
+    display: flex;
+    flex: 1;
+    gap: 2px;
+    min-width: 0;
+}
+
+.cvat-team-analytics-time-bar {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.cvat-team-analytics-time-value {
+    min-height: 18px;
+    font-size: 12px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.cvat-team-analytics-time-track {
+    display: flex;
+    flex: 1;
+    align-items: flex-end;
+    border-bottom: 1px solid $border-color-1;
+}
+
+.cvat-team-analytics-time-fill {
+    width: 100%;
+    min-height: 1px;
+    border-radius: 2px 2px 0 0;
+    background: $validation-progress-color;
+}
+
+.cvat-team-analytics-time-axis {
+    margin-left: $grid-unit-size * 5;
+
+    > div {
+        flex: 1;
+        min-width: 0;
+        overflow: visible;
+        white-space: nowrap;
+        color: $text-color-secondary;
+        font-size: 12px;
+        text-align: center;
+    }
+}
+
 .cvat-team-analytics-headline-value {
     font-size: 28px;
     line-height: 1.2;
