@@ -56,7 +56,7 @@ count, and its tooltip contains the count and label.
 
 | Stage | new | in progress | completed | rejected |
 | --- | --- | --- | --- | --- |
-| annotation | `#fafbb1` | `#faad14` | `#fafe01` | `#ff4136` |
+| annotation | `#c1c1c1` | `#faad14` | `#fafe01` | `#ff4136` |
 | validation | `#b4dafd` | `#1890ff` | `#00478a` | `#ff4136` |
 | acceptance | `#b3ff66` | `#b3ff66` | `#61c200` | `#ff4136` |
 
@@ -169,7 +169,7 @@ does not satisfy that layout. The OPA verification overlay uses an absolute
 The frontend suite executes real TypeScript, Redux and server-rendered React
 with mocked boundaries. Its optional `BROWSER_BIN` check renders the real summary
 component with Ant Design styles and the task-card stylesheet in Chrome/Chromium,
-checking that annotation/new text has readable contrast above its yellow bar.
+checking that annotation/new text has readable contrast above its default gray bar.
 It does not exercise the full `getTasksAsync` dispatch path, task-item/container
 wiring, complete page layout or a live server. Policy tests evaluate synthetic
 inputs using upstream helper rules; they do not prove bundle delivery or

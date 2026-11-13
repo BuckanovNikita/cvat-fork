@@ -7,7 +7,7 @@ import { TaskJobsSummary } from 'reducers';
 
 export const TASK_JOB_COLORS: Record<JobStage, Record<JobState, string>> = {
     [JobStage.ANNOTATION]: {
-        [JobState.NEW]: '#fafbb1',
+        [JobState.NEW]: '#c1c1c1',
         [JobState.IN_PROGRESS]: '#faad14',
         [JobState.COMPLETED]: '#fafe01',
         [JobState.REJECTED]: '#ff4136',

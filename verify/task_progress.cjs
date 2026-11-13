@@ -44,7 +44,7 @@ const Progress = loadSource('cvat-ui/src/components/tasks-page/task-jobs-progres
 }).default;
 
 const cases = [
-    [JobStage.ANNOTATION, JobState.NEW, '#fafbb1'],
+    [JobStage.ANNOTATION, JobState.NEW, '#c1c1c1'],
     [JobStage.ANNOTATION, JobState.IN_PROGRESS, '#faad14'],
     [JobStage.ANNOTATION, JobState.COMPLETED, '#fafe01'],
     [JobStage.ANNOTATION, JobState.REJECTED, '#ff4136'],
@@ -212,7 +212,7 @@ test('omits zero buckets and never renders a negative inaccessible segment', () 
     assert.doesNotMatch(extraJob, /inaccessible|not available/);
 });
 
-test('annotation/new text remains readable above the yellow progress bar in a browser', {
+test('annotation/new text remains readable above the default gray progress bar in a browser', {
     skip: !process.env.BROWSER_BIN && 'Set BROWSER_BIN to a Chrome/Chromium executable',
 }, () => {
     const { execFileSync } = require('node:child_process');
@@ -263,7 +263,7 @@ test('annotation/new text remains readable above the yellow progress bar in a br
         const { text, textColor, background, barColor } = JSON.parse(result[1]);
         assert.equal(text, '• 1 annotation / new');
         assert.equal(background, 'rgb(255, 255, 255)');
-        assert.equal(barColor, 'rgb(250, 251, 177)');
+        assert.equal(barColor, 'rgb(193, 193, 193)');
 
         // Composite the actual text color onto the white task card before
         // calculating contrast. This catches inherited CSS as well as inline color.
