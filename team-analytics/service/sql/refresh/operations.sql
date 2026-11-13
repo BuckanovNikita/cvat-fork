@@ -1,4 +1,5 @@
--- Operations and time per operation, from the annotator's job-bound client events.
+-- Operations and time per operation, from the annotator's client events. Only job-bound events are
+-- operations; every client event (inside a job or not) is a previous action that a gap is measured from.
 --
 -- Operations (events the stock UI already writes):
 --   creation:  draw:object (drawn), paste:object (pasted), propagate:object (propagated), and
@@ -76,6 +77,8 @@ FROM
                         ifNull(task_id, 0) AS task,
                         ifNull(user_name, '') AS user_name,
                         multiIf(
+                            -- outside a job an event is only a previous action, never an operation
+                            job_id IS NULL, '',
                             scope IN ('draw:object', 'paste:object', 'propagate:object'), 'creation',
                             scope IN ('drag:object', 'resize:object'), 'alignment',
                             scope = 'delete:object', 'deletion',
@@ -102,7 +105,6 @@ FROM
                     WHERE timestamp >= {read_from:DateTime64(3, 'Etc/UTC')}
                         AND timestamp < {window_to:DateTime64(3, 'Etc/UTC')}
                         AND source = 'client'
-                        AND job_id IS NOT NULL
                         AND user_id IS NOT NULL
                 )
                 WINDOW oldest_first AS (PARTITION BY user_id ORDER BY ts ASC, op != '' ASC, tiebreak ASC)

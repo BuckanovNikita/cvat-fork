@@ -151,6 +151,19 @@ class TimePerOperationTest(OperationsCase):
         self.assertEqual(ops["creation"]["time_ms"], 7_000)
         self.assertEqual(ops["alignment"]["time_ms"], 4_000)
 
+    def test_the_previous_action_may_lie_outside_a_job(self):
+        t = "2026-11-13 10:00:00"
+        self.stack.add_events([
+            client("load:job", seconds(t, 0)),
+            # back on the task page, then into the job again
+            client("click:element", seconds(t, 200), project=None, task=None, job=None),
+            draw(seconds(t, 210)),
+        ])
+
+        creation = self.by_name(self.operations())["creation"]
+
+        self.assertEqual((creation["objects"], creation["timed_objects"], creation["time_ms"]), (1, 1, 10_000))
+
     def test_an_operation_at_the_start_of_a_refresh_window_counts_its_time_once(self):
         # the refresh window starts on a whole hour; the previous action lies before it
         self.stack.add_events([
