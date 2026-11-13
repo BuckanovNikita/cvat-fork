@@ -13,8 +13,21 @@ export interface AnnotatorWorkingTime {
     working_time_ms: number;
 }
 
+export interface SessionFigures {
+    sessions: number;
+    average_ms: number;
+    total_ms: number;
+}
+
+export interface AnnotatorSessions extends SessionFigures {
+    user_id: number;
+    user_name: string;
+}
+
 export interface Overview {
     by_annotator: { rows: AnnotatorWorkingTime[] };
+    // the scope's figures plus the same per annotator (most sessions first)
+    sessions?: SessionFigures & { by_annotator: AnnotatorSessions[] };
 }
 
 export type PageState =
