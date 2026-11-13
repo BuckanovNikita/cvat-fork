@@ -242,6 +242,25 @@ class PeriodAndScopeTest(OperationsCase):
         self.assertEqual((ops["creation"]["objects"], ops["creation"]["time_ms"]), (1, 10_000))
         self.assertEqual(ops["deletion"]["objects"], 0)
 
+    def test_a_month_holds_only_its_own_operations_and_working_time(self):
+        self.stack.add_events([
+            client("load:job", at("2026-10-31 23:59:50")),
+            draw(at("2026-10-31 23:59:58")),  # October in UTC
+            draw(at("2026-11-01 00:00:04")),  # November
+            working_time(at("2026-10-31 23:59:50"), 8_000, user=ALICE, org=ORG),
+        ])
+        self.stack.keep_refreshing_since(at("2026-10-29 00:00:00"))
+
+        def creation_and_other(month: str) -> tuple:
+            status, body = self.stack.overview("lead", org="org7", period="month", month=month)
+            self.assertEqual(status, 200, body)
+            ops = self.by_name(body["operations"])
+            return ops["creation"]["objects"], ops["creation"]["time_ms"], ops["other"]["time_ms"]
+
+        self.assertEqual(creation_and_other("2026-10"), (1, 8_000, 0))
+        # November has the second drawing but no working time: Other stays at zero
+        self.assertEqual(creation_and_other("2026-11"), (1, 6_000, 0))
+
 
 class LegacyPeriodTest(OperationsCase):
     def test_a_period_without_shape_tagged_events_is_a_legacy_period(self):
