@@ -2,6 +2,8 @@
 
 The three add up to the Creation operation, and `total.average_ms` is its average; see
 read/overview_creation_methods.sql. The `shapes` query narrows the figures as it does the operations.
+`model` is the fourth method (count and share, no time), outside the three and their total;
+`technical_accounts` is how many accounts are configured as technical (the page says so beside Model).
 """
 
 from __future__ import annotations
@@ -38,4 +40,6 @@ def build(request: Request) -> dict:
             "time_ms": int(first["all_time"]),
             "average_ms": _number(first["all_average_ms"]),
         },
+        "model": {"objects": int(first["model_objects"]), "share": _number(first["model_share"])},
+        "technical_accounts": len(request.config.technical_accounts),
     }
