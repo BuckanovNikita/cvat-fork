@@ -1,0 +1,86 @@
+# Values for the upstream CVAT chart v2.82.0 in the Team Analytics test stack.
+# Based on docs/evidence/2026-11-13-team-analytics-helm-check/values.local.yaml.
+# Do NOT also pass the chart's cvat.values.yaml: it enables ingress and Traefik, which add
+# cluster-wide objects. run.sh sets the frontend image and Grafana's root URL with --set.
+cvat:
+  backend:
+    imagePullPolicy: IfNotPresent
+    defaultStorage:
+      # upstream default is ReadWriteMany / 20Gi (templates/cvat_backend/storage.yml)
+      accessModes:
+        - ReadWriteOnce
+      size: 2Gi
+    worker:
+      # Smallest worker set the chart supports: upstream helm-chart/test.values.yaml runs
+      # only the utils worker (consuming every other queue) and the webhooks worker.
+      annotation:
+        replicas: 0
+      chunks:
+        replicas: 0
+      consensus:
+        replicas: 0
+      export:
+        replicas: 0
+      import:
+        replicas: 0
+      qualityreports:
+        replicas: 0
+      webhooks:
+        replicas: 1
+      utils:
+        replicas: 1
+        # appended to "run worker notifications cleaning"
+        # (templates/cvat_backend/worker_utils/deployment.yml)
+        extraArgs:
+          - "annotation"
+          - "chunks"
+          - "consensus"
+          - "export"
+          - "import"
+          - "quality_reports"
+          - "--with-scheduler"
+  frontend:
+    # image and tag come from TA_UI_IMAGE; the image is built locally, never pulled
+    imagePullPolicy: Never
+  kvrocks:
+    defaultStorage:
+      size: 1Gi   # upstream default 100Gi
+
+analytics:
+  enabled: true   # Vector + Grafana subcharts, CVAT_ANALYTICS=1 on backend pods
+clickhouse:
+  enabled: true
+  persistence:
+    size: 2Gi     # subchart default 8Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+postgresql:
+  primary:
+    persistence:
+      size: 1Gi   # subchart default 8Gi
+redis:
+  master:
+    persistence:
+      size: 1Gi   # subchart default 8Gi
+
+ingress:
+  enabled: false
+traefik:
+  enabled: false
+nuclio:
+  enabled: false
+
+grafana:
+  rbac:
+    # default false renders ClusterRole/ClusterRoleBinding with empty rules;
+    # namespaced=true drops both
+    namespaced: true
+  testFramework:
+    # the helm test pod needs docker.io/bats/bats, which is not an approved image
+    enabled: false
