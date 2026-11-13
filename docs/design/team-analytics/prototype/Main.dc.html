@@ -1,0 +1,1372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Team analytics</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#0b5cad}a:hover{color:#084a8c}
+button:focus-visible,a:focus-visible{outline:2px solid #0b5cad;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 620px; background: #f1f1f1; color: #1f1f1f; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.45">
+
+<div style="background: #d8d8d8; padding: 0 24px; min-height: 48px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 28px">
+<div style="font-weight: 700; font-size: 18px; letter-spacing: 0.02em; color: #1f1f1f">CVAT</div>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; flex: 1 1 auto">
+<a href="#" style="color: #1f1f1f; text-decoration: none; padding: 13px 0">Projects</a>
+<a href="#" style="color: #1f1f1f; text-decoration: none; padding: 13px 0">Tasks</a>
+<a href="#" style="color: #1f1f1f; text-decoration: none; padding: 13px 0">Jobs</a>
+<a href="#" style="color: #1f1f1f; text-decoration: none; padding: 13px 0">Cloud Storages</a>
+<a href="#" style="color: #1f1f1f; text-decoration: none; padding: 13px 0">Requests</a>
+<a href="#" style="color: #1f1f1f; text-decoration: none; padding: 13px 0">Models</a>
+<a href="#" style="color: #1f1f1f; text-decoration: none; padding: 13px 0">Grafana</a>
+<sc-if value="{{showPage}}" hint-placeholder-val="{{ true }}">
+<a href="#" aria-current="page" style="color: #1f1f1f; text-decoration: none; padding: 13px 0 10px; font-weight: 600; border-bottom: 3px solid #1f1f1f">Team Analytics</a>
+</sc-if>
+</nav>
+<div style="display: flex; align-items: center; gap: 10px; color: #1f1f1f; min-width: 0">
+<span style="padding: 3px 10px; border-radius: 12px; background: #ededed; font-size: 13px">team-org</span>
+<span style="font-size: 13px">{{viewerName}}</span>
+</div>
+</div>
+
+<sc-if value="{{isDenied}}" hint-placeholder-val="{{ false }}">
+<div style="max-width: 560px; margin: 0 auto; padding: 72px 24px">
+<div style="background: #ffffff; border-radius: 8px; padding: 40px 36px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center">
+<svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#595959" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+<h1 style="margin: 0; font-size: 22px; font-weight: 600">Team analytics is not available</h1>
+<p style="margin: 0; color: #595959; max-width: 400px">This page is for administrators and for owners and maintainers of the current organization. The analytics service checks the same roles before it returns any data, so a direct link shows nothing more.</p>
+<a href="#" style="margin-top: 8px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border: 1px solid #c4c4c4; border-radius: 6px; background: #ffffff; color: #1f1f1f; text-decoration: none">Back to tasks</a>
+</div>
+<p style="margin: 14px 0 0; text-align: center; color: #5c5c5c; font-size: 13px">The Team Analytics link is hidden from the header for this role.</p>
+</div>
+</sc-if>
+
+<sc-if value="{{showPage}}" hint-placeholder-val="{{ true }}">
+<main style="max-width: 1380px; margin: 0 auto; padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 16px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px">
+<h1 style="margin: 0; font-size: 24px; font-weight: 600">Team analytics</h1>
+<span style="color: #595959">Organization team-org · annotation work inside jobs</span>
+<span style="margin-left: auto; padding: 3px 10px; border: 1px solid #b8b8b8; border-radius: 12px; font-size: 12px; color: #4a4a4a; background: #ffffff">Sample data</span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px">
+<div role="group" aria-label="Period" style="display: inline-flex; padding: 4px; border-radius: 8px; background: #e2e2e2; gap: 2px">
+<sc-for list="{{periods}}" as="p" hint-placeholder-count="3">
+<button type="button" title="{{p.title}}" disabled="{{p.disabled}}" aria-pressed="{{p.pressed}}" onClick="{{p.pick}}" style="border: 0; font: inherit; cursor: {{p.cursor}}; min-height: 36px; padding: 0 16px; border-radius: 6px; background: {{p.bg}}; color: {{p.ink}}; font-weight: {{p.weight}}; box-shadow: {{p.shadow}}">{{p.label}}</button>
+</sc-for>
+</div>
+<div style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 6px; border: 1px solid #c4c4c4; border-radius: 6px; background: #ffffff">
+<sc-if value="{{isMonth}}" hint-placeholder-val="{{ false }}">
+<button type="button" aria-label="Previous month" disabled="{{prevMonthDisabled}}" onClick="{{prevMonth}}" style="border: 0; background: #ededed; cursor: pointer; width: 32px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{prevMonthInk}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg>
+</button>
+</sc-if>
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#595959" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 6px"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>
+<span style="white-space: nowrap; margin-right: 6px; font-weight: {{rangeWeight}}">{{rangeLabel}}</span>
+<sc-if value="{{isMonth}}" hint-placeholder-val="{{ false }}">
+<button type="button" aria-label="Next month" disabled="{{nextMonthDisabled}}" onClick="{{nextMonth}}" style="border: 0; background: #ededed; cursor: pointer; width: 32px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{nextMonthInk}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+</button>
+</sc-if>
+</div>
+<sc-if value="{{showShapeFilter}}" hint-placeholder-val="{{ true }}">
+<div role="group" aria-label="Shapes" style="display: inline-flex; padding: 4px; border-radius: 8px; background: #e2e2e2; gap: 2px">
+<sc-for list="{{shapeOptions}}" as="p" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{p.pressed}}" onClick="{{p.pick}}" style="border: 0; font: inherit; cursor: pointer; min-height: 36px; padding: 0 16px; border-radius: 6px; background: {{p.bg}}; color: {{p.ink}}; font-weight: {{p.weight}}; box-shadow: {{p.shadow}}">{{p.label}}</button>
+</sc-for>
+</div>
+</sc-if>
+<sc-for list="{{chips}}" as="c" hint-placeholder-count="2">
+<div title="{{c.value}}" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; min-width: 0; max-width: 100%; padding: 0 6px 0 14px; border: 1px solid {{c.border}}; border-radius: 6px; background: #ffffff">
+<span style="color: #595959; flex: none">{{c.label}}</span>
+<span style="font-weight: 600; max-width: 230px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.value}}</span>
+<sc-if value="{{c.active}}" hint-placeholder-val="{{ false }}">
+<button type="button" aria-label="{{c.clearLabel}}" onClick="{{c.clear}}" style="flex: none; border: 0; background: #ededed; cursor: pointer; width: 32px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1f1f1f" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</button>
+</sc-if>
+<sc-if value="{{c.idle}}" hint-placeholder-val="{{ true }}">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#595959" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-right: 8px"><path d="M6 9l6 6 6-6"></path></svg>
+</sc-if>
+</div>
+</sc-for>
+<div style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px; color: #4a4a4a; font-size: 13px">
+<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#595959" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+<span>Data as of 17:40 · refreshed every 10 min</span>
+</div>
+</div>
+
+<sc-if value="{{isBackfill}}" hint-placeholder-val="{{ false }}">
+<div style="background: #ffffff; border-radius: 8px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px">
+<span style="font-weight: 600">Processing history</span>
+<span style="color: #3d3d3d">Ready from Nov 2, 2026 · 12 of 196 days</span>
+<span style="margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums">6%</span>
+</div>
+<div role="progressbar" aria-label="History processed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="6" style="height: 8px; border-radius: 4px; background: #cde2fb">
+<div style="width: 6%; height: 8px; border-radius: 4px; background: #2a78d6"></div>
+</div>
+<div style="color: #4a4a4a; font-size: 13px">Recent days are processed first. Two weeks, earlier months and the year become selectable as processing reaches them; the page never shows a period that is only partly processed.</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isLegacy}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #9cc3ee; border-radius: 8px; background: #eaf3fd">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0b5cad" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg>
+<div>
+<div style="font-weight: 600">This period was recorded before the new activity logging</div>
+<div style="color: #3d3d3d">Old events do not say which shape was edited, so operations and timing below cover all shapes. Class changes and hotkey use were not recorded and start from the day the new UI is deployed. Projects, sessions, working time and the number of boxes saved are complete.</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{showOverview}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px">
+<sc-for list="{{kpis}}" as="k" hint-placeholder-count="5">
+<div title="{{k.title}}" style="background: #ffffff; border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; min-width: 0">
+<div style="color: #595959; font-size: 13px">{{k.label}}</div>
+<div style="font-size: 30px; font-weight: 600; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{k.value}}</div>
+<div style="color: #5c5c5c; font-size: 12px">{{k.hint}}</div>
+</div>
+</sc-for>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<section style="flex: 3 1 520px; min-width: 0; background: #ffffff; border-radius: 8px; padding: 18px 20px 16px">
+<div style="display: flex; align-items: center; gap: 10px"><h2 style="margin: 0; font-size: 16px; font-weight: 600">{{timeChartTitle}}</h2><button type="button" title="Full view" onClick="{{openTime}}" style="margin-left: auto; flex: none; border: 1px solid #c4c4c4; background: #ffffff; font: inherit; font-size: 13px; color: #1f1f1f; cursor: pointer; min-height: 36px; padding: 0 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1f1f1f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"></path></svg>Full view</button></div>
+<div title="{{scopeLabel}}" style="color: #595959; font-size: 13px; margin-bottom: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Hours as the server counts working time · {{scopeLabel}}</div>
+<div style="position: relative; height: 220px; margin-left: 44px">
+<sc-for list="{{yTicks}}" as="t" hint-placeholder-count="4">
+<div style="position: absolute; left: 0; right: 0; bottom: {{t.bottom}}; border-top: 1px solid {{t.line}}"></div>
+<div style="position: absolute; left: -44px; width: 36px; text-align: right; bottom: {{t.bottom}}; transform: translateY(50%); font-size: 12px; color: #5c5c5c; font-variant-numeric: tabular-nums">{{t.label}}</div>
+</sc-for>
+<div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: flex-end; gap: 2px">
+<sc-for list="{{days}}" as="d" hint-placeholder-count="7">
+<div title="{{d.title}}" style="flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px">
+<div style="font-size: 12px; color: #1f1f1f; font-variant-numeric: tabular-nums">{{d.cap}}</div>
+<div style="width: 100%; max-width: 24px; height: {{d.h}}; background: #2a78d6; border-radius: 4px 4px 0 0"></div>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; gap: 2px; margin: 6px 0 0 44px">
+<sc-for list="{{days}}" as="d" hint-placeholder-count="7">
+<div style="flex: 1 1 0; min-width: 0; text-align: center; font-size: 12px; color: #5c5c5c; white-space: nowrap; overflow: visible">{{d.axis}}</div>
+</sc-for>
+</div>
+</section>
+
+<section style="flex: 2 1 380px; min-width: 0; background: #ffffff; border-radius: 8px; padding: 18px 20px 16px; display: flex; flex-direction: column; gap: 14px">
+<div style="min-width: 0">
+<div style="display: flex; align-items: center; gap: 10px"><h2 style="margin: 0; font-size: 16px; font-weight: 600">Where working time goes</h2><button type="button" title="Full view" onClick="{{openSplit}}" style="margin-left: auto; flex: none; border: 1px solid #c4c4c4; background: #ffffff; font: inherit; font-size: 13px; color: #1f1f1f; cursor: pointer; min-height: 36px; padding: 0 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1f1f1f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"></path></svg>Full view</button></div>
+<div title="{{splitSubtitle}}" style="color: #595959; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{splitSubtitle}}</div>
+</div>
+<div style="display: flex; gap: 2px; height: 28px">
+<sc-for list="{{split}}" as="s" hint-placeholder-count="5">
+<div title="{{s.title}}" style="flex: {{s.flex}} 1 0; min-width: 0; background: {{s.color}}; color: {{s.ink}}; border-radius: 4px; display: flex; align-items: center; padding-left: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: visible">{{s.inside}}</div>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; gap: 0">
+<sc-for list="{{split}}" as="s" hint-placeholder-count="5">
+<div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #ececec">
+<span style="width: 12px; height: 12px; border-radius: 3px; background: {{s.color}}; flex: none"></span>
+<span style="flex: 1 1 auto">{{s.name}}</span>
+<span style="font-variant-numeric: tabular-nums; color: #3d3d3d">{{s.time}}</span>
+<span style="width: 44px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600">{{s.share}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<section style="flex: 3 1 560px; min-width: 0; background: #ffffff; border-radius: 8px; padding: 18px 20px 10px">
+<div style="display: flex; align-items: center; gap: 10px"><h2 style="margin: 0; font-size: 16px; font-weight: 600">{{opsTitle}}</h2><button type="button" title="Full view" onClick="{{openOps}}" style="margin-left: auto; flex: none; border: 1px solid #c4c4c4; background: #ffffff; font: inherit; font-size: 13px; color: #1f1f1f; cursor: pointer; min-height: 36px; padding: 0 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1f1f1f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"></path></svg>Full view</button></div>
+<div style="color: #595959; font-size: 13px; margin-bottom: 10px">Counts, average time per object and how each operation was started</div>
+<div style="overflow-x: auto">
+<div style="min-width: 700px">
+<div style="display: grid; grid-template-columns: minmax(124px, 1.3fr) repeat(4, minmax(78px, 1fr)) minmax(190px, 1.7fr); gap: 0 14px; padding: 8px 0; color: #595959; font-size: 12px; border-bottom: 1px solid #d9d9d9">
+<div>Operation</div>
+<div style="text-align: right">Objects</div>
+<div style="text-align: right">Avg time</div>
+<div style="text-align: right">Total time</div>
+<div style="text-align: right">Share</div>
+<div>Started by hotkey / mouse</div>
+</div>
+<sc-for list="{{ops}}" as="o" hint-placeholder-count="4">
+<div style="display: grid; grid-template-columns: minmax(124px, 1.3fr) repeat(4, minmax(78px, 1fr)) minmax(190px, 1.7fr); gap: 0 14px; align-items: center; min-height: 48px; border-bottom: 1px solid #ececec; font-variant-numeric: tabular-nums">
+<div style="display: flex; align-items: center; gap: 10px"><span style="width: 12px; height: 12px; border-radius: 3px; background: {{o.color}}; flex: none"></span><span style="font-weight: 600">{{o.name}}</span></div>
+<div style="text-align: right">{{o.count}}</div>
+<div style="text-align: right; font-weight: 600">{{o.avg}}</div>
+<div style="text-align: right">{{o.total}}</div>
+<div style="text-align: right">{{o.share}}</div>
+<div>
+<sc-if value="{{o.hasSplit}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; align-items: center; gap: 10px">
+<div title="{{o.splitTitle}}" style="flex: 1 1 auto; display: flex; gap: 2px; height: 8px">
+<div style="flex: {{o.hkFlex}} 1 0; background: #2a78d6; border-radius: 4px"></div>
+<div style="flex: {{o.msFlex}} 1 0; background: #c9c8c2; border-radius: 4px"></div>
+</div>
+<span style="width: 84px; font-size: 13px; color: #3d3d3d">{{o.splitLabel}}</span>
+</div>
+</sc-if>
+<sc-if value="{{o.noSplit}}" hint-placeholder-val="{{ false }}">
+<span style="color: #5c5c5c; font-size: 13px">{{o.splitNote}}</span>
+</sc-if>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 0 6px; font-size: 12px; color: #595959">
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 12px; height: 8px; border-radius: 4px; background: #2a78d6"></span>Hotkey</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 12px; height: 8px; border-radius: 4px; background: #c9c8c2"></span>Mouse</span>
+<span>Creation covers drawn, pasted and propagated objects. Alignment is done on the canvas, so it has no hotkey.</span>
+</div>
+</section>
+
+<section style="flex: 2 1 400px; min-width: 0; background: #ffffff; border-radius: 8px; padding: 18px 20px 12px">
+<div style="display: flex; align-items: center; gap: 10px"><h2 style="margin: 0; font-size: 16px; font-weight: 600">{{methodsTitle}}</h2><button type="button" title="Full view" onClick="{{openMethods}}" style="margin-left: auto; flex: none; border: 1px solid #c4c4c4; background: #ffffff; font: inherit; font-size: 13px; color: #1f1f1f; cursor: pointer; min-height: 36px; padding: 0 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1f1f1f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"></path></svg>Full view</button></div>
+<div style="color: #595959; font-size: 13px; margin-bottom: 10px">Each creation method counted on its own</div>
+<div style="display: grid; grid-template-columns: minmax(104px, 1.2fr) minmax(80px, 1.4fr) minmax(64px, auto) minmax(48px, auto) minmax(60px, auto); gap: 0 12px; padding: 8px 0; color: #595959; font-size: 12px; border-bottom: 1px solid #d9d9d9">
+<div>Method</div>
+<div></div>
+<div style="text-align: right">{{methodsCountHeader}}</div>
+<div style="text-align: right">Share</div>
+<div style="text-align: right">Avg time</div>
+</div>
+<sc-for list="{{methods}}" as="r" hint-placeholder-count="4">
+<div title="{{r.title}}" style="display: grid; grid-template-columns: minmax(104px, 1.2fr) minmax(80px, 1.4fr) minmax(64px, auto) minmax(48px, auto) minmax(60px, auto); gap: 0 12px; align-items: center; min-height: 44px; border-bottom: 1px solid #ececec; font-variant-numeric: tabular-nums">
+<div style="font-weight: 600">{{r.name}}</div>
+<div style="display: flex; align-items: center"><span style="width: {{r.width}}; height: 12px; background: {{r.color}}; border-radius: 0 4px 4px 0"></span></div>
+<div style="text-align: right">{{r.count}}</div>
+<div style="text-align: right">{{r.share}}</div>
+<div style="text-align: right; font-weight: 600">{{r.avg}}</div>
+</div>
+</sc-for>
+<div style="display: grid; grid-template-columns: 1fr auto auto; gap: 0 12px; align-items: center; min-height: 44px; font-variant-numeric: tabular-nums">
+<div style="font-weight: 600">All annotator methods</div>
+<div style="text-align: right">{{methodsTotal}}</div>
+<div style="text-align: right; font-weight: 600; min-width: 60px">{{methodsAvg}}</div>
+</div>
+<div style="color: #4a4a4a; font-size: 12px; padding-bottom: 6px">{{methodsNote}}</div>
+</section>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<sc-for list="{{breakdowns}}" as="b" hint-placeholder-count="2">
+<section style="flex: 1 1 440px; min-width: 0; background: #ffffff; border-radius: 8px; padding: 18px 20px 14px">
+<div style="display: flex; align-items: center; gap: 10px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 600">{{b.title}}</h2>
+<span style="color: #595959; font-size: 13px">{{b.countLabel}}</span>
+<button type="button" title="Full view" onClick="{{b.openFull}}" style="margin-left: auto; flex: none; border: 1px solid #c4c4c4; background: #ffffff; font: inherit; font-size: 13px; color: #1f1f1f; cursor: pointer; min-height: 36px; padding: 0 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1f1f1f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"></path></svg>Full view</button>
+</div>
+<div title="{{b.subtitle}}" style="color: #595959; font-size: 13px; margin-bottom: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{b.subtitle}}</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 10px; font-size: 12px; color: #1f1f1f">
+<sc-for list="{{split}}" as="s" hint-placeholder-count="5">
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 3px; background: {{s.color}}"></span>{{s.name}}</span>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px; max-height: {{b.maxHeight}}; overflow-y: auto">
+<sc-for list="{{b.rows}}" as="u" hint-placeholder-count="5">
+<button type="button" title="{{u.name}}" aria-pressed="{{u.pressed}}" onClick="{{u.pick}}" style="flex: none; border: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 10px; border-radius: 6px; background: {{u.bg}}">
+<span style="width: 150px; flex: none; font-weight: {{u.weight}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{u.name}}</span>
+<span style="flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px">
+<span style="width: {{u.width}}; display: flex; gap: 2px; height: 16px">
+<sc-for list="{{u.parts}}" as="s" hint-placeholder-count="5">
+<span title="{{s.title}}" style="flex: {{s.flex}} 1 0; background: {{s.color}}; border-radius: {{s.radius}}"></span>
+</sc-for>
+</span>
+<span style="flex: none; font-variant-numeric: tabular-nums; font-size: 13px">{{u.total}}</span>
+</span>
+</button>
+</sc-for>
+</div>
+<sc-if value="{{b.hasOthers}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 40px; margin-top: 4px; padding: 0 10px; border-top: 1px solid #ececec; color: #3d3d3d">
+<span style="flex: 1 1 auto">{{b.othersLabel}}</span>
+<span style="font-variant-numeric: tabular-nums; font-size: 13px">{{b.othersTotal}}</span>
+</div>
+</sc-if>
+<sc-if value="{{b.noMatches}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 14px 10px; color: #595959">No match for this search.</div>
+</sc-if>
+<sc-if value="{{b.hasMore}}" hint-placeholder-val="{{ false }}">
+<button type="button" onClick="{{b.toggle}}" style="margin-top: 8px; border: 1px solid #c4c4c4; background: #ffffff; font: inherit; color: #1f1f1f; cursor: pointer; min-height: 40px; padding: 0 14px; border-radius: 6px">{{b.toggleLabel}}</button>
+</sc-if>
+</section>
+</sc-for>
+</div>
+<div style="padding: 0 4px; margin-top: -6px; font-size: 12px; color: #595959">Select an annotator or a project to filter the whole page. Both filters can be combined.</div>
+
+<section style="background: #ffffff; border-radius: 8px; padding: 18px 20px 16px; display: flex; flex-direction: column; gap: 14px">
+<div style="min-width: 0">
+<div style="display: flex; align-items: center; gap: 10px"><h2 style="margin: 0; font-size: 16px; font-weight: 600">Keyboard and mouse</h2><sc-if value="{{hasInput}}" hint-placeholder-val="{{ true }}"><button type="button" title="Full view" onClick="{{openKeys}}" style="margin-left: auto; flex: none; border: 1px solid #c4c4c4; background: #ffffff; font: inherit; font-size: 13px; color: #1f1f1f; cursor: pointer; min-height: 36px; padding: 0 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1f1f1f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"></path></svg>Full view</button></sc-if></div>
+<div title="{{scopeLabel}}" style="color: #595959; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Hotkey presses against mouse clicks on controls · {{scopeLabel}}</div>
+</div>
+<sc-if value="{{hasInput}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-wrap: wrap; gap: 20px 48px">
+<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; gap: 10px 32px">
+<div><div style="color: #595959; font-size: 13px">Hotkey actions</div><div title="{{hotkeyTotalExact}}" style="font-size: 24px; font-weight: 600">{{hotkeyTotal}}</div></div>
+<div><div style="color: #595959; font-size: 13px">Mouse actions</div><div title="{{mouseTotalExact}}" style="font-size: 24px; font-weight: 600">{{mouseTotal}}</div></div>
+<div><div style="color: #595959; font-size: 13px">Hotkey share</div><div style="font-size: 24px; font-weight: 600">{{hotkeyShare}}</div></div>
+</div>
+<div title="{{hotkeyShareTitle}}" style="height: 8px; border-radius: 4px; background: #cde2fb">
+<div style="width: {{hotkeyShare}}; height: 8px; border-radius: 4px; background: #2a78d6"></div>
+</div>
+<div style="color: #4a4a4a; font-size: 13px">A mouse action is a click on a button, menu or sidebar control. Clicks on the canvas itself are drawing and editing, so they are not compared with hotkeys.</div>
+</div>
+<div style="flex: 1.4 1 420px; min-width: 0">
+<div style="font-weight: 600; margin-bottom: 6px">Most used hotkeys</div>
+<div>
+<sc-for list="{{topKeys}}" as="h" hint-placeholder-count="7">
+<div title="{{h.title}}" style="display: flex; align-items: center; gap: 10px; min-height: 30px">
+<span style="width: 132px; flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.label}}</span>
+<span style="width: 74px; flex: none"><span style="display: inline-block; max-width: 74px; box-sizing: border-box; padding: 1px 6px; border: 1px solid #c4c4c4; border-radius: 4px; font-size: 12px; background: #fafafa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle">{{h.key}}</span></span>
+<span style="flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px">
+<span style="width: {{h.width}}; height: 12px; background: {{h.color}}; border-radius: 0 4px 4px 0"></span>
+<span style="flex: none; font-size: 13px; font-variant-numeric: tabular-nums">{{h.value}}</span>
+</span>
+</div>
+</sc-for>
+</div>
+<sc-if value="{{keysCollapsed}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 36px; margin-top: 4px; border-top: 1px solid #ececec; color: #3d3d3d">
+<span style="flex: 1 1 auto">{{otherKeysLabel}}</span>
+<span style="font-variant-numeric: tabular-nums; font-size: 13px">{{otherKeysValue}}</span>
+</div>
+</sc-if>
+<sc-if value="{{noKeyMatches}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 12px 0; color: #595959">No match for this search.</div>
+</sc-if>
+<button type="button" onClick="{{toggleKeys}}" style="margin-top: 8px; border: 1px solid #c4c4c4; background: #ffffff; font: inherit; color: #1f1f1f; cursor: pointer; min-height: 40px; padding: 0 14px; border-radius: 6px">{{moreKeysLabel}}</button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{noInput}}" hint-placeholder-val="{{ false }}">
+<div style="min-height: 180px; border: 1px dashed #b8b8b8; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center">
+<svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#595959" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"></rect><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M7 14h10"></path></svg>
+<div style="font-weight: 600">No hotkey data for this period</div>
+<div style="color: #595959; max-width: 360px">Hotkey and mouse use is recorded from the day the new UI is deployed. Pick a later period to see it.</div>
+</div>
+</sc-if>
+</section>
+
+<section style="background: #ffffff; border-radius: 8px; padding: 18px 20px 18px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px">
+<div>
+<h2 style="margin: 0; font-size: 16px; font-weight: 600">Trends</h2>
+<div style="color: #595959; font-size: 13px">{{trendSubtitle}}</div>
+</div>
+<div role="group" aria-label="Trend step" style="margin-left: auto; display: inline-flex; padding: 4px; border-radius: 8px; background: #e2e2e2; gap: 2px">
+<sc-for list="{{bucketOptions}}" as="p" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{p.pressed}}" onClick="{{p.pick}}" style="border: 0; font: inherit; cursor: pointer; min-height: 36px; padding: 0 16px; border-radius: 6px; background: {{p.bg}}; color: {{p.ink}}; font-weight: {{p.weight}}; box-shadow: {{p.shadow}}">{{p.label}}</button>
+</sc-for>
+</div>
+<div role="group" aria-label="Compare" style="display: inline-flex; padding: 4px; border-radius: 8px; background: #e2e2e2; gap: 2px">
+<sc-for list="{{compareKinds}}" as="p" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{p.pressed}}" onClick="{{p.pick}}" style="border: 0; font: inherit; cursor: pointer; min-height: 36px; padding: 0 16px; border-radius: 6px; background: {{p.bg}}; color: {{p.ink}}; font-weight: {{p.weight}}; box-shadow: {{p.shadow}}">{{p.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<sc-if value="{{showTrends}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<span style="color: #595959; font-size: 13px">{{compareLabel}}</span>
+<sc-for list="{{compareChosen}}" as="c" hint-placeholder-count="3">
+<button type="button" title="{{c.title}}" onClick="{{c.toggle}}" style="border: 1px solid #1f1f1f; background: #ffffff; font: inherit; color: #1f1f1f; cursor: pointer; min-height: 36px; max-width: 230px; padding: 0 10px; border-radius: 18px; display: inline-flex; align-items: center; gap: 8px">
+<span style="width: 14px; height: 4px; border-radius: 2px; background: {{c.color}}; flex: none"></span>
+<span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.name}}</span>
+<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1f1f1f" stroke-width="2.4" stroke-linecap="round" style="flex: none"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</button>
+</sc-for>
+<input type="search" aria-label="{{comparePlaceholder}}" disabled="{{compareFull}}" value="{{compareQueryValue}}" onChange="{{onCompareSearch}}" placeholder="{{comparePlaceholder}}" style="width: 190px; min-height: 36px; box-sizing: border-box; padding: 0 12px; border: 1px solid #c4c4c4; border-radius: 18px; font: inherit; color: #1f1f1f; background: #ffffff">
+<sc-for list="{{compareOffered}}" as="c" hint-placeholder-count="3">
+<button type="button" title="{{c.title}}" disabled="{{c.disabled}}" onClick="{{c.toggle}}" style="border: 1px dashed #9a9a9a; background: #ffffff; font: inherit; color: {{c.ink}}; cursor: {{c.cursor}}; min-height: 36px; max-width: 200px; padding: 0 12px; border-radius: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">+ {{c.name}}</button>
+</sc-for>
+<span style="color: #4a4a4a; font-size: 13px">{{compareHint}}</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px 36px">
+<sc-for list="{{trendCharts}}" as="c" hint-placeholder-count="4">
+<div style="min-width: 0">
+<div style="display: flex; align-items: center; gap: 10px"><div style="font-weight: 600">{{c.title}}</div><sc-if value="{{c.ready}}" hint-placeholder-val="{{ true }}"><button type="button" title="Full view" onClick="{{c.openFull}}" style="margin-left: auto; flex: none; border: 1px solid #c4c4c4; background: #ffffff; font: inherit; font-size: 13px; color: #1f1f1f; cursor: pointer; min-height: 36px; padding: 0 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1f1f1f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"></path></svg>Full view</button></sc-if></div>
+<div style="color: #595959; font-size: 12px; margin-bottom: 12px">{{c.unit}}</div>
+<sc-if value="{{c.ready}}" hint-placeholder-val="{{ true }}">
+<div>
+<div style="position: relative; height: 150px; margin: 0 14px 0 44px">
+<sc-for list="{{c.ticks}}" as="t" hint-placeholder-count="4">
+<div style="position: absolute; left: 0; right: 0; bottom: {{t.bottom}}; border-top: 1px solid {{t.line}}"></div>
+<div style="position: absolute; left: -44px; width: 36px; text-align: right; bottom: {{t.bottom}}; transform: translateY(50%); font-size: 12px; color: #5c5c5c; font-variant-numeric: tabular-nums">{{t.label}}</div>
+</sc-for>
+<svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible">
+<polyline points="{{c.p0}}" fill="none" stroke="{{c.c0}}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<polyline points="{{c.p1}}" fill="none" stroke="{{c.c1}}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<polyline points="{{c.p2}}" fill="none" stroke="{{c.c2}}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<polyline points="{{c.p3}}" fill="none" stroke="{{c.c3}}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<polyline points="{{c.p4}}" fill="none" stroke="{{c.c4}}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
+</svg>
+<sc-for list="{{c.dots}}" as="d" hint-placeholder-count="12">
+<div title="{{d.title}}" style="position: absolute; left: {{d.left}}; bottom: {{d.bottom}}; width: 18px; height: 18px; margin: 0 0 -9px -9px; display: flex; align-items: center; justify-content: center">
+<span style="width: {{d.size}}; height: {{d.size}}; border-radius: 50%; background: {{d.color}}; box-shadow: 0 0 0 2px #ffffff"></span>
+</div>
+</sc-for>
+</div>
+<div style="position: relative; height: 18px; margin: 6px 14px 0 44px">
+<sc-for list="{{c.xLabels}}" as="x" hint-placeholder-count="4">
+<div style="position: absolute; left: {{x.left}}; transform: translateX(-50%); font-size: 12px; color: #5c5c5c; white-space: nowrap">{{x.label}}</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{c.empty}}" hint-placeholder-val="{{ false }}">
+<div style="height: 174px; border: 1px dashed #b8b8b8; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 12px; text-align: center; color: #595959">Not recorded before the new logging</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{noTrends}}" hint-placeholder-val="{{ false }}">
+<div style="min-height: 150px; border: 1px dashed #b8b8b8; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 24px; text-align: center">
+<div style="font-weight: 600">Trends appear as history is processed</div>
+<div style="color: #595959; max-width: 420px">A trend needs at least three complete weeks. Two are ready so far.</div>
+</div>
+</sc-if>
+</section>
+
+<section style="background: #ffffff; border-radius: 8px; padding: 18px 20px 12px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 10px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 600">Details</h2>
+<div role="group" aria-label="Table rows" style="display: inline-flex; padding: 4px; border-radius: 8px; background: #e2e2e2; gap: 2px">
+<sc-for list="{{tableOptions}}" as="p" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{p.pressed}}" onClick="{{p.pick}}" style="border: 0; font: inherit; cursor: pointer; min-height: 36px; padding: 0 16px; border-radius: 6px; background: {{p.bg}}; color: {{p.ink}}; font-weight: {{p.weight}}; box-shadow: {{p.shadow}}">{{p.label}}</button>
+</sc-for>
+</div>
+<input type="search" aria-label="{{tablePlaceholder}}" value="{{tableQueryValue}}" onChange="{{onTableSearch}}" placeholder="{{tablePlaceholder}}" style="width: 220px; min-height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #c4c4c4; border-radius: 6px; font: inherit; color: #1f1f1f; background: #ffffff">
+<span title="{{tableHint}}" style="color: #595959; font-size: 13px; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{tableHint}}</span>
+</div>
+<div style="overflow-x: auto">
+<div style="min-width: 1320px">
+<div style="display: grid; grid-template-columns: minmax(180px, 1.7fr) repeat(11, minmax(74px, 1fr)) minmax(132px, 1.3fr); gap: 0 12px; padding: 8px 10px; color: #595959; font-size: 12px; border-bottom: 1px solid #d9d9d9">
+<div style="position: sticky; left: 0; background: #ffffff">{{tableNameHeader}}</div>
+<div style="text-align: right">{{tableSecondHeader}}</div>
+<div style="text-align: right">Sessions</div>
+<div style="text-align: right">Working time</div>
+<div style="text-align: right">Drawn</div>
+<div style="text-align: right">Pasted</div>
+<div style="text-align: right">Propagated</div>
+<div style="text-align: right">{{modelHeader}}</div>
+<div style="text-align: right">Aligned</div>
+<div style="text-align: right">Class changes</div>
+<div style="text-align: right">Deleted</div>
+<div style="text-align: right">Avg create</div>
+<div>Hotkey share</div>
+</div>
+<sc-for list="{{tableRows}}" as="r" hint-placeholder-count="6">
+<button type="button" title="{{r.name}}" aria-pressed="{{r.pressed}}" onClick="{{r.pick}}" style="width: 100%; border: 0; border-bottom: 1px solid #ececec; font: inherit; color: inherit; cursor: pointer; text-align: left; display: grid; grid-template-columns: minmax(180px, 1.7fr) repeat(11, minmax(74px, 1fr)) minmax(132px, 1.3fr); gap: 0 12px; align-items: center; min-height: 46px; padding: 0 10px; background: {{r.bg}}; font-variant-numeric: tabular-nums">
+<span style="position: sticky; left: 0; background: {{r.bg}}; font-weight: {{r.weight}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 46px">{{r.name}}</span>
+<span style="text-align: right">{{r.second}}</span>
+<span style="text-align: right">{{r.sessions}}</span>
+<span style="text-align: right; font-weight: 600">{{r.work}}</span>
+<span style="text-align: right">{{r.drawn}}</span>
+<span style="text-align: right">{{r.pasted}}</span>
+<span style="text-align: right">{{r.propagated}}</span>
+<span style="text-align: right">{{r.model}}</span>
+<span style="text-align: right">{{r.aligned}}</span>
+<span style="text-align: right">{{r.relabeled}}</span>
+<span style="text-align: right">{{r.deleted}}</span>
+<span style="text-align: right">{{r.avgCreate}}</span>
+<span style="display: flex; align-items: center; gap: 8px">
+<sc-if value="{{hasInput}}" hint-placeholder-val="{{ true }}">
+<span style="flex: 1 1 auto; height: 8px; border-radius: 4px; background: #cde2fb; display: block"><span style="display: block; width: {{r.hkShare}}; height: 8px; border-radius: 4px; background: #2a78d6"></span></span>
+</sc-if>
+<span style="width: 38px; text-align: right">{{r.hkShare}}</span>
+</span>
+</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-top: 10px">
+<span style="color: #3d3d3d; font-size: 13px; font-variant-numeric: tabular-nums">{{pagerLabel}}</span>
+<sc-if value="{{hasPages}}" hint-placeholder-val="{{ false }}">
+<div style="display: inline-flex; gap: 8px">
+<button type="button" disabled="{{prevDisabled}}" onClick="{{prevPage}}" style="border: 1px solid #c4c4c4; background: #ffffff; font: inherit; color: {{prevInk}}; cursor: pointer; min-height: 40px; padding: 0 14px; border-radius: 6px">Previous</button>
+<button type="button" disabled="{{nextDisabled}}" onClick="{{nextPage}}" style="border: 1px solid #c4c4c4; background: #ffffff; font: inherit; color: {{nextInk}}; cursor: pointer; min-height: 40px; padding: 0 14px; border-radius: 6px">Next</button>
+</div>
+</sc-if>
+<span style="margin-left: auto; color: #4a4a4a; font-size: 13px">{{technicalNote}}</span>
+</div>
+</section>
+
+<section style="color: #4a4a4a; font-size: 13px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 28px; padding: 4px 4px 0">
+<div><span style="font-weight: 600; color: #1f1f1f">Session.</span> One uninterrupted interval of work inside jobs. A pause longer than 5 minutes starts a new session. With a project selected, only sessions that touched that project are counted.</div>
+<div><span style="font-weight: 600; color: #1f1f1f">Working time.</span> The server's own figure, the same one the Grafana dashboard shows, counted for the project of the job.</div>
+<div><span style="font-weight: 600; color: #1f1f1f">Time per operation.</span> Time from the annotator's previous action to the end of this one. Pauses over 100 seconds are left out.</div>
+<div><span style="font-weight: 600; color: #1f1f1f">Model.</span> Boxes saved by technical accounts or made with the built-in detector. The server records no time for them, so they have counts only.</div>
+</section>
+</div>
+</sc-if>
+
+<sc-if value="{{showFull}}" hint-placeholder-val="{{ false }}">
+<section style="background: #ffffff; border-radius: 8px; padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px">
+<button type="button" onClick="{{closeFull}}" style="flex: none; border: 1px solid #c4c4c4; background: #ffffff; font: inherit; color: #1f1f1f; cursor: pointer; min-height: 44px; padding: 0 14px 0 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px">
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1f1f1f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg>
+Back to overview
+</button>
+<div style="min-width: 0; flex: 1 1 320px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">{{full.title}}</h2>
+<div style="color: #595959; font-size: 13px; overflow-wrap: anywhere">{{full.subtitle}}</div>
+</div>
+</div>
+
+<sc-if value="{{full.hasToolbar}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px">
+<input type="search" aria-label="{{full.placeholder}}" value="{{fullQueryValue}}" onChange="{{onFullSearch}}" placeholder="{{full.placeholder}}" style="width: 260px; max-width: 100%; min-height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #c4c4c4; border-radius: 6px; font: inherit; color: #1f1f1f; background: #ffffff">
+<div role="group" aria-label="Sort" style="display: inline-flex; padding: 4px; border-radius: 8px; background: #e2e2e2; gap: 2px">
+<sc-for list="{{fullSortOptions}}" as="p" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{p.pressed}}" onClick="{{p.pick}}" style="border: 0; font: inherit; cursor: pointer; min-height: 36px; padding: 0 16px; border-radius: 6px; background: {{p.bg}}; color: {{p.ink}}; font-weight: {{p.weight}}; box-shadow: {{p.shadow}}">{{p.label}}</button>
+</sc-for>
+</div>
+<sc-if value="{{full.canSwitchRows}}" hint-placeholder-val="{{ false }}">
+<div role="group" aria-label="Rows" style="display: inline-flex; padding: 4px; border-radius: 8px; background: #e2e2e2; gap: 2px">
+<sc-for list="{{fullRowOptions}}" as="p" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{p.pressed}}" onClick="{{p.pick}}" style="border: 0; font: inherit; cursor: pointer; min-height: 36px; padding: 0 16px; border-radius: 6px; background: {{p.bg}}; color: {{p.ink}}; font-weight: {{p.weight}}; box-shadow: {{p.shadow}}">{{p.label}}</button>
+</sc-for>
+</div>
+</sc-if>
+<span style="margin-left: auto; color: #3d3d3d; font-size: 13px; font-variant-numeric: tabular-nums">{{full.summary}}</span>
+</div>
+</sc-if>
+
+<sc-if value="{{full.showLegend}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 10px 12px; border: 1px solid #e3e3e3; border-radius: 8px; font-size: 13px; color: #1f1f1f">
+<span style="color: #595959">Bar colours</span>
+<sc-for list="{{split}}" as="s" hint-placeholder-count="5">
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 3px; background: {{s.color}}"></span>{{s.name}}</span>
+</sc-for>
+<span style="margin-left: auto; color: #595959">Select a row to filter the whole page.</span>
+</div>
+</sc-if>
+
+<sc-if value="{{full.isList}}" hint-placeholder-val="{{ true }}">
+<div style="overflow-x: auto">
+<div style="min-width: 720px">
+<div style="display: grid; grid-template-columns: 40px minmax(220px, 1.7fr) {{full.extraCol}} minmax(180px, 3fr) 104px 56px; gap: 0 12px; padding: 8px 10px; color: #595959; font-size: 12px; border-bottom: 1px solid #d9d9d9">
+<div style="text-align: right">#</div>
+<div>{{full.nameHeader}}</div>
+<div>{{full.extraHeader}}</div>
+<div></div>
+<div style="text-align: right">{{full.valueHeader}}</div>
+<div style="text-align: right">Share</div>
+</div>
+<sc-for list="{{full.rows}}" as="u" hint-placeholder-count="12">
+<button type="button" aria-pressed="{{u.pressed}}" onClick="{{u.pick}}" style="width: 100%; border: 0; border-bottom: 1px solid #ececec; font: inherit; color: inherit; cursor: pointer; text-align: left; display: grid; grid-template-columns: 40px minmax(220px, 1.7fr) {{full.extraCol}} minmax(180px, 3fr) 104px 56px; gap: 0 12px; align-items: center; min-height: 46px; padding: 6px 10px; background: {{u.bg}}; font-variant-numeric: tabular-nums">
+<span style="text-align: right; color: #595959">{{u.rank}}</span>
+<span style="font-weight: {{u.weight}}; overflow-wrap: anywhere">{{u.name}}</span>
+<span style="overflow: hidden; font-size: 13px; color: #3d3d3d; overflow-wrap: anywhere">{{u.extra}}</span>
+<span style="display: flex; align-items: center"><span style="width: {{u.width}}; display: flex; gap: 2px; height: 16px">
+<sc-for list="{{u.parts}}" as="s" hint-placeholder-count="5">
+<span title="{{s.title}}" style="flex: {{s.flex}} 1 0; background: {{s.color}}; border-radius: {{s.radius}}"></span>
+</sc-for>
+</span></span>
+<span style="text-align: right; font-weight: 600">{{u.value}}</span>
+<span style="text-align: right">{{u.share}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{full.isTime}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 22px">
+<div>
+<div style="position: relative; height: 420px; margin-left: 44px">
+<sc-for list="{{yTicks}}" as="t" hint-placeholder-count="4">
+<div style="position: absolute; left: 0; right: 0; bottom: {{t.bottom}}; border-top: 1px solid {{t.line}}"></div>
+<div style="position: absolute; left: -44px; width: 36px; text-align: right; bottom: {{t.bottom}}; transform: translateY(50%); font-size: 12px; color: #5c5c5c; font-variant-numeric: tabular-nums">{{t.label}}</div>
+</sc-for>
+<div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: flex-end; gap: 2px">
+<sc-for list="{{days}}" as="d" hint-placeholder-count="7">
+<div title="{{d.title}}" style="flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px">
+<div style="font-size: 12px; color: #1f1f1f; font-variant-numeric: tabular-nums">{{d.fullCap}}</div>
+<div style="width: 100%; max-width: 24px; height: {{d.h}}; background: #2a78d6; border-radius: 4px 4px 0 0"></div>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; gap: 2px; margin: 6px 0 0 44px">
+<sc-for list="{{days}}" as="d" hint-placeholder-count="7">
+<div style="flex: 1 1 0; min-width: 0; text-align: center; font-size: 12px; color: #5c5c5c; white-space: nowrap; overflow: visible">{{d.axis}}</div>
+</sc-for>
+</div>
+</div>
+<div>
+<div style="font-weight: 600; margin-bottom: 8px">All values</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0 28px">
+<sc-for list="{{full.rows}}" as="r" hint-placeholder-count="7">
+<div style="display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid #ececec; font-variant-numeric: tabular-nums"><span>{{r.label}}</span><span style="font-weight: 600">{{r.value}}</span></div>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{full.isTrend}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-wrap: wrap; gap: 8px 22px">
+<sc-for list="{{full.legend}}" as="l" hint-placeholder-count="3">
+<span style="display: inline-flex; align-items: center; gap: 8px; min-width: 0"><span style="width: 16px; height: 4px; border-radius: 2px; background: {{l.color}}; flex: none"></span><span style="overflow-wrap: anywhere">{{l.name}}</span><span style="font-weight: 600; font-variant-numeric: tabular-nums; flex: none">{{l.last}}</span></span>
+</sc-for>
+</div>
+<div>
+<div style="position: relative; height: 380px; margin: 0 16px 0 44px">
+<sc-for list="{{full.ticks}}" as="t" hint-placeholder-count="4">
+<div style="position: absolute; left: 0; right: 0; bottom: {{t.bottom}}; border-top: 1px solid {{t.line}}"></div>
+<div style="position: absolute; left: -44px; width: 36px; text-align: right; bottom: {{t.bottom}}; transform: translateY(50%); font-size: 12px; color: #5c5c5c; font-variant-numeric: tabular-nums">{{t.label}}</div>
+</sc-for>
+<svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible">
+<polyline points="{{full.p0}}" fill="none" stroke="{{full.c0}}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<polyline points="{{full.p1}}" fill="none" stroke="{{full.c1}}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<polyline points="{{full.p2}}" fill="none" stroke="{{full.c2}}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<polyline points="{{full.p3}}" fill="none" stroke="{{full.c3}}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<polyline points="{{full.p4}}" fill="none" stroke="{{full.c4}}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
+</svg>
+<sc-for list="{{full.dots}}" as="d" hint-placeholder-count="12">
+<div title="{{d.title}}" style="position: absolute; left: {{d.left}}; bottom: {{d.bottom}}; width: 18px; height: 18px; margin: 0 0 -9px -9px; display: flex; align-items: center; justify-content: center">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: {{d.color}}; box-shadow: 0 0 0 2px #ffffff"></span>
+</div>
+</sc-for>
+</div>
+<div style="position: relative; height: 18px; margin: 6px 16px 0 44px">
+<sc-for list="{{full.xLabels}}" as="x" hint-placeholder-count="4">
+<div style="position: absolute; left: {{x.left}}; transform: translateX(-50%); font-size: 12px; color: #5c5c5c; white-space: nowrap">{{x.label}}</div>
+</sc-for>
+</div>
+</div>
+<div style="overflow-x: auto">
+<div style="min-width: 560px">
+<div style="display: grid; grid-template-columns: {{full.grid}}; gap: 0 12px; padding: 8px 0; color: #595959; font-size: 12px; border-bottom: 1px solid #d9d9d9">
+<div>{{full.nameHeader}}</div>
+<sc-for list="{{full.legend}}" as="l" hint-placeholder-count="3">
+<div style="text-align: right; overflow-wrap: anywhere">{{l.name}}</div>
+</sc-for>
+</div>
+<sc-for list="{{full.rows}}" as="r" hint-placeholder-count="12">
+<div style="display: grid; grid-template-columns: {{full.grid}}; gap: 0 12px; align-items: center; min-height: 38px; border-bottom: 1px solid #ececec; font-variant-numeric: tabular-nums">
+<div>{{r.label}}</div>
+<sc-for list="{{r.cells}}" as="cell" hint-placeholder-count="3">
+<div style="text-align: right">{{cell.text}}</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{full.isTable}}" hint-placeholder-val="{{ false }}">
+<div style="overflow-x: auto">
+<div style="min-width: 1040px">
+<div style="display: grid; grid-template-columns: {{full.grid}}; gap: 0 12px; padding: 8px 10px; color: #595959; font-size: 12px; border-bottom: 1px solid #d9d9d9">
+<div style="position: sticky; left: 0; background: #ffffff">{{full.nameHeader}}</div>
+<sc-for list="{{full.columns}}" as="cell" hint-placeholder-count="8">
+<div style="text-align: right">{{cell.text}}</div>
+</sc-for>
+</div>
+<sc-for list="{{full.rows}}" as="r" hint-placeholder-count="12">
+<div style="display: grid; grid-template-columns: {{full.grid}}; gap: 0 12px; align-items: center; min-height: 44px; padding: 4px 10px; border-bottom: 1px solid #ececec; font-variant-numeric: tabular-nums">
+<div style="position: sticky; left: 0; background: #ffffff; font-weight: 600; overflow-wrap: anywhere">{{r.name}}</div>
+<sc-for list="{{r.cells}}" as="cell" hint-placeholder-count="8">
+<div style="text-align: right">{{cell.text}}</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{full.noMatches}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 18px 10px; color: #595959">No match for this search.</div>
+</sc-if>
+</section>
+</sc-if>
+
+</main>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["full","overflow","backfill","legacy","denied"],"default":"full","section":"State"},"view":{"editor":"enum","options":["","annotators","projects","split","ops","methods","keys","time","trend0","trend1","trend2","trend3"],"default":"","section":"State"},"$preview":{"width":1440,"height":3160}}'>
+const BASE_USERS = [
+  { name: 'anna.k', w: [0.5, 0.3, 0.2, 0], sessions: 14, work: 31.2, c: 2140, tc: 11.4, a: 2980, ta: 5.2, l: 310, tl: 3.9, d: 190, td: 2.8, hk: 5210, ms: 1180 },
+  { name: 'dana.r', w: [0.6, 0, 0.4, 0], sessions: 16, work: 29.8, c: 2480, tc: 9.6, a: 2120, ta: 4.7, l: 180, tl: 3.1, d: 140, td: 2.5, hk: 6890, ms: 720 },
+  { name: 'boris.m', w: [0, 0.5, 0.2, 0.3], sessions: 12, work: 27.5, c: 1620, tc: 14.9, a: 2410, ta: 6.8, l: 420, tl: 5.6, d: 260, td: 3.4, hk: 2140, ms: 3020 },
+  { name: 'lena.s', w: [0.2, 0.4, 0, 0.4], sessions: 13, work: 24.1, c: 1710, tc: 12.1, a: 2260, ta: 5.9, l: 240, tl: 4.4, d: 150, td: 3.0, hk: 3320, ms: 1640 },
+  { name: 'emil.t', w: [0, 0.3, 0.7, 0], sessions: 9, work: 18.4, c: 980, tc: 17.2, a: 1730, ta: 7.9, l: 350, tl: 6.2, d: 310, td: 3.9, hk: 640, ms: 2890 },
+  { name: 'oleg.v', w: [0.3, 0, 0, 0.7], sessions: 7, work: 12.6, c: 760, tc: 13.5, a: 1010, ta: 6.4, l: 130, tl: 4.8, d: 90, td: 3.2, hk: 1480, ms: 990 }
+];
+const BASE_PROJECTS = [
+  { name: 'Road signs', f: 0.85 },
+  { name: 'Warehouse pallets', f: 1 },
+  { name: 'Retail shelves', f: 1.25 },
+  { name: 'Night traffic', f: 1.1 }
+];
+const FIRST = ['aleksandra', 'maximilian', 'konstantin', 'anastasia', 'christopher', 'ekaterina', 'vladislav'];
+const LAST = ['konstantinopolskaya', 'vandenberghe-oosterhout', 'rozhdestvensky', 'montgomery-smith'];
+const SUBJECTS = ['Warehouse pallets and forklifts', 'Road signs and lane markings', 'Retail shelf price tags', 'Night traffic intersections', 'Construction site safety gear', 'Parking lot occupancy', 'Conveyor belt surface defects'];
+const SUFFIXES = ['camera group A, relabel after audit 2026-Q4', 'validation batch 17 (rejected frames only)'];
+const PERIODS = [['week', 'Week'], ['two', 'Two weeks'], ['month', 'Month'], ['year', 'Year']];
+const DAY_WEIGHT = [0.25, 1, 1.05, 0.95, 1.1, 1, 0.35];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const OPS = [
+  { key: 'make', name: 'Creation', color: '#2a78d6', ink: '#ffffff', split: 1.05 },
+  { key: 'a', name: 'Alignment', color: '#eb6834', ink: '#ffffff', split: 0 },
+  { key: 'l', name: 'Class change', color: '#1baf7a', ink: '#ffffff', split: 0.85 },
+  { key: 'd', name: 'Deletion', color: '#eda100', ink: '#0b0b0b', split: 1.1 }
+];
+const OTHER = { name: 'Other', color: '#c9c8c2', ink: '#0b0b0b' };
+const LINE_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'];
+const HOTKEYS = [
+  { label: 'Next frame', key: 'F', w: 0.30 },
+  { label: 'Draw new shape', key: 'N', w: 0.26 },
+  { label: 'Previous frame', key: 'D', w: 0.11 },
+  { label: 'Switch label', key: 'Ctrl+1…9', w: 0.10 },
+  { label: 'Save', key: 'Ctrl+S', w: 0.07 },
+  { label: 'Delete object', key: 'Del', w: 0.045 },
+  { label: 'Undo', key: 'Ctrl+Z', w: 0.04 }
+];
+const LONG_HOTKEYS = [
+  { label: 'Switch occluded property of the active object', key: 'Q or Numpad /', w: 0.30 },
+  { label: 'Go to the next frame with a filtered object', key: 'Ctrl+Shift+Right', w: 0.26 },
+  { label: 'Draw new shape', key: 'N', w: 0.11 },
+  { label: 'Switch label', key: 'Ctrl+1…9', w: 0.10 },
+  { label: 'Save', key: 'Ctrl+S', w: 0.07 },
+  { label: 'Delete object', key: 'Del', w: 0.045 },
+  { label: 'Undo', key: 'Ctrl+Z', w: 0.04 }
+];
+const MORE_KEYS = [
+  { label: 'Redo', key: 'Ctrl+Shift+Z' }, { label: 'Copy object', key: 'Ctrl+C' }, { label: 'Paste object', key: 'Ctrl+V' },
+  { label: 'Propagate object', key: 'Ctrl+B' }, { label: 'Switch lock', key: 'L' }, { label: 'Switch occluded', key: 'Q' },
+  { label: 'Switch hidden', key: 'H' }, { label: 'Go forward with a step', key: 'V' }, { label: 'Go back with a step', key: 'C' },
+  { label: 'Next keyframe', key: 'R' }, { label: 'Previous keyframe', key: 'E' }, { label: 'Search forward', key: 'Right' },
+  { label: 'Search backward', key: 'Left' }, { label: 'Play or pause', key: 'Space' }, { label: 'Cancel', key: 'Esc' },
+  { label: 'Switch pinned', key: 'P' }, { label: 'To background', key: '-' }, { label: 'To foreground', key: '+' },
+  { label: 'Change color', key: 'Enter' }, { label: 'Next object', key: 'Tab' }, { label: 'Previous object', key: 'Shift+Tab' },
+  { label: 'Switch automatic bordering', key: 'Ctrl' }, { label: 'Open settings', key: 'F2' }
+];
+const DASH = '—';
+const KEYS = ['c', 'p', 'g', 'a', 'l', 'd'];
+const TOP_KEYS = 7;
+const TOP = 8;
+const PAGE = 10;
+const MAX_COMPARE = 5;
+const num = (v) => Math.round(v).toLocaleString('en-US');
+const big = (v) => (v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e5 ? Math.round(v / 1000) + 'K' : num(v));
+const hours = (s) => {
+  const h = s / 3600;
+  return h >= 1000 ? num(h) + ' h' : h.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' h';
+};
+const secs = (s) => (s < 10 ? s.toFixed(1) : String(Math.round(s))) + ' s';
+const pct = (part, whole) => (whole > 0 ? Math.round((part / whole) * 100) + '%' : DASH);
+const ratioOf = (t) => (t.hk + t.ms > 0 ? t.hk / (t.hk + t.ms) : 0);
+const madeOf = (t) => t.count.c + t.count.p + t.count.g;
+const makeTime = (t) => t.time.c + t.time.p + t.time.g;
+const scaleFor = (maximum) => {
+  const peak = Math.max(maximum, 0.001);
+  const rough = peak / 4;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
+  const step = [1, 2, 5, 10].map((f) => f * magnitude).find((candidate) => candidate >= rough);
+  const top = Math.ceil(peak / step) * step;
+  const ticks = [];
+  for (let v = 0; v <= top + step / 2; v += step) {
+    const value = Number(v.toPrecision(6));
+    ticks.push({ label: value >= 10000 ? Math.round(value / 1000) + 'K' : String(value), bottom: (v / top) * 100 + '%', line: v === 0 ? '#bdbdbd' : '#ececec' });
+  }
+  return { top, ticks };
+};
+
+function dataset(mode) {
+  if (mode !== 'overflow') {
+    return {
+      users: BASE_USERS.map((u, i) => ({ ...u, id: i + 1 })),
+      projects: BASE_PROJECTS.map((p, i) => ({ ...p, id: i + 1 })),
+      technical: 2
+    };
+  }
+  const PROJECT_COUNT = 40;
+  const USER_COUNT = 100;
+  const projects = [];
+  for (let j = 0; j < PROJECT_COUNT; j++) {
+    projects.push({
+      id: j + 1, f: 0.85 + (j % 5) * 0.1,
+      name: SUBJECTS[j % 7] + ' — ' + SUFFIXES[Math.floor(j / 7) % 2] + (j >= 14 ? ', part ' + (Math.floor(j / 14) + 1) : '')
+    });
+  }
+  const users = [];
+  for (let i = 0; i < USER_COUNT; i++) {
+    const base = BASE_USERS[i % 6];
+    const factor = 1.25 - i * 0.011;
+    const w = projects.map(() => 0);
+    if (i === 0) {
+      projects.forEach((p, j) => { w[j] = 1 / PROJECT_COUNT; });
+    } else {
+      w[i % PROJECT_COUNT] = 0.5; w[(i + 3) % PROJECT_COUNT] = 0.3; w[(i + 7) % PROJECT_COUNT] = 0.2;
+    }
+    const scaled = {};
+    ['work', 'c', 'a', 'l', 'd', 'hk', 'ms'].forEach((key) => { scaled[key] = base[key] * factor; });
+    users.push({
+      ...base, ...scaled, id: i + 1, w,
+      name: FIRST[i % 7] + '.' + LAST[Math.floor(i / 7) % 4] + (i >= 28 ? Math.floor(i / 28) + 1 : '')
+    });
+  }
+  return { users, projects, technical: 4 };
+}
+
+class Component extends DCLogic {
+  state = {};
+
+  renderVals() {
+    const mode = this.props.mode ?? 'full';
+    const isOverflow = mode === 'overflow';
+    const isLegacy = mode === 'legacy';
+    const isBackfill = mode === 'backfill';
+    const isDenied = mode === 'denied';
+    const hasInput = !isLegacy;
+    const defaults = {
+      period: isOverflow ? 'year' : 'week', month: 1, shapes: 'bbox', user: isOverflow ? 1 : null, project: null,
+      table: 'annotators', page: 0, expandProjects: isOverflow, expandUsers: false,
+      bucket: 'week', compareKind: 'annotators',
+      compare: (isOverflow ? [1, 2, 3, 4, 5] : [1, 3, 5]).map((id, slot) => ({ id, slot }))
+    };
+    defaults.fullView = this.props.view || null;
+    const st = { ...defaults, ...this.state };
+    const set = (patch) => () => this.setState(patch);
+    // every chart opens in a full view that replaces the overview and keeps the filters
+    const open = (kind) => set({ fullView: kind, fullQuery: '', fullSort: 'value' });
+    const { users, projects, technical } = dataset(mode);
+    // week and two weeks end today; a month is a calendar month; the year is the last twelve months
+    const periodKey = isBackfill ? 'week' : st.period;
+    const isMonth = periodKey === 'month';
+    const monthFirst = new Date(2026, 10 - st.month, 1);
+    const monthDays = st.month === 0 ? 13 : new Date(2026, 11 - st.month, 0).getDate();
+    const period = periodKey === 'week' ? 7 : periodKey === 'two' ? 14 : isMonth ? monthDays : 365;
+    const periodEnd = isMonth && st.month > 0 ? new Date(2026, 11 - st.month, 0) : new Date(2026, 10, 13);
+    const { user, project, table } = st;
+    const allShapes = isLegacy || st.shapes === 'all';
+    const m = allShapes ? 1.22 : 1;
+
+    // one cell per annotator and project they worked in
+    const makeCells = (k) => {
+      const cells = [];
+      users.forEach((u) => projects.forEach((p, index) => {
+        const weight = u.w[index];
+        if (!weight) return;
+        const drawn = (u.c * k * m * weight) / p.f;
+        const count = {
+          c: Math.round(drawn), p: Math.round(drawn * (0.08 + (u.id % 4) * 0.06)), g: Math.round(drawn * (0.03 + (u.id % 3) * 0.03)),
+          a: Math.round((u.a * k * m * weight) / p.f), l: isLegacy ? 0 : Math.round((u.l * k * m * weight) / p.f), d: Math.round((u.d * k * m * weight) / p.f)
+        };
+        const time = { c: count.c * u.tc * p.f, p: count.p * u.tc * 0.35 * p.f, g: count.g * u.tc * 0.2 * p.f, a: count.a * u.ta * p.f, l: count.l * u.tl * p.f, d: count.d * u.td * p.f };
+        const busy = KEYS.reduce((all, key) => all + time[key], 0);
+        const work = Math.max(u.work * k * weight * 3600, busy * 1.35);
+        cells.push({
+          uid: u.id, pid: p.id, count, time, work, other: work - busy,
+          detector: isLegacy || u.id % 3 ? 0 : Math.round(drawn * 0.12),
+          sessions: Math.max(1, Math.round(u.sessions * k * (0.3 + 0.7 * weight))),
+          hk: hasInput ? Math.round(u.hk * k * weight) : 0, ms: hasInput ? Math.round(u.ms * k * weight) : 0
+        });
+      }));
+      return cells;
+    };
+    const technicalBoxes = (k, p) => Math.round((900 * k * m * (1 + (p.id % 3) * 0.4)) / p.f);
+
+    // a session can touch several projects, so whole-annotator totals count each session once
+    const total = (list, k, wholeAnnotators, withTechnical) => {
+      const t = { count: { c: 0, p: 0, g: 0, a: 0, l: 0, d: 0 }, time: { c: 0, p: 0, g: 0, a: 0, l: 0, d: 0 }, work: 0, other: 0, sessions: 0, hk: 0, ms: 0, model: 0, users: 0, projects: 0 };
+      list.forEach((cell) => {
+        KEYS.forEach((key) => { t.count[key] += cell.count[key]; t.time[key] += cell.time[key]; });
+        t.work += cell.work; t.other += cell.other; t.sessions += cell.sessions; t.hk += cell.hk; t.ms += cell.ms; t.model += cell.detector;
+      });
+      const uids = Array.from(new Set(list.map((cell) => cell.uid)));
+      const pids = Array.from(new Set(list.map((cell) => cell.pid)));
+      t.users = uids.length;
+      t.projects = pids.length;
+      if (wholeAnnotators) t.sessions = uids.reduce((all, id) => all + Math.round(users.find((u) => u.id === id).sessions * k), 0);
+      if (withTechnical) pids.forEach((id) => { t.model += technicalBoxes(k, projects.find((p) => p.id === id)); });
+      return t;
+    };
+
+    const byProject = (cell) => project === null || cell.pid === project;
+    const byUser = (cell) => user === null || cell.uid === user;
+    const k = periodKey === 'year' ? 52 : (period / 7) * (isMonth ? 1 - st.month * 0.05 : 1);
+    const cells = makeCells(k);
+    const scope = total(cells.filter((cell) => byProject(cell) && byUser(cell)), k, project === null, user === null);
+    const active = makeTime(scope) + scope.time.a + scope.time.l + scope.time.d + scope.other;
+    const selectedUser = users.find((u) => u.id === user) || null;
+    const selectedProject = projects.find((p) => p.id === project) || null;
+    const noun = allShapes ? 'object' : 'box';
+    const Noun = allShapes ? 'Objects' : 'Boxes';
+
+    const annotatorRows = users.map((u) => ({
+      id: u.id, name: u.name, t: total(cells.filter((cell) => cell.uid === u.id && byProject(cell)), k, project === null, false)
+    })).filter((row) => row.t.work > 0).sort((x, y) => y.t.work - x.t.work);
+    const projectRows = projects.map((p) => ({
+      id: p.id, name: p.name, t: total(cells.filter((cell) => cell.pid === p.id && byUser(cell)), k, false, user === null)
+    })).filter((row) => row.t.work > 0).sort((x, y) => y.t.work - x.t.work);
+
+    const segment = (label, on, pick, disabled) => ({
+      label, pick, pressed: on ? 'true' : 'false', disabled: !!disabled,
+      title: disabled ? 'Not processed yet' : label, cursor: disabled ? 'not-allowed' : 'pointer',
+      bg: on ? '#ffffff' : 'transparent', ink: disabled ? '#767676' : on ? '#1f1f1f' : '#4a4a4a',
+      weight: on ? 600 : 400, shadow: on ? '0 1px 2px rgba(0,0,0,0.18)' : 'none'
+    });
+    const pickUser = (id) => () => this.setState({ user: st.user === id ? null : id, page: 0 });
+    const pickProject = (id) => () => this.setState({ project: st.project === id ? null : id, page: 0 });
+    const dayLabel = (date) => MONTHS[date.getMonth()] + ' ' + date.getDate();
+
+    // days, or weeks once the range is too long for one bar per day
+    const weekly = period > 60;
+    const steps = weekly ? 53 : period;
+    const dates = [];
+    for (let i = steps - 1; i >= 0; i--) dates.push(new Date(periodEnd.getFullYear(), periodEnd.getMonth(), periodEnd.getDate() - i * (weekly ? 7 : 1)));
+    const weights = dates.map((date, i) => (weekly ? 0.8 + 0.4 * (i / 52) + 0.12 * Math.sin(i * 1.3) : DAY_WEIGHT[date.getDay()]));
+    const weightSum = weights.reduce((all, w) => all + w, 0);
+    const stepHours = weights.map((w) => (scope.work / 3600) * (w / weightSum));
+    const timeScale = scaleFor(Math.max(...stepHours));
+    const labelEvery = weekly ? 8 : period <= 7 ? 1 : period <= 14 ? 2 : 5;
+    const days = dates.map((date, i) => ({
+      h: (stepHours[i] / timeScale.top) * 100 + '%',
+      cap: period <= 14 ? stepHours[i].toFixed(1) : '',
+      fullCap: steps <= 31 ? stepHours[i].toFixed(1) : '',
+      axis: (steps - 1 - i) % labelEvery === 0 ? dayLabel(date) : '',
+      title: (weekly ? 'Week of ' : '') + dayLabel(date) + ': ' + stepHours[i].toFixed(1) + ' h'
+    }));
+
+    const shownOps = OPS.filter((op) => !(isLegacy && op.key === 'l'));
+    const opTime = (t, key) => (key === 'make' ? makeTime(t) : t.time[key]);
+    const opCount = (t, key) => (key === 'make' ? madeOf(t) : t.count[key]);
+    const partsOf = (t) => shownOps.map((op) => ({ name: op.name, color: op.color, ink: op.ink, value: opTime(t, op.key) }))
+      .concat([{ name: OTHER.name, color: OTHER.color, ink: OTHER.ink, value: t.other }]);
+    const split = partsOf(scope).map((part) => {
+      const share = active > 0 ? part.value / active : 0;
+      return {
+        name: part.name, color: part.color, ink: part.ink, flex: Math.max(part.value, 1),
+        inside: share >= 0.09 ? Math.round(share * 100) + '%' : '',
+        time: hours(part.value), share: pct(part.value, active),
+        title: part.name + ': ' + hours(part.value) + ' (' + pct(part.value, active) + ')'
+      };
+    });
+
+    const scopeRatio = ratioOf(scope);
+    const ops = OPS.map((op) => {
+      const count = opCount(scope, op.key);
+      const missing = isLegacy && op.key === 'l';
+      const ratio = Math.min(0.97, scopeRatio * op.split);
+      const hasSplit = hasInput && op.split > 0;
+      return {
+        name: op.name, color: op.color,
+        count: missing ? DASH : num(count),
+        avg: missing || !count ? DASH : secs(opTime(scope, op.key) / count),
+        total: missing ? DASH : hours(opTime(scope, op.key)),
+        share: missing ? DASH : pct(opTime(scope, op.key), active),
+        hasSplit, noSplit: !hasSplit,
+        hkFlex: Math.max(ratio, 0.01), msFlex: Math.max(1 - ratio, 0.01),
+        splitLabel: Math.round(ratio * 100) + '% / ' + Math.round((1 - ratio) * 100) + '%',
+        splitTitle: op.name + ': ' + Math.round(ratio * 100) + '% by hotkey, ' + Math.round((1 - ratio) * 100) + '% by mouse',
+        splitNote: op.split > 0 ? 'Not recorded' : 'Mouse only'
+      };
+    });
+
+    const made = madeOf(scope);
+    const everyBox = made + scope.model;
+    const methodRows = [
+      { name: 'Drawn by hand', count: scope.count.c, time: scope.time.c, color: '#2a78d6' },
+      { name: 'Pasted', count: scope.count.p, time: scope.time.p, color: '#2a78d6' },
+      { name: 'Propagated', count: scope.count.g, time: scope.time.g, color: '#2a78d6' },
+      { name: 'Model', count: scope.model, time: null, color: '#c9c8c2' }
+    ];
+    const maxMethod = Math.max(1, ...methodRows.map((row) => row.count));
+    const methods = methodRows.map((row) => ({
+      name: row.name, color: row.color, count: num(row.count), share: pct(row.count, everyBox),
+      avg: row.time === null || !row.count ? DASH : secs(row.time / row.count),
+      width: Math.max(1, (row.count / maxMethod) * 100) + '%',
+      title: row.name + ': ' + num(row.count) + ' (' + pct(row.count, everyBox) + ')'
+    }));
+
+    const bars = (rows, visible, selectedId, pick) => {
+      const maxWork = Math.max(1, ...rows.map((row) => row.t.work));
+      return visible.map((row) => {
+        const on = row.id === selectedId;
+        const segments = partsOf(row.t);
+        return {
+          name: row.name, total: hours(row.t.work), width: (row.t.work / maxWork) * 82 + '%',
+          pick: pick(row.id), pressed: on ? 'true' : 'false',
+          bg: on ? '#eef0f2' : 'transparent', weight: on ? 700 : 400,
+          parts: segments.map((seg, i) => ({
+            flex: Math.max(seg.value, 1), color: seg.color,
+            radius: i === segments.length - 1 ? '0 4px 4px 0' : '0',
+            title: row.name + ' · ' + seg.name + ': ' + hours(seg.value)
+          }))
+        };
+      });
+    };
+    // a card shows its top rows and a one-line remainder; the full list lives in the full view
+    const breakdown = (title, rows, selectedId, pick, kind, subtitle) => {
+      const rest = rows.slice(TOP);
+      return {
+        title, subtitle, countLabel: String(rows.length), rows: bars(rows, rows.slice(0, TOP), selectedId, pick),
+        hasMore: rows.length > TOP, maxHeight: 'none', noMatches: false,
+        hasOthers: rest.length > 0,
+        othersLabel: rest.length + ' more, not shown',
+        othersTotal: hours(rest.reduce((all, row) => all + row.t.work, 0)),
+        toggle: open(kind), openFull: open(kind),
+        toggleLabel: 'Show all ' + rows.length + ' in full view'
+      };
+    };
+
+    const keyTotal = isOverflow ? 100 : 30;
+    const namedKeys = (isOverflow ? LONG_HOTKEYS.slice(0, 2).concat(HOTKEYS.slice(2)) : HOTKEYS).concat(MORE_KEYS);
+    const rawKeys = [];
+    for (let i = 0; i < keyTotal; i++) {
+      const label = i - namedKeys.length + 1;
+      rawKeys.push(namedKeys[i] || { label: 'Switch to label ' + label, key: 'Alt+' + label });
+    }
+    const keyWeights = rawKeys.map((key, i) => Math.pow(0.8, i));
+    const keyWeightSum = keyWeights.reduce((all, w) => all + w, 0);
+    const allKeys = rawKeys.map((key, i) => ({ label: key.label, key: key.key, count: Math.round(scope.hk * (keyWeights[i] / keyWeightSum)) }));
+    const keyQuery = (st.keyQuery || '').toLowerCase();
+    const shownKeys = st.expandKeys ?
+      allKeys.filter((key) => (key.label + ' ' + key.key).toLowerCase().includes(keyQuery)) :
+      allKeys.slice(0, TOP_KEYS);
+    const hiddenKeys = allKeys.slice(TOP_KEYS);
+    const maxKey = Math.max(1, allKeys[0].count);
+
+    const who = selectedUser ? selectedUser.name : 'All annotators';
+    const where = selectedProject ? selectedProject.name : 'All projects';
+
+    // trends: twelve weeks or months, one line per compared annotator or project
+    const monthly = st.bucket === 'month';
+    const bucketScale = monthly ? 4.3 : 1;
+    const trendCells = makeCells(bucketScale);
+    const kindProjects = st.compareKind === 'projects';
+    const pool = kindProjects ? projects : users;
+    const chosen = st.compare.filter((item) => pool.some((entity) => entity.id === item.id));
+    const entityTotal = (id) => (kindProjects ?
+      total(trendCells.filter((cell) => cell.pid === id && byUser(cell)), bucketScale, false, false) :
+      total(trendCells.filter((cell) => cell.uid === id && byProject(cell)), bucketScale, project === null, false));
+    const lines = chosen.length ?
+      chosen.map((item) => ({ id: item.id, slot: item.slot, name: pool.find((entity) => entity.id === item.id).name, t: entityTotal(item.id) })) :
+      [{ id: 0, slot: 0, name: who + ' · ' + where, t: total(trendCells.filter((cell) => byProject(cell) && byUser(cell)), bucketScale, project === null, false) }];
+    const BUCKETS = 12;
+    const growth = (i) => 0.82 + 0.36 * (i / 11);
+    const wobble = (i, id, depth) => 1 + depth * Math.sin(i * 1.9 + id * 1.3);
+    const metrics = [
+      { title: 'Working time', unit: monthly ? 'hours per month' : 'hours per week', value: (t, i, id) => (t.work / 3600) * growth(i) * wobble(i, id, 0.1), show: (v) => v.toFixed(1) + ' h' },
+      { title: Noun + ' created', unit: 'drawn, pasted and propagated', value: (t, i, id) => madeOf(t) * growth(i) * wobble(i, id + 2, 0.12), show: (v) => num(v) },
+      { title: 'Average time per ' + noun, unit: 'seconds, all annotator methods', value: (t, i, id) => (madeOf(t) ? (makeTime(t) / madeOf(t)) * (1.18 - 0.32 * (i / 11)) * wobble(i, id + 4, 0.04) : 0), show: (v) => secs(v) },
+      { title: 'Hotkey share', unit: 'percent of hotkey and mouse actions', value: (t, i, id) => Math.min(97, ratioOf(t) * 100 * (0.75 + 0.45 * (i / 11))), show: (v) => Math.round(v) + '%', needsInput: true }
+    ];
+    const bucketDate = (i) => (monthly ? new Date(2026, 10 - (BUCKETS - 1 - i), 1) : new Date(2026, 10, 9 - (BUCKETS - 1 - i) * 7));
+    const bucketLabel = (i) => (monthly ? MONTHS[bucketDate(i).getMonth()] : dayLabel(bucketDate(i)));
+    const trendCharts = metrics.map((metric, metricIndex) => {
+      const empty = !!metric.needsInput && !hasInput;
+      const series = lines.map((line) => {
+        const values = [];
+        for (let i = 0; i < BUCKETS; i++) values.push(metric.value(line.t, i, line.id));
+        return { ...line, values };
+      });
+      const chartScale = scaleFor(Math.max(...series.map((line) => Math.max(...line.values))));
+      const chart = {
+        title: metric.title, unit: metric.unit, ready: !empty, empty, ticks: chartScale.ticks, dots: [], xLabels: [],
+        openFull: open('trend' + metricIndex), rows: [],
+        legend: series.map((line) => ({ name: line.name, color: LINE_COLORS[line.slot], last: metric.show(line.values[BUCKETS - 1]) }))
+      };
+      for (let slot = 0; slot < MAX_COMPARE; slot++) { chart['p' + slot] = ''; chart['c' + slot] = 'transparent'; }
+      series.forEach((line) => {
+        chart['c' + line.slot] = LINE_COLORS[line.slot];
+        chart['p' + line.slot] = line.values.map((v, i) => ((i / (BUCKETS - 1)) * 100).toFixed(2) + ',' + (100 - (v / chartScale.top) * 100).toFixed(2)).join(' ');
+        line.values.forEach((v, i) => {
+          const last = i === BUCKETS - 1;
+          chart.dots.push({
+            left: (i / (BUCKETS - 1)) * 100 + '%', bottom: (v / chartScale.top) * 100 + '%',
+            size: last ? '8px' : '0px', color: LINE_COLORS[line.slot],
+            title: line.name + ' · ' + (monthly ? '' : 'week of ') + bucketLabel(i) + ': ' + metric.show(v)
+          });
+        });
+      });
+      for (let i = 0; i < BUCKETS; i++) {
+        if ((BUCKETS - 1 - i) % (monthly ? 2 : 3) === 0) chart.xLabels.push({ left: (i / (BUCKETS - 1)) * 100 + '%', label: bucketLabel(i) });
+        chart.rows.push({ label: (monthly ? '' : 'Week of ') + bucketLabel(i), cells: series.map((line) => ({ text: metric.show(line.values[i]) })) });
+      }
+      return chart;
+    });
+
+    // full view of one chart: every row, searchable and sortable, or one large chart with its values as a table
+    const fv = st.fullView || null;
+    const fullQuery = (st.fullQuery || '').toLowerCase();
+    const sortByName = st.fullSort === 'name';
+    const rowsByProjects = st.fullRows === 'projects';
+    const emptyFull = {
+      title: '', subtitle: '', summary: '', placeholder: 'Find', hasToolbar: false, canSwitchRows: false,
+      isList: false, isTime: false, isTrend: false, isTable: false, showLegend: false, noMatches: false,
+      rows: [], columns: [], legend: [], ticks: [], dots: [], xLabels: [],
+      extraCol: '0px', grid: '1fr', nameHeader: '', valueHeader: '', extraHeader: ''
+    };
+    for (let slot = 0; slot < MAX_COMPARE; slot++) { emptyFull['p' + slot] = ''; emptyFull['c' + slot] = 'transparent'; }
+    const arrange = (items) => {
+      const shown = items.filter((item) => item.search.includes(fullQuery));
+      if (sortByName) shown.sort((x, y) => x.name.localeCompare(y.name));
+      return shown;
+    };
+    const dims = {
+      projects: { rows: projectRows, pick: pickProject, selected: project, noun: 'projects', header: 'Project', find: 'Find a project', other: who },
+      annotators: { rows: annotatorRows, pick: pickUser, selected: user, noun: 'annotators', header: 'Annotator', find: 'Find an annotator', other: where }
+    };
+    const switchable = dims[rowsByProjects ? 'projects' : 'annotators'];
+    let full = emptyFull;
+    if (fv === 'projects' || fv === 'annotators' || fv === 'split') {
+      const dim = fv === 'split' ? switchable : dims[fv];
+      const maxWork = Math.max(1, ...dim.rows.map((row) => row.t.work));
+      const totalWork = dim.rows.reduce((all, row) => all + row.t.work, 0);
+      const rows = arrange(dim.rows.map((row, i) => {
+        const on = row.id === dim.selected;
+        const segments = partsOf(row.t);
+        return {
+          search: row.name.toLowerCase(), rank: String(i + 1), name: row.name, extra: '',
+          width: (row.t.work / maxWork) * 100 + '%', value: hours(row.t.work), share: pct(row.t.work, totalWork),
+          pick: dim.pick(row.id), pressed: on ? 'true' : 'false', bg: on ? '#eef0f2' : '#ffffff', weight: on ? 700 : 400,
+          parts: segments.map((seg, index) => ({
+            flex: Math.max(seg.value, 1), color: seg.color, radius: index === segments.length - 1 ? '0 4px 4px 0' : '0',
+            title: row.name + ' · ' + seg.name + ': ' + hours(seg.value)
+          }))
+        };
+      }));
+      full = {
+        ...emptyFull, isList: true, hasToolbar: true, canSwitchRows: fv === 'split', showLegend: true,
+        title: fv === 'split' ? 'Where working time goes, by ' + dim.header.toLowerCase() : 'Working time by ' + dim.header.toLowerCase(),
+        subtitle: 'Hours split by operation · ' + dim.other,
+        summary: dim.rows.length + ' ' + dim.noun + ' · ' + hours(totalWork) + ' in total',
+        placeholder: dim.find, nameHeader: dim.header, valueHeader: 'Working time', rows, noMatches: !rows.length
+      };
+    } else if (fv === 'keys') {
+      const rows = arrange(allKeys.map((key, i) => ({
+        search: (key.label + ' ' + key.key).toLowerCase(), rank: String(i + 1), name: key.label, extra: key.key,
+        width: Math.max(0.5, (key.count / maxKey) * 100) + '%', value: num(key.count), share: pct(key.count, scope.hk),
+        pick: () => {}, pressed: 'false', bg: '#ffffff', weight: 400,
+        parts: [{ flex: 1, color: '#2a78d6', radius: '0 4px 4px 0', title: key.label + ' (' + key.key + '): ' + num(key.count) }]
+      })));
+      full = {
+        ...emptyFull, isList: true, hasToolbar: true, title: 'Hotkey usage',
+        subtitle: 'Presses per hotkey action · ' + who + ' · ' + where,
+        summary: allKeys.length + ' hotkeys · ' + num(scope.hk) + ' presses',
+        placeholder: 'Find an action or key', nameHeader: 'Action', extraHeader: 'Key', valueHeader: 'Presses',
+        extraCol: 'minmax(96px, 0.7fr)', rows, noMatches: !rows.length
+      };
+    } else if (fv === 'time') {
+      full = {
+        ...emptyFull, isTime: true, title: weekly ? 'Working time by week' : 'Working time by day',
+        subtitle: 'Hours as the server counts working time · ' + who + ' · ' + where,
+        rows: dates.map((date, i) => ({ label: (weekly ? 'Week of ' : '') + dayLabel(date), value: stepHours[i].toFixed(1) + ' h' }))
+      };
+    } else if (fv && fv.indexOf('trend') === 0) {
+      const chart = trendCharts[Number(fv.slice(5))] || trendCharts[0];
+      full = {
+        ...emptyFull, ...chart, isTrend: true, nameHeader: monthly ? 'Month' : 'Week',
+        subtitle: chart.unit + ' · last 12 ' + (monthly ? 'months' : 'weeks'),
+        grid: 'minmax(120px, 1fr) repeat(' + chart.legend.length + ', minmax(96px, 1fr))'
+      };
+    } else if (fv === 'ops' || fv === 'methods') {
+      const dim = switchable;
+      const avg = (time, count) => (count ? secs(time / count) : DASH);
+      const columns = fv === 'ops' ?
+        ['Created', 'Avg create', 'Aligned', 'Avg align', 'Class changes', 'Avg change', 'Deleted', 'Avg delete'] :
+        ['Drawn', 'Avg drawn', 'Pasted', 'Avg pasted', 'Propagated', 'Avg propagated', 'Model', 'All annotator methods', 'Avg all'];
+      const cellsOf = (t) => (fv === 'ops' ?
+        [num(madeOf(t)), avg(makeTime(t), madeOf(t)), num(t.count.a), avg(t.time.a, t.count.a), isLegacy ? DASH : num(t.count.l), isLegacy ? DASH : avg(t.time.l, t.count.l), num(t.count.d), avg(t.time.d, t.count.d)] :
+        [num(t.count.c), avg(t.time.c, t.count.c), num(t.count.p), avg(t.time.p, t.count.p), num(t.count.g), avg(t.time.g, t.count.g), num(t.model), num(madeOf(t)), avg(makeTime(t), madeOf(t))]);
+      const rows = arrange(dim.rows.map((row) => ({ search: row.name.toLowerCase(), name: row.name, cells: cellsOf(row.t).map((text) => ({ text })) })));
+      full = {
+        ...emptyFull, isTable: true, hasToolbar: true, canSwitchRows: true,
+        title: (fv === 'ops' ? (allShapes ? 'Object operations' : 'Bounding box operations') : 'How ' + Noun.toLowerCase() + ' are created') + ', by ' + dim.header.toLowerCase(),
+        subtitle: 'Counts and average time per object · ' + dim.other,
+        summary: dim.rows.length + ' ' + dim.noun, placeholder: dim.find, nameHeader: dim.header,
+        columns: columns.map((text) => ({ text })), rows, noMatches: !rows.length,
+        grid: 'minmax(200px, 2fr) repeat(' + columns.length + ', minmax(84px, 1fr))'
+      };
+    }
+    const freeSlot = () => [0, 1, 2, 3, 4].find((slot) => !chosen.some((item) => item.slot === slot));
+    const toggleCompare = (id) => () => {
+      const present = chosen.some((item) => item.id === id);
+      if (!present && chosen.length >= MAX_COMPARE) return;
+      this.setState({ compare: present ? chosen.filter((item) => item.id !== id) : chosen.concat([{ id, slot: freeSlot() }]) });
+    };
+    const atLimit = chosen.length >= MAX_COMPARE;
+    const compareQuery = (st.compareQuery || '').toLowerCase();
+    const offered = (kindProjects ? projectRows : annotatorRows)
+      .filter((row) => !chosen.some((item) => item.id === row.id) && row.name.toLowerCase().includes(compareQuery));
+
+    const detail = (rows, selectedId, pick, second) => rows.map((row) => {
+      const on = row.id === selectedId;
+      const t = row.t;
+      return {
+        name: row.name, pick: pick(row.id), pressed: on ? 'true' : 'false',
+        bg: on ? '#eef0f2' : '#ffffff', weight: on ? 700 : 600,
+        second: num(second(t)), sessions: num(t.sessions), work: hours(t.work),
+        drawn: num(t.count.c), pasted: num(t.count.p), propagated: num(t.count.g),
+        model: num(isLegacy ? madeOf(t) * 0.71 : t.model),
+        aligned: num(t.count.a), relabeled: isLegacy ? DASH : num(t.count.l), deleted: num(t.count.d),
+        avgCreate: madeOf(t) ? secs(makeTime(t) / madeOf(t)) : DASH,
+        hkShare: hasInput ? Math.round(ratioOf(t) * 100) + '%' : DASH
+      };
+    });
+    const showProjects = table === 'projects';
+    const tableQuery = (st.tableQuery || '').toLowerCase();
+    const sourceRows = (showProjects ? projectRows : annotatorRows).filter((row) => row.name.toLowerCase().includes(tableQuery));
+    const allRows = showProjects ?
+      detail(sourceRows, project, pickProject, (t) => t.users) :
+      detail(sourceRows, user, pickUser, (t) => t.projects);
+    const pages = Math.max(1, Math.ceil(allRows.length / PAGE));
+    const page = Math.min(st.page, pages - 1);
+    const firstRow = page * PAGE;
+
+    const chip = (label, value, activeNow, clear, clearLabel) => ({
+      label, value, active: activeNow, idle: !activeNow, clear, clearLabel,
+      border: activeNow ? '#1f1f1f' : '#c4c4c4'
+    });
+    const rangeStart = weekly ? new Date(2025, 10, 14) : dates[0];
+    return {
+      isLegacy, isBackfill, isDenied, hasInput, noInput: !hasInput, showPage: !isDenied,
+      showOverview: !isDenied && !fv, showFull: !isDenied && !!fv, full,
+      closeFull: set({ fullView: null }),
+      fullQueryValue: st.fullQuery || '',
+      onFullSearch: (event) => this.setState({ fullQuery: event.target.value }),
+      fullSortOptions: [
+        segment('By value', !sortByName, set({ fullSort: 'value' })),
+        segment('By name', sortByName, set({ fullSort: 'name' }))
+      ],
+      fullRowOptions: [
+        segment('Annotators', !rowsByProjects, set({ fullRows: 'annotators' })),
+        segment('Projects', rowsByProjects, set({ fullRows: 'projects' }))
+      ],
+      openTime: open('time'), openSplit: open('split'), openOps: open('ops'), openMethods: open('methods'), openKeys: open('keys'),
+      viewerName: isDenied ? 'emil.t' : 'maintainer',
+      showShapeFilter: !isLegacy,
+      periods: PERIODS.map(([key, label]) => segment(label, periodKey === key, set({ period: key, page: 0 }), isBackfill && key !== 'week')),
+      isMonth,
+      rangeLabel: isMonth ?
+        MONTH_NAMES[monthFirst.getMonth()] + ' ' + monthFirst.getFullYear() + (st.month === 0 ? ' · to date' : '') :
+        dayLabel(rangeStart) + (weekly ? ', 2025' : '') + ' – ' + dayLabel(dates[dates.length - 1]) + ', 2026',
+      rangeWeight: isMonth ? 600 : 400,
+      prevMonth: set({ month: Math.min(11, st.month + 1), page: 0 }), nextMonth: set({ month: Math.max(0, st.month - 1), page: 0 }),
+      prevMonthDisabled: st.month >= 11, nextMonthDisabled: st.month === 0,
+      prevMonthInk: st.month >= 11 ? '#8a8a8a' : '#1f1f1f', nextMonthInk: st.month === 0 ? '#8a8a8a' : '#1f1f1f',
+      shapeOptions: [
+        segment('Bounding boxes', !allShapes, set({ shapes: 'bbox' })),
+        segment('All shapes', allShapes, set({ shapes: 'all' }))
+      ],
+      tableOptions: [
+        segment('Annotators', !showProjects, set({ table: 'annotators', page: 0, tableQuery: '' })),
+        segment('Projects', showProjects, set({ table: 'projects', page: 0, tableQuery: '' }))
+      ],
+      bucketOptions: [
+        segment('Weeks', !monthly, set({ bucket: 'week' })),
+        segment('Months', monthly, set({ bucket: 'month' }))
+      ],
+      compareKinds: [
+        segment('Annotators', !kindProjects, set({ compareKind: 'annotators', compare: [], compareQuery: '' })),
+        segment('Projects', kindProjects, set({ compareKind: 'projects', compare: [], compareQuery: '' }))
+      ],
+      chips: [
+        chip('Project', where, !!selectedProject, set({ project: null, page: 0 }), 'Show all projects'),
+        chip('Annotator', who, !!selectedUser, set({ user: null, page: 0 }), 'Show all annotators')
+      ],
+      scopeLabel: who + ' · ' + where,
+      kpis: [
+        { label: 'Active annotators', value: selectedUser ? '1 of ' + annotatorRows.length : String(scope.users), title: '', hint: selectedProject ? 'worked in the selected project' : 'across ' + scope.projects + ' projects' },
+        { label: 'Sessions', value: big(scope.sessions), title: num(scope.sessions), hint: selectedProject ? 'that touched this project' : 'uninterrupted intervals of work' },
+        { label: 'Working time', value: hours(scope.work), title: hours(scope.work), hint: 'as counted by the server' },
+        { label: Noun + ' created', value: big(made), title: num(made) + ' exactly', hint: 'by annotators · plus ' + big(scope.model) + ' by model' },
+        { label: 'Avg time per ' + noun, value: made ? secs(makeTime(scope) / made) : DASH, title: '', hint: 'drawn ' + (scope.count.c ? secs(scope.time.c / scope.count.c) : DASH) + ' · pasted ' + (scope.count.p ? secs(scope.time.p / scope.count.p) : DASH) + ' · propagated ' + (scope.count.g ? secs(scope.time.g / scope.count.g) : DASH) }
+      ],
+      timeChartTitle: weekly ? 'Working time by week' : 'Working time by day',
+      yTicks: timeScale.ticks, days, split,
+      splitSubtitle: (allShapes ? 'All shapes' : 'Bounding boxes') + ' · ' + hours(active) + ' of working time · ' + who + ' · ' + where,
+      opsTitle: allShapes ? 'Object operations' : 'Bounding box operations',
+      ops,
+      methodsTitle: 'How ' + Noun.toLowerCase() + ' are created',
+      methodsCountHeader: Noun,
+      methods, methodsTotal: num(made), methodsAvg: made ? secs(makeTime(scope) / made) : DASH,
+      methodsNote: isLegacy ?
+        num(Math.round(everyBox * 0.71)) + ' single-frame boxes were saved in this period, all methods together.' :
+        'Model: boxes saved by ' + technical + ' technical accounts or made with the built-in detector. A re-upload by a technical account counts again.',
+      breakdowns: [
+        breakdown('Working time by project', projectRows, project, pickProject, 'projects', 'Hours split by operation · ' + who),
+        breakdown('Working time by annotator', annotatorRows, user, pickUser, 'annotators', 'Hours split by operation · ' + where)
+      ],
+      hotkeyTotal: big(scope.hk), hotkeyTotalExact: num(scope.hk), mouseTotal: big(scope.ms), mouseTotalExact: num(scope.ms),
+      hotkeyShare: Math.round(scopeRatio * 100) + '%',
+      hotkeyShareTitle: num(scope.hk) + ' hotkey actions of ' + num(scope.hk + scope.ms),
+      topKeys: shownKeys.map((key) => ({
+        label: key.label, key: key.key, value: num(key.count), color: '#2a78d6',
+        width: Math.max(0.5, (key.count / maxKey) * 100) + '%', title: key.label + ' (' + key.key + '): ' + num(key.count)
+      })),
+      keysExpanded: !!st.expandKeys, keysCollapsed: !st.expandKeys,
+      keysMaxHeight: st.expandKeys ? '300px' : 'none',
+      keyQueryValue: st.keyQuery || '',
+      onKeySearch: (event) => this.setState({ keyQuery: event.target.value }),
+      noKeyMatches: !!st.expandKeys && !shownKeys.length,
+      otherKeysLabel: hiddenKeys.length + ' other hotkeys, not shown',
+      otherKeysValue: num(hiddenKeys.reduce((all, key) => all + key.count, 0)),
+      toggleKeys: open('keys'),
+      moreKeysLabel: 'Show all ' + keyTotal + ' hotkeys in full view',
+      showTrends: !isBackfill, noTrends: isBackfill,
+      trendSubtitle: 'Last 12 ' + (monthly ? 'months' : 'weeks') + ', independent of the period above',
+      compareLabel: chosen.length ? 'Comparing' : 'Showing ' + who + ' · ' + where + '. Compare:',
+      compareChosen: chosen.map((item) => {
+        const name = pool.find((entity) => entity.id === item.id).name;
+        return { name, title: 'Remove ' + name, color: LINE_COLORS[item.slot], toggle: toggleCompare(item.id) };
+      }),
+      compareOffered: offered.slice(0, 4).map((row) => ({
+        name: row.name, title: atLimit ? 'Remove one to add another' : 'Add ' + row.name, toggle: toggleCompare(row.id),
+        disabled: atLimit, ink: atLimit ? '#767676' : '#1f1f1f', cursor: atLimit ? 'not-allowed' : 'pointer'
+      })),
+      compareFull: atLimit,
+      compareQueryValue: st.compareQuery || '',
+      comparePlaceholder: kindProjects ? 'Find a project' : 'Find an annotator',
+      onCompareSearch: (event) => this.setState({ compareQuery: event.target.value }),
+      compareHint: atLimit ? 'Up to ' + MAX_COMPARE + ' at once. Remove one to add another.' :
+        !offered.length ? 'No match' :
+          offered.length > 4 ? (offered.length - 4) + ' more match. Type to narrow the list.' : '',
+      trendCharts,
+      tableNameHeader: showProjects ? 'Project' : 'Annotator',
+      tableSecondHeader: showProjects ? 'Annotators' : 'Projects',
+      modelHeader: isLegacy ? 'Boxes saved' : 'Model',
+      tableHint: 'Sorted by working time · ' + (showProjects ? who : where),
+      tableRows: allRows.slice(firstRow, firstRow + PAGE),
+      tableQueryValue: st.tableQuery || '',
+      tablePlaceholder: showProjects ? 'Find a project' : 'Find an annotator',
+      onTableSearch: (event) => this.setState({ tableQuery: event.target.value, page: 0 }),
+      pagerLabel: allRows.length ? (firstRow + 1) + '–' + Math.min(allRows.length, firstRow + PAGE) + ' of ' + allRows.length : 'No match for this search',
+      hasPages: pages > 1,
+      prevDisabled: page === 0, nextDisabled: page >= pages - 1,
+      prevInk: page === 0 ? '#767676' : '#1f1f1f', nextInk: page >= pages - 1 ? '#767676' : '#1f1f1f',
+      prevPage: set({ page: Math.max(0, page - 1) }), nextPage: set({ page: Math.min(pages - 1, page + 1) }),
+      technicalNote: technical + ' technical accounts are left out of annotator lists'
+    };
+  }
+}
+</script>
+</body>
+</html>

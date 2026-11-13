@@ -1,0 +1,63 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-13T17:40:00Z" },
+  "title": "Team Analytics page",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0, "y": 0, "w": 1440, "h": 3160,
+      "title": "Team analytics — with data (interactive)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Overflow.dc.html": {
+      "x": 1520, "y": 0, "w": 1440, "h": 3520,
+      "title": "Overflow — 100 annotators, 40 projects, 100 hotkeys, long names, one year",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "FullView.dc.html": {
+      "x": 3040, "y": 0, "w": 1440, "h": 5400,
+      "title": "Full view of a chart — all 100 annotators",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "FullViewTrend.dc.html": {
+      "x": 4560, "y": 0, "w": 1440, "h": 1320,
+      "title": "Full view of a trend chart",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Narrow.dc.html": {
+      "x": 6080, "y": 0, "w": 390, "h": 9200,
+      "title": "Narrow window",
+      "is_interactive": true
+    },
+    "Backfill.dc.html": {
+      "x": 6550, "y": 0, "w": 1440, "h": 2900,
+      "title": "History still being processed",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "BeforeDeploy.dc.html": {
+      "x": 8070, "y": 0, "w": 1440, "h": 3160,
+      "title": "Period recorded before the new logging",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "NoAccess.dc.html": {
+      "x": 9590, "y": 0, "w": 1440, "h": 620,
+      "title": "Opened by a regular annotator",
+      "expand": "fill"
+    }
+  },
+  "order": ["Main.dc.html", "Overflow.dc.html", "FullView.dc.html", "FullViewTrend.dc.html", "Narrow.dc.html", "Backfill.dc.html", "BeforeDeploy.dc.html", "NoAccess.dc.html"],
+  "notes": {
+    "heading": {
+      "x": 0, "y": -300, "text": "Team Analytics — page prototype for the CVAT fork",
+      "kind": "title1", "maxW": 8000
+    }
+  },
+  "designSystems": []
+}
