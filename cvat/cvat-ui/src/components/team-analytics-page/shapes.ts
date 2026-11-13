@@ -42,7 +42,7 @@ export interface ShapeWording {
 }
 
 // How the cards name the shapes the figures cover (all shapes when the response does not say).
-export function shapeWording(figures: OperationsFigures): ShapeWording {
+export function shapeWording(figures: Pick<OperationsFigures, 'shapes'>): ShapeWording {
     if (figures.shapes === 'bounding_boxes') {
         return {
             label: 'Bounding boxes', noun: 'box', nouns: 'Boxes', operations: 'Bounding box operations',

@@ -5,17 +5,27 @@
 import React from 'react';
 import Text from 'antd/lib/typography/Text';
 
-import { OperationsFigures } from '../service';
+import { CreationMethods, OperationsFigures } from '../service';
 import { formatCount, formatSeconds, shortCount } from '../format';
+import { METHOD_NAMES } from '../creation-methods';
 import { operationRow } from '../operations';
 import { shapeWording } from '../shapes';
 
 interface Props {
     figures: OperationsFigures;
+    methods?: CreationMethods;
 }
 
-// Headline figures for the scope: objects created and the average time to create one.
-function CreationHeadlineCards({ figures }: Props): JSX.Element {
+// 'drawn 6.2 s · pasted 1.5 s · propagated 0.8 s'
+function perMethod(methods: CreationMethods): string {
+    return methods.rows
+        .map((row) => `${METHOD_NAMES[row.method].toLowerCase()} ${formatSeconds(row.average_ms)}`)
+        .join(' · ');
+}
+
+// Headline figures for the scope: objects created and the average time to create one, with the
+// average of each creation method beneath it when the response has them.
+function CreationHeadlineCards({ figures, methods }: Props): JSX.Element {
     const creation = operationRow(figures, 'creation');
     const objects = creation?.objects ?? 0;
     const { noun, nouns } = shapeWording(figures);
@@ -32,7 +42,7 @@ function CreationHeadlineCards({ figures }: Props): JSX.Element {
             <section className='cvat-team-analytics-card cvat-team-analytics-average-creation'>
                 <Text type='secondary'>{`Avg time per ${noun}`}</Text>
                 <div className='cvat-team-analytics-headline-value'>{formatSeconds(creation?.average_ms ?? null)}</div>
-                <Text type='secondary'>to create one</Text>
+                <Text type='secondary'>{methods ? perMethod(methods) : 'to create one'}</Text>
             </section>
         </>
     );

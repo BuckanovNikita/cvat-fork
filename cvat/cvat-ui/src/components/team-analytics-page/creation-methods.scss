@@ -1,0 +1,22 @@
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+@import 'base';
+
+.cvat-team-analytics-table td.cvat-team-analytics-method-bar-cell {
+    width: 40%;
+    min-width: 80px;
+}
+
+.cvat-team-analytics-method-bar {
+    display: block;
+    min-width: 1px;
+    height: 12px;
+    border-radius: 0 4px 4px 0;
+}
+
+.cvat-team-analytics-table .cvat-team-analytics-methods-total td {
+    border-bottom: 0;
+    font-weight: 600;
+}

@@ -1,8 +1,9 @@
 -- Operations per hour (UTC), organization, project, task and annotator, one row per
 -- (operation, method, shape) that occurred. Tall on purpose: a later calculation adds rows, not columns.
 --   operation: 'creation' | 'alignment' | 'class_change' | 'deletion'
---   method:    creation only: 'drawn' | 'pasted' | 'propagated' | 'redone' (a CVAT redo of created
---              objects); '' for the other operations
+--   method:    creation only: 'drawn' | 'pasted' | 'propagated' (a CVAT redo of created objects is stored
+--              under the method of the creation it restores; rows written before that may say 'redone',
+--              which readers count as 'drawn'); '' for the other operations
 --   shape:     'bounding_box' (single-frame rectangle) | 'other' (any other shape-tagged object) |
 --              'untagged' (event without shape_type: legacy, counts only under All shapes)
 --   objects:          objects the operation touched (alignment: alignments)

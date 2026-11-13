@@ -3,8 +3,11 @@
 --
 -- Operations (events the stock UI already writes):
 --   creation:  draw:object (drawn), paste:object (pasted), propagate:object (propagated), and
---              action:redo of 'Created objects' (redone: a person redid a creation they had undone).
---              Objects = the event's count (1 when empty)
+--              action:redo of 'Created objects' (a person redid a creation they had undone).
+--              Objects = the event's count (1 when empty). A redo is stored under the method of the
+--              person's last drawn/pasted/propagated creation in the same job, when that creation is at
+--              most 300 s (the look-back) before the redo, and as drawn otherwise; so the three methods
+--              add up to Creation and every window attributes a redo alike.
 --   alignment: drag:object, resize:object. Consecutive drags and resizes of the same object (same job,
 --              browser `client_id`, `object_ref` and `frame`) by the same person are one alignment. Any
 --              other operation, a change:frame, or a pause longer than the session gap (300 s, also the
@@ -55,7 +58,10 @@ FROM
         anyIf(task, rn = credited) AS op_task,
         anyIf(user_name, rn = credited) AS op_user_name,
         anyIf(op, rn = credited) AS op_name,
-        anyIf(method, rn = credited) AS op_method,
+        -- a redo takes the method of the creation it restores (within the 300 s look-back), else drawn
+        anyIf(if(method != 'redone', method,
+                 if(prior_method != '' AND ts - prior_ts <= 300000, prior_method, 'drawn')),
+              rn = credited) AS op_method,
         anyIf(shape, rn = credited) AS op_shape,
         anyIf(objects, rn = credited) AS op_objects,
         anyIf(box_objects, rn = credited) AS op_box_objects,
@@ -65,6 +71,7 @@ FROM
     (
         SELECT
             user_id, rn, ts, dt, org, project, task, user_name, op, method, shape, objects, box_objects,
+            prior_method, prior_ts,
             multiIf(
                 op != '', target,
                 -- between the first and last adjustment of one alignment
@@ -120,7 +127,14 @@ FROM
                                     ) AS previous_key,
                                     anyLastIf(ts, ends_alignment) OVER (
                                         oldest_first ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-                                    ) AS previous_ts
+                                    ) AS previous_ts,
+                                    -- the person's previous drawn/pasted/propagated creation in this job (for a redo)
+                                    anyLastIf(method, op = 'creation' AND method != 'redone') OVER (
+                                        same_job ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                                    ) AS prior_method,
+                                    anyLastIf(ts, op = 'creation' AND method != 'redone') OVER (
+                                        same_job ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                                    ) AS prior_ts
                                 FROM
                                 (
                                     SELECT
@@ -129,6 +143,7 @@ FROM
                                         ifNull(org_id, 0) AS org,
                                         ifNull(project_id, 0) AS project,
                                         ifNull(task_id, 0) AS task,
+                                        ifNull(job_id, 0) AS job,
                                         ifNull(user_name, '') AS user_name,
                                         ifNull(payload, '') AS body,
                                         multiIf(
@@ -171,7 +186,8 @@ FROM
                                         AND source = 'client'
                                         AND user_id IS NOT NULL
                                 )
-                                WINDOW oldest_first AS (PARTITION BY user_id ORDER BY ts ASC, op != '' ASC, tiebreak ASC)
+                                WINDOW oldest_first AS (PARTITION BY user_id ORDER BY ts ASC, op != '' ASC, tiebreak ASC),
+                                    same_job AS (PARTITION BY user_id, job ORDER BY ts ASC, op != '' ASC, tiebreak ASC)
                             )
                         )
                     )
