@@ -15,6 +15,7 @@
 //   trackInputJob / untrackInputJob / hotkeyUsed / inputEvent -> hotkey and mouse counting and the input
 //                                    summary record (input-summary.ts)
 //   drawingStarted / drawingEnded / currentInputMethod -> the input method of actions (input-method.ts)
+//   recordClassChange(job, objects, label, inputMethod) -> class change record (class-change.ts)
 
 import { EventScope } from 'cvat-logger';
 
@@ -129,3 +130,6 @@ export function logRecord(
         });
     });
 }
+
+// Class change record (class-change.ts): call just before the new label is assigned.
+export { recordClassChange } from './class-change';

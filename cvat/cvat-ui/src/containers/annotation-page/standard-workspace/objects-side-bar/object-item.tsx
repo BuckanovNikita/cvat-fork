@@ -37,6 +37,7 @@ import { filterApplicableLabels } from 'utils/filter-applicable-labels';
 import { toClipboard } from 'utils/to-clipboard';
 import changeObjectOrientation, { type OrientationAngle } from 'utils/change-object-orientation';
 import { getObjectStateByClientID } from 'utils/objects-sidebar';
+import { recordClassChange } from 'utils/team-analytics-logging';
 
 interface OwnProps {
     clientID: number;
@@ -445,7 +446,8 @@ class ObjectItemContainer extends React.PureComponent<Props, State> {
     };
 
     private changeLabel = (label: any): void => {
-        const { objectState } = this.props;
+        const { objectState, jobInstance } = this.props;
+        recordClassChange(jobInstance, [objectState], label, 'mouse');
         objectState.label = label;
         this.commit();
     };

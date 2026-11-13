@@ -145,6 +145,7 @@ class InputMethodTest(KeyboardMouseCase):
         rows = {row["operation"]: row for row in self.overview(shapes="all")["operations"]["rows"]}
 
         self.assertEqual((rows["creation"]["hotkey_objects"], rows["creation"]["mouse_objects"]), (4, 1))
+        self.assertEqual((rows["class_change"]["hotkey_objects"], rows["class_change"]["mouse_objects"]), (2, 0))
         self.assertEqual((rows["deletion"]["hotkey_objects"], rows["deletion"]["mouse_objects"]), (0, 4))
         self.assertEqual(rows["deletion"]["objects"], 5)
         self.assertEqual((rows["alignment"]["hotkey_objects"], rows["alignment"]["mouse_objects"]), (0, 1))
