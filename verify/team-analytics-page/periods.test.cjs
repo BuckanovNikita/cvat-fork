@@ -149,6 +149,19 @@ domTest('an address with a month opens that month; a later month or an unknown p
     await page.view.unmount();
 });
 
+domTest('choosing the period already shown adds no history entry, so Back still leaves it', async () => {
+    const page = await openPage();
+    try {
+        const entries = page.history.length;
+        await page.click('Week');
+        assert.equal(page.history.length, entries);
+        assert.equal(page.history.location.search, '');
+        assert.equal(page.overviews().length, 1);
+    } finally {
+        await page.view.unmount();
+    }
+});
+
 domTest('changing the period keeps other parts of the address', async () => {
     const page = await openPage({ address: '/team-analytics?project=4&view=annotators' });
     await page.click('Month');

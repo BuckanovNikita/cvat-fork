@@ -73,6 +73,9 @@ export function useAddress(history: AddressHistory): [Address, (change: Partial<
     const change = useCallback((next: Partial<Address>): void => {
         const merged = { ...address, ...next };
         if (next.period === 'month' && !next.month) merged.month = currentMonth();
+        // the selection already shown (also when the address only implies it) is not a new entry
+        const keys = Object.keys(merged) as (keyof Address)[];
+        if (keys.every((key) => merged[key] === address[key])) return;
         const current = history.location?.search ?? search;
         const nextSearch = addressSearch(merged, current);
         if (nextSearch === current) return;
