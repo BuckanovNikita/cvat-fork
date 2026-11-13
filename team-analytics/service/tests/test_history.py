@@ -225,6 +225,11 @@ class LateEventTest(HistoryCase):
 
 
 class LateEventInASessionTest(HistoryCase):
+    def test_a_session_across_midnight_stays_whole_when_history_is_filled_day_by_day(self):
+        self.stack.add_events([client(at("2026-11-08 23:58:00")), client(at("2026-11-09 00:02:00"))])
+        self.fill()
+        self.assertEqual(self.sessions(), (1, 4 * MINUTE))
+
     def test_a_late_event_that_joins_a_session_across_midnight_keeps_it_one_session(self):
         self.stack.add_events([
             client(at("2026-11-08 23:54:00")),
