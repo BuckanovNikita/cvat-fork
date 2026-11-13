@@ -28,10 +28,23 @@ export interface TimeSeries {
     buckets: { start: string; working_time_ms: number }[]; // start: YYYY-MM-DD
 }
 
+export interface SessionFigures {
+    sessions: number;
+    average_ms: number;
+    total_ms: number;
+}
+
+export interface AnnotatorSessions extends SessionFigures {
+    user_id: number;
+    user_name: string;
+}
+
 export interface Overview {
     period?: Period;
     by_annotator: { rows: AnnotatorWorkingTime[] };
     time_series?: TimeSeries;
+    // the scope's figures plus the same per annotator (most sessions first)
+    sessions?: SessionFigures & { by_annotator: AnnotatorSessions[] };
 }
 
 // GET status; each key is one status section of the service.

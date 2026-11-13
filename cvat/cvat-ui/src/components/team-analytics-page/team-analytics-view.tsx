@@ -15,6 +15,7 @@ import PeriodControl, { periodLabel } from './period-control';
 import { FreshnessStamp, StaleWarning } from './freshness';
 import WorkingTimeByAnnotatorCard from './cards/working-time-by-annotator-card';
 import WorkingTimeOverPeriodCard from './cards/working-time-over-period-card';
+import SessionsCard from './cards/sessions-card';
 
 interface Props {
     // slug of the organization selected in CVAT, null for none
@@ -104,6 +105,7 @@ export default function TeamAnalyticsView({
                 className={`cvat-team-analytics-cards${pending ? ' cvat-team-analytics-pending' : ''}`}
                 aria-busy={pending}
             >
+                {state.overview.sessions ? <SessionsCard figures={state.overview.sessions} /> : null}
                 {state.overview.time_series ? <WorkingTimeOverPeriodCard series={state.overview.time_series} /> : null}
                 <WorkingTimeByAnnotatorCard
                     rows={state.overview.by_annotator.rows}
