@@ -5,13 +5,17 @@
 все тикеты Team Analytics (ADR 0003).
 
 ```bash
-verify/team-analytics-stack/run.sh up      # поднять, загрузить учётные записи, проверить событие
+IMAGE=cvat/ui:v2.82.0-team-analytics ./build-ui.sh                       # образы из текущей версии
+IMAGE=cvat/team-analytics:v2.82.0 ./build-team-analytics-service.sh
+verify/team-analytics-stack/run.sh up      # поднять, загрузить данные, выполнить проверки
 verify/team-analytics-stack/run.sh down    # удалить всё созданное (успешно и когда ничего нет)
 verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда up упал)
 ```
 
-Остальные подкоманды (`seed`, `check-event`, `forward`, `status`, `fetch-chart`) описаны в
-шапке `run.sh`. Ручных шагов нет.
+Это теги по умолчанию (`TA_UI_IMAGE`, `TA_SERVICE_IMAGE` в `stack.env`); образ UI должен
+быть собран из проверяемой версии, иначе проверка страницы не пройдёт. Остальные подкоманды
+(`seed`, `check-event`, `check-tracer`, `forward`, `status`, `fetch-chart`) описаны в шапке
+`run.sh`. Ручных шагов нет.
 
 ## Что нужно от машины
 
