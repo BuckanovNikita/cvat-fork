@@ -11,6 +11,7 @@ import Text from 'antd/lib/typography/Text';
 import { PageState } from './service';
 import TeamAnalyticsErrorPanel from './error-panel';
 import WorkingTimeByAnnotatorCard from './cards/working-time-by-annotator-card';
+import SessionsCard from './cards/sessions-card';
 
 interface Props {
     // slug of the organization selected in CVAT, null for none
@@ -67,6 +68,7 @@ export default function TeamAnalyticsView({ organization, state, onBackToTasks }
     } else {
         content = (
             <div className='cvat-team-analytics-cards'>
+                {state.overview.sessions ? <SessionsCard figures={state.overview.sessions} /> : null}
                 <WorkingTimeByAnnotatorCard rows={state.overview.by_annotator.rows} />
             </div>
         );
