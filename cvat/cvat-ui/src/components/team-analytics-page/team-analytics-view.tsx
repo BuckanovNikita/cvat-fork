@@ -27,6 +27,8 @@ import SessionsCard from './cards/sessions-card';
 import CreationHeadlineCards from './cards/creation-headline-cards';
 import WorkingTimeSplitCard from './cards/working-time-split-card';
 import OperationsTableCard from './cards/operations-table-card';
+import KeyboardMouseCard from './cards/keyboard-mouse-card';
+import { HotkeyLabels } from './hotkeys';
 import CreationMethodsCard from './cards/creation-methods-card';
 import LegacyNotice from './legacy-notice';
 import ShapeSwitch from './shape-switch';
@@ -49,6 +51,8 @@ interface Props {
     timeZone?: string;
     // names of the shown projects as CVAT returns them to the viewer
     projectNames?: ProjectNames;
+    // the viewer's keymap: hotkey action -> name and keys
+    hotkeyLabels?: HotkeyLabels;
 }
 
 const WEEK: Address = {
@@ -80,6 +84,7 @@ function scopeLabel(organization: string | null, state: PageState): string {
 export default function TeamAnalyticsView({
     organization, state, onBackToTasks, address, onAddressChange, pending = false, status = null,
     timeZone = 'UTC', currentMonth: latestMonth = currentMonth(), projectNames = {},
+    hotkeyLabels,
 }: Props): JSX.Element {
     const filters: Filters = { project: address?.project ?? null, annotator: address?.annotator ?? null };
     // clicking a row sets it as the filter; clicking the selected row again removes it
@@ -185,6 +190,13 @@ export default function TeamAnalyticsView({
                     onPick={pick('annotator')}
                     periodLabel={shownPeriod}
                 />
+                {overview.input || overview.operations?.legacy ? (
+                    <KeyboardMouseCard
+                        figures={overview.input ?? null}
+                        legacy={!!overview.operations?.legacy}
+                        labels={hotkeyLabels}
+                    />
+                ) : null}
                 <TrendsGate history={status?.history} />
             </div>
         );

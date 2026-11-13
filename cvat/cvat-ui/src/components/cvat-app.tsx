@@ -74,6 +74,7 @@ import showPlatformNotification, {
 import '../styles.scss';
 import appConfig from 'config';
 import EventRecorder from 'utils/event-recorder';
+import { inputEvent } from 'utils/team-analytics-logging';
 import { authQuery } from 'utils/auth-query';
 import CVATMarkdown from './common/cvat-markdown';
 import EmailConfirmationPage from './email-confirmation-pages/email-confirmed';
@@ -166,6 +167,8 @@ class CVATApplication extends React.PureComponent<CVATAppProps & RouteComponentP
             if (e instanceof MouseEvent && e.type === 'click') {
                 EventRecorder.recordMouseEvent(e);
             }
+
+            inputEvent(e);
 
             EventRecorder.recordUserActivity();
         };

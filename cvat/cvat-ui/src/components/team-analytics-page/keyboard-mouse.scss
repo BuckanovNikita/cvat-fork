@@ -1,0 +1,141 @@
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+@import 'base';
+
+// Keyboard and mouse card (cards/keyboard-mouse-card.tsx) and the hotkey / mouse split of the operations table
+.cvat-team-analytics-keyboard {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: $grid-unit-size;
+}
+
+.cvat-team-analytics-keyboard-body {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $grid-unit-size * 2 $grid-unit-size * 6;
+}
+
+.cvat-team-analytics-keyboard-totals {
+    flex: 1 1 320px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: $grid-unit-size * 1.5;
+}
+
+.cvat-team-analytics-keyboard-figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $grid-unit-size $grid-unit-size * 4;
+}
+
+.cvat-team-analytics-keyboard-value {
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.cvat-team-analytics-keyboard-share {
+    height: 8px;
+    border-radius: 4px;
+    background: #cde2fb;
+
+    > div {
+        height: 8px;
+        border-radius: 4px;
+        background: #2a78d6;
+    }
+}
+
+.cvat-team-analytics-keyboard-top {
+    flex: 1.4 1 420px;
+    min-width: 0;
+}
+
+.cvat-team-analytics-hotkeys {
+    margin: $grid-unit-size * 0.75 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.cvat-team-analytics-hotkey-row {
+    display: flex;
+    align-items: center;
+    gap: $grid-unit-size * 1.25;
+    min-height: 30px;
+}
+
+.cvat-team-analytics-hotkey-name {
+    width: 132px;
+    flex: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cvat-team-analytics-hotkey-keys {
+    max-width: 96px;
+    flex: none;
+    padding: 1px 6px;
+    border: 1px solid #c4c4c4;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 12px;
+    background: #fafafa;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cvat-team-analytics-hotkey-bar {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+
+    > span {
+        height: 12px;
+        border-radius: 0 4px 4px 0;
+    }
+}
+
+.cvat-team-analytics-hotkey-value {
+    flex: none;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+.cvat-team-analytics-hotkeys-rest {
+    display: flex;
+    justify-content: space-between;
+    margin-top: $grid-unit-size;
+    color: #5c5c5c;
+}
+
+.cvat-team-analytics-keyboard-not-recorded {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: $grid-unit-size * 0.5;
+    padding: $grid-unit-size * 3 0;
+    text-align: center;
+}
+
+.cvat-team-analytics-input-split {
+    white-space: nowrap;
+}
+
+.cvat-team-analytics-input-split-bar {
+    display: inline-flex;
+    width: 96px;
+    height: 8px;
+    margin-right: $grid-unit-size;
+    vertical-align: middle;
+    border-radius: 4px;
+    overflow: hidden;
+
+    > span {
+        height: 8px;
+    }
+}

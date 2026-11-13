@@ -27,6 +27,8 @@ def build(request: Request) -> dict:
                 "time_ms": int(row["time_ms"]),
                 "average_ms": None if row["average_ms"] is None else float(row["average_ms"]),
                 "share": None if row["share"] is None else float(row["share"]),
+                "hotkey_objects": int(row["hotkey_objects"]),
+                "mouse_objects": int(row["mouse_objects"]),
             }
             for row in rows
         ],

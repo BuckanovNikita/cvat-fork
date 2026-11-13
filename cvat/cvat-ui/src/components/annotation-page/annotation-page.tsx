@@ -26,6 +26,7 @@ import AudioAnnotationPage from 'audio/components/annotation-page/audio-annotati
 import { Workspace } from 'reducers';
 import { usePrevious } from 'utils/hooks';
 import EventRecorder from 'utils/event-recorder';
+import { trackInputJob, untrackInputJob } from 'utils/team-analytics-logging';
 import { readLatestFrame } from 'utils/remember-latest-frame';
 import { EventScope } from 'cvat-core/src/enums';
 import { filterApplicableForType } from 'utils/filter-applicable-labels';
@@ -59,6 +60,7 @@ export default function AnnotationPageComponent(props: Props): JSX.Element {
         }
 
         return () => {
+            untrackInputJob();
             saveLogs();
             closeJob();
             EventRecorder.logger = null;
@@ -110,6 +112,7 @@ export default function AnnotationPageComponent(props: Props): JSX.Element {
             }
 
             EventRecorder.logger = job.logger;
+            trackInputJob(job);
 
             const applicableLabels = job.dimension === DimensionType.DIMENSION_1D ?
                 filterApplicableForType(LabelType.INTERVAL, job.labels) :

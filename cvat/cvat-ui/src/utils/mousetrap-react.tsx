@@ -5,6 +5,7 @@
 
 import React, { useEffect } from 'react';
 import Mousetrap from 'mousetrap';
+import { hotkeyUsed } from 'utils/team-analytics-logging';
 import { ShortcutScope } from './enums';
 
 export interface KeyMapItem {
@@ -48,6 +49,7 @@ export default function GlobalHotKeys(props: Props): JSX.Element {
             }
 
             Mousetrap.bind(sequences, (event, combo) => {
+                hotkeyUsed(key, event);
                 if (handler(event, combo) !== true) {
                     event.preventDefault();
                     event.stopPropagation();
