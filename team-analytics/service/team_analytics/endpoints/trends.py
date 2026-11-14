@@ -8,15 +8,16 @@ the scope under both filters; with ids one line per id, where the compared dimen
 
 Each bucket says whether it is processed; like a period, a bucket not fully processed carries no figures:
 in every line its point keeps the flags `legacy` and `hotkey_recorded` and every value is null (withheld.py).
+Those two flags describe only what is processed of the bucket and can change once it is processed.
 Figures come from read/trends.sql; candidates (everyone of the compared kind with work in the twelve buckets)
-from read/trends_candidates.sql.
+from read/trends_candidates.sql. A candidate's `working_time_ms` sums only the processed buckets, and is null
+while none is; candidates are ranked by it, then by id, so time in a bucket not fully processed ranks nobody.
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
 
-from team_analytics.history import load_state
 from team_analytics.periods import BadRequest, decimal, hour_floor, midnight, monday, months_before, today, zone
 from team_analytics.service import Request
 from team_analytics.withheld import withhold
@@ -79,6 +80,10 @@ def handle(request: Request) -> dict:
         "to": (hour_floor(request.now) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
     }
     scope = request.scope_params()
+    # which buckets are processed is read before any figure (service.Request.history)
+    state = request.history()
+    processed = {start: state.covers(midnight(start, tz)) for start in starts}
+    counted = [start for start in starts if processed[start]]
     # a bucket is legacy as a period would be (cutover.py): it ends at or before the cutover, or none is known;
     # the bucket that holds the cutover is not legacy (its figures are computed as usual)
     ends = [midnight(start, tz) for start in starts[1:]] + [hour_floor(request.now) + timedelta(hours=1)]
@@ -90,10 +95,11 @@ def handle(request: Request) -> dict:
         "line_kind": kind if ids else "scope", "ids": ids,
         "legacy_buckets": legacy_buckets, "all_legacy": 1 if len(legacy_buckets) == len(starts) else 0,
     })
-    candidates = request.sql.rows("read/trends_candidates.sql", {**span, **scope, "kind": kind})
+    candidates = request.sql.rows("read/trends_candidates.sql", {
+        **span, **scope, "kind": kind, "tz": tz_name, "first_bucket": starts[0].isoformat(),
+        "counted": 1 if counted else 0, "counted_from": (counted or starts)[0].isoformat(),
+    })
     names = {int(row["id"]): row["name"] for row in candidates}
-    state = load_state(request.sql, request.now)
-    processed = {start: state.covers(midnight(start, tz)) for start in starts}
 
     lines: list[dict] = []
     for row in rows:
@@ -127,9 +133,10 @@ def handle(request: Request) -> dict:
         "compare": kind,
         "buckets": [{"start": start.isoformat(), "processed": processed[start]} for start in starts],
         "lines": lines,
+        # working time of the processed buckets only; none while no bucket is processed
         "candidates": [
             {"id": int(row["id"]), "user_name": row["name"] if kind == "annotators" else None,
-             "working_time_ms": int(row["working_time_ms"])}
+             "working_time_ms": int(row["working_time_ms"]) if counted else None}
             for row in candidates
         ],
     }

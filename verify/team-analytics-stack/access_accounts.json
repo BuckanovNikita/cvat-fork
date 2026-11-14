@@ -1,0 +1,17 @@
+{
+  "users": {
+    "ta-group-admin": {"group": "admin", "superuser": false},
+    "ta-owner-r": {"group": "user", "superuser": false},
+    "ta-leaver": {"group": "user", "superuser": false},
+    "ta-solo": {"group": "user", "superuser": false}
+  },
+  "organizations": {
+    "ta-org-r": {
+      "name": "Team Analytics R (access cases: a member removed)",
+      "members": {
+        "ta-owner-r": "owner",
+        "ta-leaver": "maintainer"
+      }
+    }
+  }
+}

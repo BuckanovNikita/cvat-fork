@@ -1,8 +1,11 @@
 """No figures for what is not fully processed (GLOSSARY: Processed history).
 
-A read of a period that is not fully processed keeps its envelope (the period, the filter echo, `processed`
-and the legacy flags) and carries no figures: every figure-bearing field is null, not partial. A trend bucket
-that is not fully processed has null values the same way. Every endpoint that answers with figures nulls them
+A read of a period that is not fully processed keeps its envelope (`processed`, the legacy flags and what
+each endpoint names besides: the overview its period and filter echo, the list its period and kind, the
+details table its kind, page size and technical-account count) and carries no figures: every figure-bearing
+field is null, not partial. A trend bucket that is not fully processed has null values the same way. The
+legacy flags of such an answer describe only what is processed and can change once it all is
+(docs/fork-specification.md, "Known limit of unprocessed periods"). Every endpoint that answers with figures nulls them
 here, through `withhold`, after building its answer as usual; a field added to an answer is withheld unless it
 is named as envelope. The overview withholds whole sections, so a field added to a section's rows (operation
 parts on an overview row, say) is null with its section.

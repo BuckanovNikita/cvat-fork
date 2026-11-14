@@ -224,7 +224,8 @@ class FakeCvat:
 
 class Stack:
     def __init__(self, *, now: datetime = NOW, technical_accounts: tuple[str, ...] = (),
-                 cvat_url: str | None = None, refresh_window_hours: int = 48, lease_clock=None) -> None:
+                 cvat_url: str | None = None, refresh_window_hours: int = 48, lease_clock=None,
+                 config_options: dict | None = None) -> None:
         suffix = uuid.uuid4().hex[:12]
         self.events_db = f"ta_test_events_{suffix}"
         self.totals_db = f"ta_test_totals_{suffix}"
@@ -243,6 +244,7 @@ class Stack:
             cvat_url=cvat_url or self.cvat.url,
             technical_accounts=technical_accounts,
             refresh_window_hours=refresh_window_hours,
+            **(config_options or {}),  # any other setting of the service, e.g. a shorter limit
         )
         self.service = self.new_service()
         self.http = make_server(self.service, "127.0.0.1", 0)

@@ -29,6 +29,13 @@ class Config:
     # Length of the shared refresh lease, renewed every third of it (40 s) while a step runs. A replica
     # killed inside a step holds up the others for this long at most. Not read from the environment.
     refresh_lease_s: int = 120
+    # Limits of the cutover search (cutover.py), enforced by ClickHouse on the statement. At start the search
+    # runs before the port opens: a third of the pod's liveness window. In the daily check it runs under the
+    # lease: a tenth of the refresh interval. Fixed with ticket 17's measurement
+    # (docs/evidence/2026-11-14-cutover-search-cost.md). Not read from the environment.
+    cutover_search_at_start_s: float = 23
+    cutover_search_in_check_s: float = 60
+    cutover_search_memory_bytes: int = 512 * 1024 * 1024
     listen_host: str = "0.0.0.0"  # noqa: S104 - a service in a pod listens on all interfaces
     listen_port: int = 8000
 
