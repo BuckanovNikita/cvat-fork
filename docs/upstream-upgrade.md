@@ -38,9 +38,11 @@ for backend policy comparison. Review upstream release changes relevant to the
 UI, OPA, image build and server/database compatibility.
 
 Refresh the filtered mirror using `mirror-cvat.sh`; `UPSTREAM` can select a
-different source. The script deletes and recreates only its `.cvat-mirror.git`
-directory, downloads upstream history and applies its maintained path list.
-Keep unique work out of that generated directory. If the new release requires
+different source. The script downloads upstream history into
+`.cvat-mirror.git.new`, beside the existing mirror, and applies its maintained
+path list there. It replaces `.cvat-mirror.git` only after both steps succeeded;
+a failed run leaves the existing mirror as it was. Keep unique work out of
+these generated directories. If the new release requires
 additional build/runtime files, update `PATHS` before regenerating the mirror.
 
 After selecting `TARGET` (for example, the chosen `vX.Y.Z` tag):
