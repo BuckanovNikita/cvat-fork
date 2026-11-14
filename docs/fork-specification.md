@@ -242,7 +242,7 @@ Behavior to preserve:
   go 100 ids per request, and the search sends one table page of ids.
 - Legacy rule: the cutover is the hour of the first shape-tagged operation
   event on the instance, reported by `status`. The service looks for it in
-  the recorded events with one aggregate over the raw events: when it starts,
+  the recorded events with one statement over the raw events: when it starts,
   before it answers; in the daily check; and in the step that first stores a
   shape-tagged hour while none is stored, before those hours become visible.
   Every hour found is stored in the totals database, and requests read the
