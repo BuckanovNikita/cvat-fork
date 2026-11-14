@@ -3,10 +3,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
 
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 const { createMemoryHistory } = dependency('history');
 
 const View = loadPage('team-analytics-view.tsx').default;
@@ -123,7 +122,7 @@ function answer(url) {
     };
 }
 
-domTest('switching to All shapes reads and shows all-shape figures and records the choice', async () => {
+test('switching to All shapes reads and shows all-shape figures and records the choice', async () => {
     const history = createMemoryHistory({ initialEntries: ['/team-analytics'] });
     const { fetch, requests } = suppliedFetch(answer);
     const Page = loadPage('team-analytics-page.tsx', {

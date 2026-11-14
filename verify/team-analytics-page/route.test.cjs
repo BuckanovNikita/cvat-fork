@@ -2,10 +2,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, domAvailable, loadPage, mount, suppliedFetch,
+    React, loadPage, mount, suppliedFetch,
 } = require('./helper.cjs');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 const ORGANIZATION_STATE = { organizations: { current: { slug: 'team-org' } } };
 const reduxBoundary = { useSelector: (select) => select(ORGANIZATION_STATE) };
@@ -27,7 +25,7 @@ function route(pageBoundary) {
 const Sibling = () => React.createElement('nav', { id: 'rest-of-cvat' }, 'Projects Tasks Jobs');
 const app = (Route) => React.createElement('div', null, React.createElement(Sibling), React.createElement(Route));
 
-domTest('the page module is loaded only when the route renders, then shows the figures', async () => {
+test('the page module is loaded only when the route renders, then shows the figures', async () => {
     const { fetch, requests } = suppliedFetch(() => ({
         body: { by_annotator: { rows: [{ user_id: 11, user_name: 'alice', working_time_ms: 7200000 }] } },
     }));
@@ -49,7 +47,7 @@ domTest('the page module is loaded only when the route renders, then shows the f
     await view.unmount();
 });
 
-domTest('a page that fails to load shows an error panel on that page and the rest of CVAT keeps working', async () => {
+test('a page that fails to load shows an error panel on that page and the rest of CVAT keeps working', async () => {
     const boundaries = {};
     Object.defineProperty(boundaries, './team-analytics-page', {
         enumerable: true,
@@ -69,7 +67,7 @@ domTest('a page that fails to load shows an error panel on that page and the res
     }
 });
 
-domTest('a page that throws while rendering is contained the same way', async () => {
+test('a page that throws while rendering is contained the same way', async () => {
     const boundaries = { './team-analytics-page': { default: () => { throw new Error('render failed'); } } };
     const originalError = console.error;
     console.error = () => {};
@@ -84,7 +82,7 @@ domTest('a page that throws while rendering is contained the same way', async ()
     }
 });
 
-domTest('an unreachable service shows the error panel on the page', async () => {
+test('an unreachable service shows the error panel on the page', async () => {
     const { fetch } = suppliedFetch(() => new TypeError('Failed to fetch'));
     const Route = route({ './team-analytics-page': pageModule(fetch) });
     const view = await mount(app(Route));
@@ -94,7 +92,7 @@ domTest('an unreachable service shows the error panel on the page', async () => 
     await view.unmount();
 });
 
-domTest('the page names the organization selected in CVAT to the service', async () => {
+test('the page names the organization selected in CVAT to the service', async () => {
     const { fetch, requests } = suppliedFetch(() => ({ body: { by_annotator: { rows: [] } } }));
     const view = await mount(app(route({ './team-analytics-page': pageModule(fetch) })));
     await view.settle();
