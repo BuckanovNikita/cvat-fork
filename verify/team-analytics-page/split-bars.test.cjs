@@ -60,7 +60,8 @@ function bars(section, kind) {
 }
 
 function legend(section) {
-    return [...section.querySelectorAll('.cvat-team-analytics-legend-item')].map((item) => text(item.outerHTML));
+    return [...section.querySelectorAll('.cvat-team-analytics-breakdown-legend-item')]
+        .map((item) => text(item.outerHTML));
 }
 
 // the full view's colours (operations.ts), as the browser reports them
@@ -109,4 +110,53 @@ test('in a legacy period class change is neither a part nor in the legend, as in
         assert.deepEqual(legend(section), ['Creation', 'Alignment', 'Deletion', 'Other']);
         assert.deepEqual(bars(section, kind)[0].map(([colour]) => colour), [CREATION, ALIGNMENT, DELETION, OTHER]);
     }
+});
+
+// A row whose answer carries no operation parts (a page in front of an older service during an upgrade) is
+// drawn whole in a colour the legend gives to no operation, so it never reads as one operation's time.
+const LEGEND_COLOURS = [CREATION, ALIGNMENT, CLASS_CHANGE, DELETION, OTHER];
+
+function withoutParts(answer, keep = () => false) {
+    const strip = (section) => ({
+        ...section,
+        rows: section.rows.map((row) => {
+            if (keep(row)) return row;
+            const { operations, ...rest } = row;
+            return rest;
+        }),
+    });
+    return { ...answer, by_annotator: strip(answer.by_annotator), by_project: strip(answer.by_project) };
+}
+
+function assertUnsplit(bar, hover) {
+    assert.equal(bar.length, 1, 'the bar is one part');
+    const [[colour, , title]] = bar;
+    assert.ok(colour, 'the bar has a colour');
+    assert.ok(!LEGEND_COLOURS.includes(colour), `${colour} is a colour of the legend`);
+    assert.equal(title, hover);
+}
+
+test('a row without operation parts is drawn in no colour of the legend', () => {
+    const html = render(View, { organization: 'team-org', state: { kind: 'ready', overview: withoutParts(overview()) } });
+    const [alice, bob] = bars(card(html, 'annotator'), 'annotator');
+    assertUnsplit(alice, 'alice: 2.0 h, not split by operation');
+    assertUnsplit(bob, 'bob: 1.0 h, not split by operation');
+    assertUnsplit(bars(card(html, 'project'), 'project')[0], 'Project #1: 2.0 h, not split by operation');
+});
+
+test('beside rows with parts, a row without them is still drawn in no colour of the legend', () => {
+    const answer = withoutParts(overview(), (row) => row.user_name === 'alice');
+    const section = card(render(View, { organization: 'team-org', state: { kind: 'ready', overview: answer } }),
+        'annotator');
+    assert.deepEqual(legend(section), ['Creation', 'Alignment', 'Class change', 'Deletion', 'Other']);
+    const [alice, bob] = bars(section, 'annotator');
+    assert.deepEqual(alice.map(([colour]) => colour), LEGEND_COLOURS);
+    assertUnsplit(bob, 'bob: 1.0 h, not split by operation');
+});
+
+test('in a legacy period a row without operation parts is drawn the same way', () => {
+    const html = render(View, {
+        organization: 'team-org', state: { kind: 'ready', overview: withoutParts(overview(true)) },
+    });
+    assertUnsplit(bars(card(html, 'annotator'), 'annotator')[0], 'alice: 2.0 h, not split by operation');
 });

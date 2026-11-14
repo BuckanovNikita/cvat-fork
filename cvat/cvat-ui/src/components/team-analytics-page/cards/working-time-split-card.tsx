@@ -67,13 +67,13 @@ function WorkingTimeSplitCard({ figures, onFullView }: Props): JSX.Element {
                     </div>
                 ))}
             </div>
-            <ul className='cvat-team-analytics-legend'>
+            <ul className='cvat-team-analytics-split-legend'>
                 {parts.map((part) => (
-                    <li key={part.key} className='cvat-team-analytics-legend-item'>
+                    <li key={part.key} className='cvat-team-analytics-split-legend-item'>
                         <span className='cvat-team-analytics-swatch' style={{ background: part.look.color }} />
-                        <span className='cvat-team-analytics-legend-name'>{part.look.name}</span>
+                        <span className='cvat-team-analytics-split-legend-name'>{part.look.name}</span>
                         <span className='cvat-team-analytics-value'>{part.time}</span>
-                        <span className='cvat-team-analytics-value cvat-team-analytics-legend-share'>{part.share}</span>
+                        <span className='cvat-team-analytics-value cvat-team-analytics-split-legend-share'>{part.share}</span>
                     </li>
                 ))}
             </ul>
