@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The candidate paths are fetched at the recorded upstream commit of the current release into a scratch directory outside the repository. The import is not touched.
 - [x] ESLint and stylelint load upstream's configuration on the fork's UI paths using only files the widened import will hold. Any further file they turn out to need is added to the path list.
@@ -37,3 +37,5 @@
   tags ended the run before the filter.
 - ESLint and stylelint report findings on the fork's UI files (25 errors and
   7 warnings; 7 style findings). They are ticket 05's and were not touched.
+
+2026-11-14: Resolved on `feat/team-analytics-page` by merge `ccd4f59`. Evidence: `docs/evidence/2026-11-14-widened-import-proof.md`.
