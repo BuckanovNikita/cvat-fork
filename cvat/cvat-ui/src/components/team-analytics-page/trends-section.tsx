@@ -21,12 +21,14 @@ interface Props {
     shapes: 'bounding_boxes' | 'all';
     scopeLabel: string;
     projectNames?: ProjectNames;
+    // changes as history is processed (status `history`), so withheld weeks are asked for again
+    historyProgress?: string;
 }
 
 // The trends card with its own selection (weeks or months, what is compared) and its own request: trends
 // follow the organization, the filters and the shape switch, never the selected period.
 export default function TrendsSection({
-    organization, timeZone, project, annotator, shapes, scopeLabel, projectNames = {},
+    organization, timeZone, project, annotator, shapes, scopeLabel, projectNames = {}, historyProgress = '',
 }: Props): JSX.Element {
     const [step, setStep] = useState<TrendStep>('week');
     const [kind, setKind] = useState<CompareKind>('annotators');
@@ -61,7 +63,7 @@ export default function TrendsSection({
             }
         });
         return () => { current = false; };
-    }, [organization, timeZone, project, annotator, shapes, step, kind, idsKey]);
+    }, [organization, timeZone, project, annotator, shapes, step, kind, idsKey, historyProgress]);
 
     // names of the projects that can be compared, as CVAT returns them to the viewer
     const known = { ...projectNames, ...names };
@@ -81,8 +83,8 @@ export default function TrendsSection({
     return (
         <TrendsCard
             trends={trends}
-            failed={failed && !trends}
-            pending={pending && !!trends}
+            failed={failed}
+            pending={(pending || failed) && !!trends}
             step={step}
             onStep={setStep}
             kind={kind}

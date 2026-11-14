@@ -254,14 +254,25 @@ function TrendsCard({
     let body: JSX.Element;
     if (trends) {
         body = (
-            <div className='cvat-team-analytics-trend-charts'>
-                {trendMetrics(trends).map((metric) => (
-                    <TrendChart key={metric.key} metric={metric} lines={lines} trends={trends} />
-                ))}
-            </div>
+            <>
+                {failed ? (
+                    <div className='cvat-team-analytics-trend-failed' role='status'>
+                        Trends could not be updated; the charts show the previous choice.
+                    </div>
+                ) : null}
+                <div className='cvat-team-analytics-trend-charts'>
+                    {trendMetrics(trends).map((metric) => (
+                        <TrendChart key={metric.key} metric={metric} lines={lines} trends={trends} />
+                    ))}
+                </div>
+            </>
         );
     } else if (failed) {
-        body = <div className='cvat-team-analytics-trend-failed' role='status'>Trends could not be loaded. They are tried again when the filters change.</div>;
+        body = (
+            <div className='cvat-team-analytics-trend-failed' role='status'>
+                Trends could not be loaded. They are asked for again when the filters change.
+            </div>
+        );
     } else {
         body = <div className='cvat-team-analytics-trend-loading'>Loading trends…</div>;
     }

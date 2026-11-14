@@ -10,9 +10,10 @@
 -- Per line and bucket: working time; objects created by annotator methods (drawn, pasted, propagated, and
 -- stored 'redone' rows written before redone creations got a method) with their timed objects and time;
 -- hotkey and mouse actions (the canvas left out). `legacy` = the line has job work in the bucket and no
--- shape-tagged operation row. Under the Bounding boxes switch a legacy bucket's boxes cannot be told apart,
--- so its creation figures are NULL (never all shapes on a line of boxes). Hotkey use is not recorded in a
--- legacy bucket without any input row.
+-- shape-tagged operation row. `all_shapes`: the switch says All shapes, or no line has any shape-tagged row
+-- in the twelve buckets (all of it is before the new logging, as a legacy period in the overview). Otherwise,
+-- under Bounding boxes, a legacy bucket's boxes cannot be told apart, so its creation figures are NULL (never
+-- all shapes on a line of boxes). Hotkey use is not recorded in a legacy bucket without any input row.
 WITH
     work AS (
         SELECT
@@ -99,10 +100,12 @@ SELECT
     grid.bucket AS bucket,
     toUInt64(work.working_ms) AS working_time_ms,
     (work.working_ms > 0 OR ops.op_objects > 0) AND ops.tagged_rows = 0 AS legacy,
-    {bounding_boxes:UInt8} = 1 AND legacy AS boxes_unknown,
-    if(boxes_unknown, NULL, toUInt64(if({bounding_boxes:UInt8} = 1, ops.made_boxes, ops.made_all))) AS boxes,
-    if(boxes_unknown, NULL, toUInt64(if({bounding_boxes:UInt8} = 1, ops.timed_boxes, ops.timed_all))) AS timed_boxes,
-    if(boxes_unknown, NULL, toUInt64(if({bounding_boxes:UInt8} = 1, ops.time_boxes, ops.time_all))) AS box_time_ms,
+    -- as in the overview: with no shape-tagged row in any line and bucket, all shapes are shown
+    {bounding_boxes:UInt8} = 0 OR (SELECT sum(tagged_rows) FROM ops) = 0 AS all_shapes,
+    NOT all_shapes AND legacy AS boxes_unknown,
+    if(boxes_unknown, NULL, toUInt64(if(all_shapes, ops.made_all, ops.made_boxes))) AS boxes,
+    if(boxes_unknown, NULL, toUInt64(if(all_shapes, ops.timed_all, ops.timed_boxes))) AS timed_boxes,
+    if(boxes_unknown, NULL, toUInt64(if(all_shapes, ops.time_all, ops.time_boxes))) AS box_time_ms,
     if(timed_boxes > 0, box_time_ms / timed_boxes, NULL) AS average_ms,
     NOT (legacy AND input.input_rows = 0) AS hotkey_recorded,
     toUInt64(input.hotkey_actions) AS hotkey_actions,

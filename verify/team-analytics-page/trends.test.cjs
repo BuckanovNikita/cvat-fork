@@ -226,6 +226,10 @@ test('at five compared, further choices are disabled with a hint', () => {
 
 test('a trends response that cannot be read says so', () => {
     assert.match(text(card({ trends: null, failed: true })), /Trends could not be loaded/);
+    // a failed update keeps the previous charts, dimmed, and says so
+    const html = card({ failed: true, pending: true });
+    assert.match(text(html), /Trends could not be updated; the charts show the previous choice\./);
+    assert.match(html, /cvat-team-analytics-trends cvat-team-analytics-pending/);
 });
 
 // --- the section: loading, comparing and the page around it -----------------------------------------------
@@ -357,6 +361,29 @@ domTest('trends follow the filters and the shape switch but not the period', asy
         assert.equal(last.get('annotator'), '11');
         assert.equal(last.get('shapes'), 'all');
         assert.equal(last.get('org'), 'team-org');
+        // weeks follow the viewer's time zone
+        assert.equal(last.get('tz'), Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+    } finally {
+        await page.unmount();
+    }
+});
+
+domTest('trends are asked for again as history is processed', async () => {
+    const { fetch, requests } = suppliedFetch(trendsAnswer);
+    let advance;
+    const { type: Section, props } = section(fetch);
+    function Holder() {
+        const [progress, setProgress] = React.useState('false|2026-11-09T00:00:00+00:00');
+        advance = setProgress;
+        return React.createElement(Section, { ...props, historyProgress: progress });
+    }
+    const page = await mount(React.createElement(Holder));
+    try {
+        await page.settle();
+        assert.equal(requests.length, 1);
+        await act(async () => { advance('false|2026-11-02T00:00:00+00:00'); });
+        await page.settle();
+        assert.equal(requests.length, 2);
     } finally {
         await page.unmount();
     }

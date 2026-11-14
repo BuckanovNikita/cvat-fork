@@ -109,7 +109,8 @@ def handle(request: Request) -> dict:
     return {
         "step": step,
         "tz": tz_name,
-        "shapes": "bounding_boxes" if scope["bounding_boxes"] else "all",
+        # the shapes the figures cover: all shapes when asked, or when nothing in the twelve buckets is shape-tagged
+        "shapes": "all" if rows[0]["all_shapes"] else "bounding_boxes",
         "compare": kind,
         "buckets": [{"start": start.isoformat(), "processed": state.covers(midnight(start, tz))} for start in starts],
         "lines": lines,

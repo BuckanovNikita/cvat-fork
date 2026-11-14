@@ -140,6 +140,8 @@ export default function TeamAnalyticsPage(): JSX.Element {
                     shapes={address.shapes}
                     scopeLabel={scopeLabel}
                     projectNames={projectNames}
+                    historyProgress={status?.history ?
+                        `${status.history.complete}|${status.history.ready_from}` : ''}
                 />
             )}
         />

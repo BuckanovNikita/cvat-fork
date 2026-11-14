@@ -149,6 +149,27 @@ class FiguresTest(TrendsCase):
         self.assertEqual(everything[7]["boxes"], 2)
         self.assertFalse(everything[7]["hotkey_recorded"])
 
+    def test_twelve_weeks_all_before_the_new_logging_show_all_shapes(self):
+        legacy = "2026-10-13 10:00:00"
+        self.stack.add_events([
+            working_time(at(legacy), HOUR, user=BOB, org=ORG),
+            client("load:job", seconds(legacy, 0), user=BOB),
+            draw(seconds(legacy, 10), user=BOB),
+            draw(seconds(legacy, 30), user=BOB),
+        ])
+        self.stack.refresh()
+
+        body = self.trends(shapes="bounding_boxes", annotator=BOB[0])
+        compared = self.trends(shapes="bounding_boxes", compare="annotators", ids=f"{BOB[0]},{ALICE[0]}")
+
+        self.assertEqual(body["shapes"], "all")
+        self.assertEqual((body["lines"][0]["points"][7]["boxes"], body["lines"][0]["points"][7]["average_ms"]),
+                         (2, 15000))
+        self.assertFalse(body["lines"][0]["points"][7]["hotkey_recorded"])
+        # beside lines with shape-tagged work, a box line has no box figure for old weeks
+        self.assertEqual(compared["shapes"], "bounding_boxes")
+        self.assertIsNone(compared["lines"][0]["points"][7]["boxes"])
+
     def test_hotkey_share_of_hotkey_and_mouse_actions(self):
         points = self.trends()["lines"][0]["points"]
 
