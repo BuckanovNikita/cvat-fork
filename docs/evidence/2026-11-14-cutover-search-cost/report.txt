@@ -1,0 +1,12 @@
+┌─run─────────────────────────────────┬─seconds─┬─peak_memory─┬─read_rows─┬─read_uncompressed─┬─read_from_disk─┬─cpu_seconds─┬─stored_rows─┐
+│ full range, cold, run 1             │    6.49 │ 63.61 MiB   │  36326651 │ 7.68 GiB          │ 1.77 GiB       │       10.99 │           1 │
+│ full range, cold, run 2             │     4.7 │ 63.36 MiB   │  36326651 │ 7.68 GiB          │ 1.77 GiB       │        7.19 │           1 │
+│ full range, cold, run 3             │    4.67 │ 63.46 MiB   │  36326651 │ 7.68 GiB          │ 1.77 GiB       │        7.04 │           1 │
+│ full range, warm, run 1             │    3.84 │ 60.86 MiB   │  36326651 │ 7.68 GiB          │ 0.00 B         │        6.44 │           1 │
+│ full range, warm, run 2             │    3.62 │ 62.68 MiB   │  36326651 │ 7.68 GiB          │ 0.00 B         │        6.07 │           1 │
+│ full range, warm, run 3             │     3.5 │ 62.82 MiB   │  36326651 │ 7.68 GiB          │ 0.00 B         │        6.08 │           1 │
+│ bounded by the stored cutover, warm │       0 │ 41.55 KiB   │         0 │ 0.00 B            │ 0.00 B         │           0 │           0 │
+│ variant: key absent, cold           │    4.12 │ 17.40 MiB   │  36326651 │ 7.41 GiB          │ 1.62 GiB       │        5.99 │           0 │
+│ variant: key absent, warm           │    3.57 │ 17.15 MiB   │  36326651 │ 7.41 GiB          │ 0.00 B         │        5.95 │           0 │
+└─────────────────────────────────────┴─────────┴─────────────┴───────────┴───────────────────┴────────────────┴─────────────┴─────────────┘
+failed runs: 0

@@ -1,0 +1,10 @@
+image: cvat/clickhouse:23.12.2-debian-11-r0
+server: 23.12.2.59
+limits: --cpus 2 --memory 10g; max_threads = 'auto(2)'
+base_n: 325
+events: 36326651 2025-11-14 06:00:08.859 2026-11-13 18:27:02.794
+parts, on disk, uncompressed: 13 2.44 GiB 10.07 GiB
+payload column, on disk, uncompressed: 1.26 GiB 4.94 GiB
+rows the search matches: 11566490
+host load average before the runs: 1.90 2.08 2.05
+host load average after the runs: 3.82 2.63 2.24

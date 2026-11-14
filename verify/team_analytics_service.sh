@@ -20,7 +20,8 @@ clickhouse="$run_id-clickhouse"
 tests="$run_id-tests"
 
 cleanup() {
-    docker rm -f "$tests" "$clickhouse" >/dev/null 2>&1 || true
+    # -v: with their anonymous volumes (the upstream ClickHouse image declares two)
+    docker rm -f -v "$tests" "$clickhouse" >/dev/null 2>&1 || true
     docker network rm "$network" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
