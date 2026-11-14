@@ -94,6 +94,16 @@ def on_renewals(sql, behaviour) -> None:
     sql.statements = run
 
 
+def kill(replica) -> None:
+    """What killing a replica's process comes to: from now on nothing from it reaches ClickHouse, neither a
+    renewal nor a release, and its threads end where they are."""
+
+    def dead(*_args, **_kwargs):
+        raise SystemExit
+
+    replica.sql.statements = replica.sql.rows = dead
+
+
 class LeaseTestCase(StackTestCase):
     """Replicas of one stack on one supplied lease clock; replica A can be held inside its step."""
 
@@ -245,3 +255,36 @@ class LostLeaseTest(LeaseTestCase):
         self.finish(thread, "replica A's step waited for a hanging renewal")
         self.assertTrue(outcome["a"].ran)
         self.assertTrue(replica_b.refresh().ran, "replica A did not release the lease")
+
+
+class KilledHolderTest(LeaseTestCase):
+    """A replica killed inside a step releases nothing. The others carry on once its lease has run out: two
+    minutes after its claim, or after the last renewal of it, which comes every 40 seconds."""
+
+    def test_a_holder_killed_in_mid_step_is_overtaken_once_its_lease_has_run_out(self):
+        replica_a, replica_b = self.held_replica(), self.stack.new_service()
+        self.start(replica_a)
+        kill(replica_a)
+        self.clock.advance(119)
+        self.assertFalse(replica_b.refresh().ran, "replica B refreshed inside the killed holder's lease")
+        self.clock.advance(1)
+        self.assertTrue(replica_b.refresh().ran, "replica B is still held up two minutes after the holder was killed")
+
+    def test_a_holder_killed_after_a_renewal_is_overtaken_two_minutes_after_that_renewal(self):
+        landed = threading.Semaphore(0)
+
+        def renewal(write):
+            write()
+            landed.release()
+
+        replica_a, replica_b = self.held_replica(), self.stack.new_service()
+        on_renewals(replica_a.sql, renewal)
+        self.start(replica_a)
+        self.assertTrue(self.clock.renewal_awaited(PATIENCE_S), "replica A is not waiting to renew its lease")
+        self.clock.advance(40)
+        self.assertTrue(landed.acquire(timeout=PATIENCE_S), "replica A did not renew its lease 40 seconds on")
+        kill(replica_a)
+        self.clock.advance(119)
+        self.assertFalse(replica_b.refresh().ran, "replica B refreshed inside the killed holder's renewed lease")
+        self.clock.advance(1)
+        self.assertTrue(replica_b.refresh().ran, "replica B is still held up two minutes after the last renewal")

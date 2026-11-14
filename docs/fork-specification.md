@@ -186,7 +186,9 @@ Behavior to preserve:
   never live again. The wait for a hanging renewal at release is bounded
   (2 s). On SIGTERM the service
   finishes the step in progress and releases the lease before exiting. A
-  replica killed mid-step would block the others until the lease expires.
+  replica killed mid-step releases nothing and holds up the others until its
+  lease runs out, at most 120 s after the kill: the lease is 120 s long and
+  is renewed every 40 s while a step runs.
 - One ClickHouse client without a session serves the HTTP threads and the
   refresh loop. A request body is read and dropped, or the connection is closed
   after the answer, so a body is never answered as a request.
