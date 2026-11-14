@@ -4,9 +4,8 @@ Ticket 11 of the defect fixes
 (`.scratch/defect-fixes/issues/11-the-ingress-route-and-four-access-cases-on-the-stack.md`),
 plan rows 1.3d and 1.3e.
 
-This is part one: the tooling, checked without a running stack. No stack could be
-started on this date. The live run is part two, listed in the ticket's comments, and
-its outcome gets its own section here when it has run.
+Part one, the tooling, was checked on 2026-11-14 without a running stack. Part two, the
+live run, is in "Live outcome, 2026-11-15" below.
 
 ## Added
 
@@ -110,10 +109,107 @@ Run in the worktree on 2026-11-14. Only cluster reads were made.
     hide the Basic result. `status` is sent without a period, as the existing access
     matrix sends it.
 
+## Live outcome, 2026-11-15
+
+Ticket 08 brought the stack up in namespace `cvat-ta-it-<user>` on `docker-desktop`. The
+images were:
+
+- UI: `310e9bbc6a47`
+- service: `42d4bb9ab97e`, built from `3dc1a7bc`, which includes ticket 15
+- server: `4b38c649ae96`
+
+Ticket 08's `up` applied the Ingress, so its object was 29 minutes old when these
+checks ran. Ticket 08's agent had also run `check-access` once before, so `ta-solo`'s
+personal work was already loaded. These checks were run from branch
+`ticket/11-ingress-access` at `44134f2f`, with the `same_reads` change below not yet
+committed. Only this ticket's own subcommands and read-only commands were run. Tickets
+09 and 10 were working on the same stack at the same time.
+
+- Step 1, the Ingress. `run.sh render-ingress` gives `ingressClassName: nginx` and
+  host `cvat-ta-it-<user>.k8s.docker.internal`. The live object
+  `cvat-ta-it-<user>/team-analytics` matches it: class `nginx`, the same host, path
+  `/team-analytics-api` to `team-analytics:http`. `kubectl get ingress -A` lists it in
+  that namespace only. The other three Ingresses in the cluster are k8s-infra's
+  ClearML hosts.
+- Step 2, `run.sh check-ingress`. Requests go to the controller on 127.0.0.1:443 under
+  that host, with the certificate verified.
+  - `status?org=ta-org-a` with `ta-maintainer`'s session: 200 with
+    `cutover`, `history` and `refresh`.
+  - The same request without a session: 401 `not_authenticated`.
+  - `[access] PASS ingress`.
+- Steps 3 to 6, `run.sh check-access` (it runs `seed-access` first):
+  - removed-member:
+    - Before the removal, `ta-leaver` gets 200 on `org=ta-org-r`.
+    - The owner deletes the membership through CVAT's API.
+    - Right after that, the same session still gets 200. This read is not judged:
+      the cache had not expired.
+    - After the wait (60 s cache plus 5 s), `status` and `overview` give 403
+      `forbidden`, both with `org=ta-org-r` and with no organization.
+    - `[access] PASS removed-member`.
+  - group-admin:
+    - `ta-group-admin` has `groups=['admin']`, `is_superuser=False`,
+      `is_staff=False`.
+    - `status` with no organization and with `ta-org-a`: 200, with `first_day`,
+      `days_ready` and `days_total`.
+    - The overview for `ta-org-a` lists `['ta-worker', 'ta-supervisor']`, which is
+      what the owner sees.
+    - The overview with no organization lists 8 annotators, equal to what the
+      superuser `ta-admin` sees.
+    - `[access] PASS group-admin`.
+  - personal-workspace:
+    - `ta-admin`'s instance-wide details table with `search=ta-solo` gives
+      `[('ta-solo', 1200000)]`, and project 49 (`ta-personal`) is listed.
+    - In each of the 7 organizations, neither the row nor the project appears.
+    - `[access] PASS personal-workspace`.
+  - header-credentials:
+    - With no credentials: 401 `not_authenticated`.
+    - For 5 account/organization pairs on `status` and `overview`, each scheme gave
+      the cookie's decision: 200, 403 `forbidden` (`ta-worker`, `ta-outsider` on
+      `ta-org-a`), 403 `organization_required` (`ta-maintainer` with no
+      organization), and 200 for `ta-group-admin` instance-wide. Overviews listed
+      the same annotators.
+    - A wrong Basic password and an unknown token: 401 `not_authenticated`.
+    - `[access] PASS header-credentials (Basic)` and
+      `[access] PASS header-credentials (Bearer)`.
+- What CVAT itself answers. Probed through the proxy on the three identity endpoints
+  the service asks (`/api/users/self`, `/api/organizations?slug=ta-org-a`,
+  `/api/memberships?org=ta-org-a&user=ta-maintainer`):
+
+  | Credential | Answer on all three |
+  | --- | --- |
+  | Read-only Bearer access token | 200 |
+  | Basic with the right password | 200 |
+  | Basic with a wrong password | 401, `Invalid username/password.` |
+  | Unknown Bearer token | 401, `Invalid token.` |
+
+  This settles both points part one left open. CVAT accepts a read-only token for
+  these reads. It answers 401, not 403, to bad credentials, and the service passes
+  that on as 401 `not_authenticated`. The token was revoked afterwards.
+
+### Change made for the shared stack
+
+Other agents add work to the stack while the cases run. Two comparisons read the
+service twice, one read after the other, so a refresh in between could make them
+differ without any rule being wrong:
+
+- group-admin: the owner's view against the group admin's, and the superuser's
+  instance view against the group admin's;
+- header-credentials: an overview's annotators with the cookie against the same
+  overview with the header.
+
+`same_reads` in `access_cases.py` now reads such a pair again, up to 4 times, 3 s
+apart, before judging a difference. Status and error are compared the same way, but
+they do not move with other work, so a rule that decides differently still fails on
+every attempt.
+
+Stated check: called with stand-in readers, `same_reads` returns the matching pair
+when the readers agree on a later attempt. When they never agree it returns the
+differing pair after 4 attempts. In the live run, every pair matched on the first
+read, so the retry was not used.
+
 ## Unverified
 
-Every live criterion of the ticket: the Ingress applied and answered on a running
-stack, the four cases against the real CVAT, and teardown removing the Ingress. In
-particular, nothing has shown yet that a read-only personal access token is accepted
-for these GET requests, or that CVAT returns 401, not 403, for a wrong Basic password
-and an unknown token on this server.
+- Criterion 8, that teardown removes the Ingress with the namespace. The stack stays
+  up for further tickets, so `run.sh down` followed by `run.sh check-ingress-gone`
+  runs at the end of the live work.
+- The retry in `same_reads` has not run live.

@@ -186,6 +186,24 @@ def removed_member() -> None:
 # ---------------------------------------------------------------- an administrator by group
 
 
+COMPARE_ATTEMPTS = 4
+
+
+def same_reads(first, second):
+    """Two reads meant to be equal, taken one after the other. Other work on the shared stack can
+    land between them (a refresh, another ticket's events), so a pair that differs is read again,
+    up to COMPARE_ATTEMPTS times, before the difference is judged. A rule that answers differently
+    differs on every attempt."""
+    for attempt in range(COMPARE_ATTEMPTS):
+        a, b = first(), second()
+        if a == b:
+            return a, b
+        if attempt + 1 < COMPARE_ATTEMPTS:
+            log(f"reads differ (attempt {attempt + 1}), reading again: {str(a)[:120]} / {str(b)[:120]}")
+            time.sleep(3)
+    return a, b
+
+
 def annotators(session: Session, org: str) -> list[str]:
     status, body = session.call(endpoint_query("overview", org))
     names = overview_names(body) if status == 200 else None
@@ -209,12 +227,10 @@ def group_admin() -> None:
         if status != 200 or not isinstance(history, dict) or not ADMIN_ONLY_HISTORY <= set(history):
             fail(case, f"status org={org or '-'}: {status} {str(body)[:300]}, expected 200 with the administrator's history")
         log(f"{GROUP_ADMIN}, org={org or '-'} status: 200 with {sorted(ADMIN_ONLY_HISTORY)}")
-    named = annotators(admin, "ta-org-a")
-    owners_view = annotators(Session("ta-owner"), "ta-org-a")
+    named, owners_view = same_reads(lambda: annotators(admin, "ta-org-a"), lambda: annotators(Session("ta-owner"), "ta-org-a"))
     if not named or named != owners_view:
         fail(case, f"overview org=ta-org-a: {named}, expected the owner's view {owners_view}")
-    instance = annotators(admin, "")
-    superusers_view = annotators(Session("ta-admin"), "")
+    instance, superusers_view = same_reads(lambda: annotators(admin, ""), lambda: annotators(Session("ta-admin"), ""))
     if instance != superusers_view or instance == named:
         fail(case, f"overview org=-: {instance}, expected the superuser's instance scope {superusers_view}")
     log(f"{GROUP_ADMIN}, org=ta-org-a overview: {named}, as its owner sees it")
@@ -357,11 +373,13 @@ def compare_scheme(scheme: str) -> str | None:
             )
             for endpoint in HEADER_ENDPOINTS:
                 path = endpoint_query(endpoint, org)
-                cookie = decision(*session.call(path), endpoint)
+                # status and error never move with other work; an overview's annotators can, so
+                # the pair is read again when only they differ (same_reads)
+                cookie, got = same_reads(lambda: decision(*session.call(path), endpoint),
+                                         lambda: decision(*header_get(authorization, path), endpoint))
                 unprocessed = endpoint == "overview" and want_status == 200 and cookie[2] is None
                 if cookie[:2] != (want_status, want_error) or unprocessed:
                     return f"{username}, org={org or '-'} {endpoint} with the cookie: {cookie}, expected {want_status} {want_error}"
-                got = decision(*header_get(authorization, path), endpoint)
                 if got != cookie:
                     return f"{username}, org={org or '-'} {endpoint} with {scheme}: {got}, the cookie got {cookie}"
                 log(f"{username}, org={org or '-'} {endpoint}: {want_status} {want_error or ''} with the cookie and with {scheme}")
