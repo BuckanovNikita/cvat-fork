@@ -22,3 +22,5 @@
 ## Comments
 
 2026-11-14: Resolved on `feat/team-analytics-page` by merge `407bb8e`. Review fixes that followed are in merge `401576e`. Live results, review outcomes and what remains unverified: `docs/evidence/2026-11-14-team-analytics-final-run.md`.
+
+2026-11-14: Notes on two criteria. Frame navigation counts every invocation of the shortcut handler, auto-repeats included (the spec's wording), which can differ from "every frame moved" when a repeat arrives while a frame is loading. A summary is written when the job is closed through the UI; counts since the last summary are lost when the tab is closed, which is recorded as a known limitation in `docs/fork-specification.md`.

@@ -19,3 +19,5 @@
 ## Comments
 
 2026-11-14: Resolved on `feat/team-analytics-page` by merge `e9d073d`. Review fixes that followed are in merge `401576e`. Live results, review outcomes and what remains unverified: `docs/evidence/2026-11-14-team-analytics-final-run.md`.
+
+2026-11-14: Note on the forwarded host port: 8490 is reserved in the k8s-infra host port table as an edit that is not committed in that repository (`skills/k8s-infra/SKILL.md`).

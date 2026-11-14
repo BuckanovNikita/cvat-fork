@@ -20,3 +20,5 @@
 ## Comments
 
 2026-11-14: Resolved on `feat/team-analytics-page` by merge `f3f1691`. Review fixes that followed are in merge `401576e`. Live results, review outcomes and what remains unverified: `docs/evidence/2026-11-14-team-analytics-final-run.md`.
+
+2026-11-14: Note on the detector record: on the live stack it was sent through the real CVAT API in the shape the UI produces, not by the real UI, because the stack has no model function. The UI call site is covered by tests with the real cvat-core logger and a recording transport.
