@@ -137,17 +137,94 @@ that change.
 Every output captured above (build, preflight, renders and their diff, doctored renders,
 bundle checks): no match for the home directory or for `/home/<user>`.
 
+## Part two: the live run, 2026-11-14 (UTC evening)
+
+Run from branch `ticket/08-stack` at the integration tip `2bd0d1b8` (with tickets 09, 10 and
+11's checks in `up`), then at `1333fd89` after the fixes below. Images, all local and built
+from `3dc1a7bc`: `cvat/ui:v2.82.0-team-analytics` (`310e9bbc6a47`),
+`cvat/team-analytics:v2.82.0` (`42d4bb9ab97e`), `cvat/server:v2.82.0-fork-policies`
+(`4b38c649ae96`). None was rebuilt. Logs are quoted with the user name in the namespace left
+as it is; no log line below holds a local path.
+
+### Before the start
+
+- `verify/policy_bundle.sh from-image cvat/server:v2.82.0-fork-policies | run.sh check-bundle`:
+  both policies `equal` and patched, "policy bundle check passed".
+- `run.sh preflight`: the default cache had no build of the in-tree chart, so it ran
+  `repo add` for the five repositories and downloaded the seven archives, checked them
+  against `chart-deps.sha256`, rendered and checked the render: "preflight passed".
+- `kubectl get ns cvat-ta-it-<user>`: NotFound. Nine namespaces existed, none of this tool's.
+
+### First `up`, from the empty namespace (at `2bd0d1b8`)
+
+It created the namespace, installed the release, applied the service, the proxy and the
+Ingress, and waited for the workloads. Then, in order:
+
+| Step | Result |
+| --- | --- |
+| backend pods | initializer `cvat/server:v2.82.0-fork-policies`; server: init `busybox:1.36.1`, both containers the fork image; worker-utils: init `busybox:1.36.1`, the fork image; worker-webhooks: the fork image. No other `cvat/server` image |
+| `check_policies` | "checking the policy bundle served at http://localhost:8490/api/auth/rules"; `rules/issues.rego` and `rules/comments.rego` each "is the patched policy"; "policy bundle check passed" |
+| `seed` | passed |
+| `check_ingress` (ticket 11) | `PASS ingress: status through the Ingress ...: 200 with a session, 401 not_authenticated without` |
+| `check_event` | the event found in ClickHouse for `ta-worker` with `shape_type` `rectangle` |
+| `check_tracer` | figures from one scheduled refresh; page as `ta-maintainer` and `ta-worker` as expected |
+| `check_task_progress` (ticket 10) | "task progress check passed" |
+| `check_final` | **failed**, `TypeError: 'NoneType' object is not iterable` in `final_run.py` `check_ui_figures`, `ready` |
+
+`check_issues` and `check_access_cases` were not reached; `up` exited 1.
+
+Cause of the `check_final` failure (ticket 08's): the history of the synthetic volume was
+still being processed when the figures were first read, and since ticket 14 a period that is
+not fully processed carries null rows. `ready()` indexed those rows instead of waiting. Its
+second wait (`volume figures`) tested `processed` only after reading a figure. Both now test
+`processed` first. A rerun (`run.sh check-final`) then failed on a second stale expectation:
+the by-project row was compared whole, and since ticket 23 each row also carries its
+operation parts (`seed check failed: by project {... 'operations': {...}}`). The check now
+matches the project and its working time. The next `run.sh check-final` passed ("final run
+passed"). These are fixes to the stack's check script (tooling, stated checks).
+
+The first `up` log held the home directory six times, all in that Python traceback, which
+`show_path` cannot reach. The launcher now passes its whole stderr, and that of every tool it
+runs, through `redact_paths` (repository root as `.`, the home directory by each of its names
+as `~`). Stated check: `TA_HOST_PORT=1 run.sh check-event` (a refused connection, a
+traceback through `stack_api.py`): with the filter switched off by `TA_STDERR_REDACTED=1`,
+five lines hold the home directory; with it, none, and the traceback names
+`./verify/team-analytics-stack/stack_api.py`.
+
+The two checks `up` had not reached, by their own subcommands: `run.sh check-issues`
+("issue matrix passed: 124 rows") and `run.sh check-access` (`PASS` for removed-member,
+group-admin, personal-workspace, and header-credentials with Basic and Bearer).
+
+### Second `up`, on the same stack (at `1333fd89`)
+
+The namespace was reused (`unchanged`), the release upgraded, the port-forward restarted.
+Every check passed in one run, in `up`'s order: "policy bundle check passed", seed,
+`PASS ingress`, the event in ClickHouse, the tracer's scheduled refresh, "task progress check
+passed", "final run passed" (project figures ready after 18 s, volume, trends, list, access
+of every account to every endpoint, page, service stopped and restarted), "issue matrix
+passed: 124 rows", the five access-case `PASS` lines, then
+`up:http://localhost:8490 (accounts: see README.md, password $TA_SEED_PASSWORD)`, exit 0.
+Its log holds no match for the home directory or for `/home/<user>`.
+
+### State left
+
+The stack stays up for the live parts of tickets 09, 10, 11, 25 and 26: namespace
+`cvat-ta-it-<user>`, every pod Running (the initializer Completed), the port-forward
+running, `http://localhost:8490`. `down` was not run.
+
 ## Not verified
 
-- No release was installed: the backend pods' actual images, the served bundle at
-  `/api/auth/rules` through the proxy (whether it answers without credentials, as the
-  chart's OPA polls it, is read from the chart, not seen), every existing check of `up`, and
-  `down` are part two.
+- `down` leaving nothing behind: not run; the stack is kept for the next tickets' live work.
+- A single `up` from an empty namespace passing every check: the fresh `up` stopped at
+  `check_final` (fixed since); every check then passed on that stack, and a second `up` on it
+  passed every check, but no `up` from an empty namespace has passed end to end.
+- A served bundle with a stock policy was not provoked on the stack; the failing verdicts are
+  those of `check-bundle` on the stock and mixed bundles in part one.
 - `chart-deps.sha256` refusing a different archive was not provoked; that code is unchanged.
 
-## Part two, not run yet
+## Part two, the list it ran from
 
-Needs the orchestrator's word (a UI image build and a stack `up`), both heavy lanes free.
+Steps 1 to 5 and 7 ran as above (step 1 by the orchestrator); step 6 is outstanding.
 
 1. `IMAGE=cvat/ui:v2.82.0-team-analytics ./build-ui.sh` and
    `IMAGE=cvat/team-analytics:v2.82.0 ./build-team-analytics-service.sh` from the final head;
