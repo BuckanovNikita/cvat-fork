@@ -272,13 +272,22 @@ class Stack:
         return self.service.refresh()
 
     def keep_refreshing_since(self, since: datetime) -> None:
-        """Refresh as a service running since `since` would have, ending at the current clock."""
+        """Refresh as a service running since `since` would have, ending at the current clock, with its history
+        computed: every period then holds its figures (one not fully processed would carry none)."""
         end = self.now
         moment = since
         while moment < end:
             self.refresh(moment)
             moment += timedelta(hours=46)  # windows of 48 h overlap
         self.refresh(end)
+        self.settle()
+
+    def settle(self, steps: int = 100) -> None:
+        """Steps the service until it has nothing more to do (it would wait for the next refresh)."""
+        for _ in range(steps):
+            if self.service.step() >= 1:
+                return
+        raise AssertionError(f"the service kept working after {steps} steps")
 
     def get(self, path: str, session: str | None = None, headers: dict | None = None, **query) -> tuple[int, dict]:
         request = Request(f"{self.url}{path}?{urlencode(query)}", headers=dict(headers or {}))
