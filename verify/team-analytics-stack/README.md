@@ -16,7 +16,7 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
 Это теги по умолчанию (`TA_SERVER_IMAGE`, `TA_UI_IMAGE`, `TA_SERVICE_IMAGE` в `stack.env`);
 образы должны быть собраны из проверяемой версии, иначе проверки политик и страницы не
 пройдут. Остальные подкоманды (`seed`, `check-event`, `check-tracer`, `check-task-progress`, `check-final`,
-`check-policies`, `forward`, `status`, `preflight`, `build-chart`, `render`, `check-render`,
+`check-policies`, `check-issues`, `check-issue-policies`, `forward`, `status`, `preflight`, `build-chart`, `render`, `check-render`,
 `check-bundle`, `render-ingress`, `check-ingress`, `seed-access`, `check-access`,
 `check-ingress-gone`) описаны в шапке `run.sh`; `preflight` выполняет всё, что `up` делает до
 первого изменения в кластере, и ничего не создаёт и не скачивает. Ручных шагов нет.
@@ -124,6 +124,18 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
   обращается к каждому адресу сервиса. Наконец сервис останавливается, и стенд проверяет
   панель ошибки и то, что разметка рисуется и сохраняется; после этого сервис
   запускается снова.
+- Матрица прав на issues и комментарии (`run.sh check-issues`, часть `up` после итогового
+  прогона; `issue_matrix.py`). Свои учётные записи (`issue_accounts.json`, загружаются тем
+  же `seed_users.py`): организация `ta-org-i` с `ta-owner-i`, `ta-maintainer-i`,
+  `ta-supervisor-i`, `ta-worker-i`, `ta-worker-i2` (глобальная роль `worker`) и
+  `ta-norole-i` без глобальной роли; `ta-outsider-i` не состоит нигде; организация
+  `ta-org-j` с `ta-owner-j` и `ta-worker-j`. Глобальные роли выставляет `ta-admin` через
+  `PATCH /api/users/<id>` и читает обратно. Задание без исполнителя с issue владельца и двумя
+  комментариями, второе задание у `ta-norole-i`, задание в `ta-org-j`. Каждая строка матрицы
+  выполняется через API, владелец читает результат обратно; стенд сам решает, прошла ли
+  матрица, и пишет её в `issue-matrix.json` в каталоге состояния. Те же ожидания без
+  сервера, против политик импорта или стокового тега: `run.sh check-issue-policies
+  [patched|stock]` (локальный образ OPA, без сети).
 - Случаи доступа (`run.sh check-access [CASE]`, последняя часть `up`; `access_cases.py`,
   учётные записи — `access_accounts.json`, загружает `seed_access.py`). Каждый случай сам
   решает, пройден ли он, и печатает `[access] PASS` или `[access] FAIL`.
