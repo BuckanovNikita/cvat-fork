@@ -26,7 +26,7 @@ from typing import TypeVar
 
 from team_analytics.config import Config
 from team_analytics.cutover import find_cutover
-from team_analytics.sql import Sql
+from team_analytics.sql import AtRun, Sql
 
 log = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ class Refresher:
             sent_at = self._lease_clock.monotonic()
             self._write_claim(token)
             time.sleep(SETTLE_S)
-            holder = self._sql.rows("control/lock_holder.sql", {"now": self._lease_clock.database_now})
+            holder = self._sql.rows("control/lock_holder.sql", {"now": AtRun(self._lease_clock.database_now)})
         except BaseException:
             self._release(token)  # the claim may have been written
             raise
@@ -182,7 +182,7 @@ class Refresher:
     def _write_claim(self, token: str) -> None:
         self._sql.statements("control/lock_claim.sql",
                              {"token": token, "holder": self._holder, "ttl_s": self._config.refresh_lease_s,
-                              "now": self._lease_clock.database_now})
+                              "now": AtRun(self._lease_clock.database_now)})
 
     def _renew(self, lease: _Lease, stop: threading.Event) -> None:
         """Extends the claim every third of the lease until `stop` is set (the work is over), or until the lease
@@ -205,7 +205,7 @@ class Refresher:
             try:
                 self._sql.statements("control/lock_release.sql",
                                      {"token": token, "holder": self._holder,
-                                      "now": self._lease_clock.database_now})
+                                      "now": AtRun(self._lease_clock.database_now)})
                 return
             except Exception:
                 if pause is None:

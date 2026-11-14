@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 import threading
+from collections.abc import Callable
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from string import Template
@@ -41,12 +43,20 @@ def _file(name: str) -> Template:
     return Template((SQL_DIR / name).read_text())
 
 
+@dataclass(frozen=True)
+class AtRun:
+    """A parameter value taken when the statement runs, not when the caller built the parameters: a statement
+    that waited carries the time it ran at (the refresh lease's clock, refresh.py). Only a value wrapped so is
+    called; any other value is bound as it is."""
+
+    read: Callable[[], Any]
+
+
 def _values(params: dict[str, Any] | None) -> dict[str, Any] | None:
-    """The parameters as bound. A value given as a callable is taken when the statement runs, not when the
-    caller built the parameters: a statement that waited carries the time it ran at (the lease's clock)."""
+    """The parameters as bound, with every `AtRun` value read now."""
     if not params:
         return None
-    return {name: value() if callable(value) else value for name, value in params.items()}
+    return {name: value.read() if isinstance(value, AtRun) else value for name, value in params.items()}
 
 
 class Sql:
