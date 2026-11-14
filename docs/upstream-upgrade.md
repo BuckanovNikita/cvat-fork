@@ -24,9 +24,11 @@ The import was re-filtered at v2.82.0 with a widened path list (the
 Its filtered commit is the local tag `cvat-v2.82.0-widened`. The older tags
 `cvat-v2.82.0` and `v2.82.0` keep the commit of the earlier, narrower filter,
 which earlier merges cite; they no longer describe the import. The tags are
-local and never pushed: a fresh clone has none of them, and the widened tag
-is recreated from a mirror built with the current `PATHS` (section 2,
-fetch step only).
+local and never pushed: a fresh clone has none of them. To recreate the
+widened tag, build a mirror with the current `PATHS` and fetch as in section
+2; before tagging, compare the fetched commit and its tree with the ids in the
+widened import baseline. The tree must match; the commit id can differ if the
+clone held a different history.
 
 Inspect the current customization with:
 
@@ -80,9 +82,10 @@ so the commit the last snapshot records is not an ancestor of the new tag.
 The squashed pull still works: it finds the last snapshot by its
 `git-subtree-dir: cvat` line, writes a new snapshot of the new tree on top of
 it and merges it. But its snapshot message lists the subject of every commit
-of the new tag's history and cannot carry the
-commit trailers this repository uses. Write the snapshot as `git subtree`
-does instead, then merge it the same way (tag name as chosen above;
+of the new tag's history. Any squashed pull writes its snapshot message
+itself, so the snapshot cannot carry commit trailers. Whenever that message
+must be controlled (a re-filtered mirror, or required trailers), write the
+snapshot as `git subtree` does instead, then merge it the same way (tag name as chosen above;
 `<previous snapshot>` is the commit `git log -1 --grep='^git-subtree-dir: cvat/*$'` prints):
 
 ```bash

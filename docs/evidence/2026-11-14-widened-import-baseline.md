@@ -17,7 +17,7 @@ earlier filter.
 | Filtered upstream commit | `6545b83e7f340c3f16bc37094eeee398cdbfb76b` | `361a0e643e61537fee55bef2fab90d736c6c9ec9` |
 | Local tag of the filtered commit | `cvat-v2.82.0` and `v2.82.0` (unchanged) | `cvat-v2.82.0-widened` (new, local, not pushed) |
 | Tree of the filtered commit | `6d4ee564079fdc5670e8f04733a2603cad9b2049` | `f09b92afccae160a840162d78ab5500285d55c2a` |
-| History of the filtered commit in the mirror | one commit, no parent (the old mirror held only `v2.74.1`) | 2834 commits |
+| History of the filtered commit | one commit, no parent, as stored in this repository (the old mirror's `packed-refs` and filter records name only `v2.74.1`; its other refs were not read) | 2834 commits, in the new mirror |
 | Squashed snapshot | `5e5af81d59b9883f33d4d5f4c2c65dd0bf9e0af2` | `2137ba86d292f167f30b3335041f2d480b2e587d` (parent `5e5af81`) |
 | Subtree merge | `7ba828c4d095a6e4b3947087e89c7b0912fcc4d0` | `a135a65d047da5748b026ebc5a212478a236dc61` |
 | Import tree (`HEAD:cvat`) just before and after the merge | `8dbf3057a9b0ba1b84b9128f832f0bc87588ad54` | `de6c7244623d03725b08b34ecfab46e3d51385d3` |
@@ -118,5 +118,8 @@ and start from it.
   are removed later and their checks move to the Kubernetes stack.
 - ESLint and stylelint with the imported configuration, the policy test with
   the imported policies, and an install of the in-tree chart: later tickets.
+- That a mirror rebuilt later, or elsewhere, gives the same filtered commit id.
+  The tree id depends only on the paths; the commit id also depends on the
+  history the clone held. Compare both with the table above before tagging.
 - Pushing: the new tag and the mirror are local. The branch carries only the
   snapshot and the merge, not the 2834-commit filtered history behind the tag.
