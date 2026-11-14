@@ -24,3 +24,5 @@ What ticket 27's browser run should look at, beside `docs/design/team-analytics/
 - At 400 px: the cards stack. The legend wraps onto two lines inside the card, and no bar, legend or name pushes the page sideways. Long names are cut with an ellipsis. Watch the smallest rows of the top eight: with five parts and four 2 px gaps, a bar narrower than about 8 px shows gaps and no colour. The single-colour bar used to keep a 2 px sliver.
 - In a legacy period (a month before the cutover): no Class change in the legend or the bars.
 - One known difference: the prototype puts the name, the bar and the hours on one line. The page keeps its existing row, with the name and hours on top and the bar under them. This ticket changed the bar, not the row layout.
+
+**2026-11-14:** Merged into `feat/team-analytics-page` in `6a442e9a`. Evidence is in `docs/evidence/2026-11-14-overview-bars-split-by-operation.md`. The ticket stays open: its last criterion, the look beside the prototype in a browser, is outstanding and belongs to ticket 27's run.
