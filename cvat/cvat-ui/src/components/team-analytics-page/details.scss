@@ -90,6 +90,7 @@ $details-name-width: 220px;
     .cvat-team-analytics-details-name button {
         display: block;
         width: 100%;
+
         // the cap is on the button: a table cell's max-width is not reliable
         max-width: $details-name-width;
         padding: 0;

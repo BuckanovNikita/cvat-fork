@@ -17,7 +17,6 @@ export function switchedOff(): boolean {
 export function recordFailure(error?: unknown): void {
     failures += 1;
     try {
-        // eslint-disable-next-line no-console
         console.warn('Team analytics logging failed', error);
     } catch {
         // nothing to do

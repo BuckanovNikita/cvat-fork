@@ -1,7 +1,9 @@
 -- Details table for [from, to): one row per annotator ({by} = 'annotators', key = user id) or per project
 -- ({by} = 'projects', key = project id, 0 = No project) with job work in the scope (working time or an
--- operation), sorted by working time (most first), then name and id. The caller clears the filter on the
--- table's own dimension, so every row stays listed for picking; the other filter applies.
+-- operation), sorted by working time (most first), then name and id. By project a project with saved boxes
+-- is listed too, so one into which only a technical account saved has a row: no working time, its saved
+-- boxes and its Model. The caller clears the filter on the table's own dimension, so every row stays listed
+-- for picking; the other filter applies.
 --
 -- Per row: the other dimension's count (projects an annotator worked in / annotators who worked in a
 -- project, working time > 0), sessions (annotators: as read/overview_sessions.sql; projects: sessions that
@@ -10,7 +12,8 @@
 -- creations), hotkey share (hotkey / hotkey + mouse actions, the canvas left out; null with none), Model
 -- (annotators: built-in detector only; projects: also what technical accounts saved, without an annotator
 -- filter) and saved boxes (single-frame rectangles the server stored; per annotator without technical
--- accounts, per project from everyone).
+-- accounts, per project from everyone, and under an annotator filter from that annotator, who is never a
+-- technical account).
 --
 -- The shape switch is applied once over the table's whole scope (before search), as in
 -- read/overview_operations.sql and read/overview_creation_methods.sql: with {bounding_boxes} = 1 only bounding
@@ -74,11 +77,6 @@ WITH
             OR {legacy_period:UInt8} = 1
         GROUP BY key
     ),
-    worked AS (
-        SELECT key FROM work WHERE working_ms > 0
-        UNION DISTINCT
-        SELECT key FROM ops_in GROUP BY key HAVING sum(objects) > 0
-    ),
     names AS (
         SELECT key, argMax(user_name, hour) AS name
         FROM (SELECT key, hour, user_name FROM wt UNION ALL SELECT key, hour, user_name FROM ops_in)
@@ -134,7 +132,9 @@ WITH
                     OR (resource = 'shapes' AND shape_type = 'rectangle'))) AS model,
             sumIf(objects, source = 'saved' AND action = 'create' AND resource = 'shapes'
                 AND shape_type = 'rectangle'
-                AND ({by:String} = 'projects' OR user_name NOT IN {technical_accounts:Array(String)})) AS saved_boxes
+                -- a technical account is no annotator: its boxes count per project, and not under an annotator filter
+                AND (({by:String} = 'projects' AND {has_annotator:UInt8} = 0)
+                    OR user_name NOT IN {technical_accounts:Array(String)})) AS saved_boxes
         FROM $totals_db.boxes_hourly
         WHERE hour >= {from:DateTime('Etc/UTC')} AND hour < {to:DateTime('Etc/UTC')}
             AND (hour, version) IN (
@@ -146,6 +146,14 @@ WITH
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
         GROUP BY key
+    ),
+    worked AS (
+        SELECT key FROM work WHERE working_ms > 0
+        UNION DISTINCT
+        SELECT key FROM ops_in GROUP BY key HAVING sum(objects) > 0
+        UNION DISTINCT
+        -- by project also the projects with saved boxes, so one only a technical account saved into is listed
+        SELECT key FROM boxes WHERE {by:String} = 'projects' AND saved_boxes > 0
     ),
     matched AS (
         SELECT

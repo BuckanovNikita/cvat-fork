@@ -1,0 +1,29 @@
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+@import 'base';
+
+// The last row of the overview grid: plain text, not a card. Columns narrow to one in a narrow window and long
+// words wrap, so the block never widens the page.
+.cvat-team-analytics-definitions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    gap: $grid-unit-size $grid-unit-size * 3.5;
+    min-width: 0;
+    padding: $grid-unit-size * 0.5 $grid-unit-size * 0.5 0;
+    color: $text-color-secondary;
+    font-size: 13px;
+}
+
+.cvat-team-analytics-definition {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.cvat-team-analytics-definition-term {
+    color: $text-color;
+    font-weight: 600;
+}

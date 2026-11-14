@@ -188,6 +188,8 @@ class CVATApplication extends React.PureComponent<CVATAppProps & RouteComponentP
             }
         };
 
+        // Team Analytics: a mouse button press ends a pending frame-navigation hotkey (input-summary.ts)
+        window.addEventListener('mousedown', inputEvent, { capture: true });
         visibilityChangeListener(); // initial setup other event listeners
         window.addEventListener('visibilitychange', visibilityChangeListener);
 

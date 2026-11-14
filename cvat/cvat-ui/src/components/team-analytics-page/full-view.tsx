@@ -18,7 +18,9 @@ import { shapeWording } from './shapes';
 import { HotkeyLabels, hotkeyLabel } from './hotkeys';
 import { lookupProjectNames } from './project-names';
 import { NotProcessedNotice } from './history';
-import { BarPart, FullList, FullListRow, FullTable } from './full-view-list';
+import {
+    BarPart, FullList, FullListRow, FullTable,
+} from './full-view-list';
 import WorkingTimeOverPeriodCard from './cards/working-time-over-period-card';
 
 const HOTKEY_COLOR = '#2a78d6';
@@ -113,11 +115,15 @@ function WorkingTimeList({
             onPick={onPick}
             rowsKind={kind === 'split' ? list.by : undefined}
             onRows={kind === 'split' ? onRows : undefined}
-            summary={`${formatCount(worked.length)} ${summaryNoun} · ${formatHours(list.total.working_time_ms)} in total`}
+            summary={
+                `${formatCount(worked.length)} ${summaryNoun} · ${formatHours(list.total.working_time_ms)} in total`
+            }
             legend={(
                 <Legend hint='Select a row to filter the whole page.'>
                     {[...OPERATIONS.filter((key) => !(list.legacy && key === 'class_change')), 'other' as const]
-                        .map((key) => <Swatch key={key} color={OPERATION_LOOKS[key].color} name={OPERATION_LOOKS[key].name} />)}
+                        .map((key) => (
+                            <Swatch key={key} color={OPERATION_LOOKS[key].color} name={OPERATION_LOOKS[key].name} />
+                        ))}
                 </Legend>
             )}
         />
@@ -283,7 +289,9 @@ export default function FullView({
 
     // names of every listed project, as CVAT returns them to the viewer
     const wanted = list && list.by === 'projects' ?
-        [...new Set(list.rows.map((row) => row.id))].filter((id) => id > 0 && !(id in known)).sort((a, b) => a - b) : [];
+        [...new Set(list.rows.map((row) => row.id))]
+            .filter((id) => id > 0 && !(id in known))
+            .sort((a, b) => a - b) : [];
     const wantedKey = wanted.join(',');
     useEffect(() => {
         if (wanted.length === 0) return undefined;

@@ -107,6 +107,38 @@ test_list_filter_contract if {
     }
 }
 
+# The same two contracts for a caller whose global role is `worker`, the floor
+# itself. Stock gives such a caller the staff filter even as an organization
+# maintainer or owner, because stock's unrestricted branch needs the `user` role.
+test_other_organization_denied_global_worker if {
+    every package_name, package_scopes in scopes {
+        every role in ["worker", "supervisor", "maintainer", "owner"] {
+            every scope in package_scopes {
+                candidate := object.union(request(role, scope), {
+                    "resource": object.union(resource, {"organization": {"id": 43}}),
+                })
+                not data[package_name].allow with input as candidate with input.auth.user.privilege as "worker"
+            }
+        }
+    }
+}
+
+test_list_filter_contract_global_worker if {
+    every package_name, field in organization_fields {
+        every role in ["worker", "supervisor", "maintainer", "owner"] {
+            candidate := request(role, "list")
+            data[package_name].allow with input as candidate with input.auth.user.privilege as "worker"
+            result := data[package_name].filter with input as candidate with input.auth.user.privilege as "worker"
+            result[0] == "&"
+            result[2] == ["|", {field: 42}]
+            result[3] == "org_filter_proof"
+            count(result) == 4
+            expected := {true: {}, false: staff_filters[package_name]}[patched]
+            result[1] == expected
+        }
+    }
+}
+
 test_sandbox_nonstaff_denied if {
     every package_name, package_scopes in scopes {
         every scope in package_scopes {
@@ -253,6 +285,95 @@ test_no_global_role_nonmember_gets_stock_actions if {
         }
         not data[package_name].filter with input as request(null, "list") with input.auth.user.privilege as null
     }
+}
+
+# A global role that is missing from the input or unknown to the helpers is below
+# the floor as well, and gets the stock decisions too. The caller is made staff
+# through two different fields: the job assignee and the task owner.
+
+staff_paths := ["/resource/job/assignee/id", "/resource/task/owner/id"]
+
+below_floor_request(kind, role, scope) := json.patch(request(role, scope), [{"op": "replace", "path": "/auth/user/privilege", "value": null}]) if {
+    kind == "null"
+}
+
+below_floor_request(kind, role, scope) := json.remove(request(role, scope), ["auth/user/privilege"]) if {
+    kind == "missing"
+}
+
+below_floor_request(kind, role, scope) := json.patch(request(role, scope), [{"op": "replace", "path": "/auth/user/privilege", "value": "superuser"}]) if {
+    kind == "unknown"
+}
+
+as_staff(candidate, path) := json.patch(candidate, [{"op": "replace", "path": path, "value": 7}])
+
+staff_actions_are_stock(kind, paths) if {
+    every package_name, package_scopes in scopes {
+        every role in organization_roles {
+            every path in paths {
+                every scope in package_scopes {
+                    candidate := as_staff(below_floor_request(kind, role, scope), path)
+                    result := data[package_name].allow with input as candidate
+                    result == (scope == "view")
+                }
+            }
+        }
+    }
+}
+
+nonstaff_actions_are_stock(kind) if {
+    every package_name, package_scopes in scopes {
+        every role in organization_roles {
+            every scope in package_scopes {
+                not data[package_name].allow with input as below_floor_request(kind, role, scope)
+            }
+        }
+    }
+}
+
+list_filter_is_stock(kind, paths) if {
+    every package_name, field in organization_fields {
+        every role in organization_roles {
+            every path in paths {
+                candidate := as_staff(below_floor_request(kind, role, "list"), path)
+                data[package_name].allow with input as candidate
+                result := data[package_name].filter with input as candidate
+                result == ["&", staff_filters[package_name], ["|", {field: 42}], "org_filter_proof"]
+            }
+        }
+    }
+}
+
+test_no_global_role_task_owner_gets_stock_actions if {
+    staff_actions_are_stock("null", ["/resource/task/owner/id"])
+}
+
+test_no_global_role_task_owner_gets_stock_list_filter if {
+    list_filter_is_stock("null", ["/resource/task/owner/id"])
+}
+
+test_missing_global_role_staff_gets_stock_actions if {
+    staff_actions_are_stock("missing", staff_paths)
+}
+
+test_missing_global_role_nonstaff_gets_stock_actions if {
+    nonstaff_actions_are_stock("missing")
+}
+
+test_missing_global_role_member_gets_stock_list_filter if {
+    list_filter_is_stock("missing", staff_paths)
+}
+
+test_unknown_global_role_staff_gets_stock_actions if {
+    staff_actions_are_stock("unknown", staff_paths)
+}
+
+test_unknown_global_role_nonstaff_gets_stock_actions if {
+    nonstaff_actions_are_stock("unknown")
+}
+
+test_unknown_global_role_member_gets_stock_list_filter if {
+    list_filter_is_stock("unknown", staff_paths)
 }
 
 test_admin_filter_scoped if {
