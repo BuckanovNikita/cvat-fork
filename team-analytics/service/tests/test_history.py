@@ -29,13 +29,16 @@ class HistoryCase(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.stack.cvat.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "owner", True)}))
+        self.stack.cvat.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
 
     def step(self, times: int = 1) -> None:
         for _ in range(times):
             self.stack.service.step()
 
     def history(self, **query) -> dict:
-        status, body = self.stack.get("/team-analytics-api/v1/status", "lead", org="org7", **query)
+        """The history block as an administrator who selected the organization sees it: the full block
+        (a maintainer's is in test_isolation.HistoryStatusTest)."""
+        status, body = self.stack.get("/team-analytics-api/v1/status", "admin", org="org7", **query)
         self.assertEqual(status, 200, body)
         return body["history"]
 

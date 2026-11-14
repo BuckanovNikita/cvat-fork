@@ -111,3 +111,81 @@ class IsolationTest(StackTestCase):
                 self.assertEqual((status, body), (403, {"error": "organization_required"}))
                 status, body = self.stack.get(API + path, "lead-b", org="org-a", **({"by": by} if by else {}))
                 self.assertEqual((status, body), (403, {"error": "forbidden"}))
+
+
+# What a reader who is not an administrator gets of the history block: nothing that dates the instance.
+MAINTAINER_HISTORY = {"complete", "percent", "periods", "earliest_month", "complete_weeks", "trends_ready"}
+ADMIN_ONLY_HISTORY = {"first_day", "days_ready", "days_total", "ready_from", "ready_from_day"}
+
+
+class HistoryStatusTest(StackTestCase):
+    """Status while history is processed. Organization B's events begin on 2026-10-01, the instance's first
+    day with events; organization A's on 2026-11-10."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        cvat = self.stack.cvat
+        cvat.add_user("lead", FakeUser(2, "lead", memberships={"org-a": (ORG_A, "maintainer", True)}))
+        cvat.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
+        self.stack.add_events([
+            working_time(at("2026-10-01 10:00:00"), 60_000, user=BRUNO, org=ORG_B, project=9),
+            working_time(at("2026-11-10 10:00:00"), 60_000, user=ALICE, org=ORG_A, project=1),
+        ])
+        # processed from 2026-11-10 (UTC), the older days still to do
+        for _ in range(10):
+            if self.status("admin")["history"]["ready_from_day"] == "2026-11-10":
+                break
+            self.stack.service.step()
+        self.assertEqual(self.status("admin")["history"]["ready_from_day"], "2026-11-10")
+
+    def status(self, session: str, **query) -> dict:
+        if session == "lead":
+            query.setdefault("org", "org-a")
+        status, body = self.stack.get(API + "status", session, **query)
+        self.assertEqual(status, 200, body)
+        return body
+
+    def test_a_maintainer_learns_progress_periods_freshness_and_the_cutover_but_not_the_instances_history(self):
+        body = self.status("lead")
+        self.assertEqual(set(body), {"history", "refresh", "cutover"})
+        history = body["history"]
+        self.assertEqual(set(history), MAINTAINER_HISTORY)
+        self.assertFalse(history["complete"])
+        # 4 of the 44 days from 2026-10-01 to 2026-11-13 are processed
+        self.assertEqual(history["percent"], 9)
+        self.assertEqual(history["periods"], {"week": False, "two_weeks": False, "month": False, "year": False})
+        self.assertIsNone(history["earliest_month"])
+        self.assertFalse(history["trends_ready"])
+        self.assertIn("last_success_at", body["refresh"])
+        self.assertIn("at", body["cutover"])
+
+    def test_earlier_events_of_another_organization_add_nothing_that_dates_them(self):
+        for query in ({}, {"tz": "Asia/Tokyo"}):
+            with self.subTest(**query):
+                body = self.status("lead", **query)
+                self.assertEqual(set(body["history"]), MAINTAINER_HISTORY)
+                text = repr(body)
+                for day in ("2026-10", "2026-11-10", "2026-11-09", "days"):
+                    self.assertNotIn(day, text)
+
+    def test_an_administrator_gets_the_full_block_with_or_without_an_organization(self):
+        for query in ({}, {"org": "org-a"}):
+            with self.subTest(**query):
+                history = self.status("admin", **query)["history"]
+                self.assertEqual(set(history), MAINTAINER_HISTORY | ADMIN_ONLY_HISTORY)
+                self.assertEqual((history["first_day"], history["ready_from_day"]), ("2026-10-01", "2026-11-10"))
+                self.assertEqual((history["days_ready"], history["days_total"]), (4, 44))
+                # the percentage is the administrator's day counts, rounded down
+                self.assertEqual(history["percent"], 9)
+
+    def test_complete_history_reads_as_all_of_it(self):
+        for _ in range(10):
+            if self.status("admin")["history"]["complete"]:
+                break
+            self.stack.service.step()
+        maintainer, admin = self.status("lead")["history"], self.status("admin", org="org-a")["history"]
+        self.assertTrue(maintainer["complete"])
+        self.assertEqual(set(maintainer), MAINTAINER_HISTORY)
+        self.assertEqual((maintainer["percent"], admin["percent"]), (100, 100))
+        self.assertEqual((admin["days_ready"], admin["days_total"]), (44, 44))
+        self.assertEqual((maintainer["complete_weeks"], maintainer["trends_ready"]), (12, True))

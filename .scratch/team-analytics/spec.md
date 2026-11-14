@@ -299,7 +299,9 @@ The existing header link to the stock dashboards is renamed Grafana.
   - trends: twelve weeks or months for the scope or for up to five compared annotators
     or projects;
   - status: how far history is processed, which periods are available, and the time of
-    the last successful refresh.
+    the last successful refresh. How far history is processed is a percentage; the first
+    day with events, the day counts and the moment from which history is processed are
+    given to the admin group only.
 - Responses carry identifiers for projects and annotators and the annotator's user
   name. Project names are resolved by the page through the existing CVAT API, so a
   caller sees only names CVAT would show them; a project CVAT no longer returns is shown

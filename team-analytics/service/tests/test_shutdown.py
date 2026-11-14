@@ -27,6 +27,8 @@ class ShutdownTest(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.stack.cvat.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "owner", True)}))
+        # the day counts are in an administrator's status only
+        self.stack.cvat.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
         # a long history, so the running service is busy one day after another
         now = datetime.now(UTC)
         self.stack.add_events([working_time(now - timedelta(days=day), 60_000, user=ALICE, org=ORG)
@@ -58,7 +60,7 @@ class ShutdownTest(StackTestCase):
     @staticmethod
     def days_ready(port: int) -> int | None:
         request = Request(f"http://127.0.0.1:{port}/team-analytics-api/v1/status?org=org7",
-                          headers={"Cookie": "sessionid=lead"})
+                          headers={"Cookie": "sessionid=admin"})
         try:
             with urlopen(request, timeout=5) as response:
                 history = json.loads(response.read()).get("history")
