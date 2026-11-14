@@ -1,6 +1,13 @@
 # Team Analytics: what was decided or changed against the first plan
 
-Compiled 2026-11-14 for [`plan.md`](plan.md). "The first plan" is
+**Note, 2026-11-14:** the plan this ledger was compiled for (a conversion to a
+standard full-source fork) was dropped by the owner the same day and its file
+deleted; it is in history up to commit `fb3148e`. The column "Under the new
+plan" and the rows that argue for that plan (O1 to O3) describe it and no
+longer say what will happen. What is planned now is in
+[`../defect-fixes/plan.md`](../defect-fixes/plan.md).
+
+Compiled 2026-11-14 for `plan.md`. "The first plan" is
 `.scratch/team-analytics/spec.md`, its eighteen tickets,
 `docs/design/team-analytics/`, ADRs 0001 to 0003 and `GLOSSARY.md` as they
 stood at commit `f492c65`, when implementation began.

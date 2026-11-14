@@ -2,257 +2,247 @@
 
 Status: needs-triage
 
-Draft of 2026-11-14 for the owner to review. Nothing here is implemented, and
-no ticket files exist yet; they are cut from section 5 once the decisions of
-section 2 are answered.
+Rewritten on 2026-11-14 after three rounds of questions to the owner. Nothing
+here is implemented. The decisions of section 1 are the owner's; the defaults
+of section 2 are not yet confirmed. Once they are, this file becomes a
+specification and one ticket file per package of section 4.
 
 It covers the list the owner asked to have fixed: the problems confirmed on
 2026-11-14 around the issue and comment policies, the gaps the Team Analytics
 implementation left behind, and what was never verified. Rows carry the ids of
 [`../standard-fork/decisions-ledger.md`](../standard-fork/decisions-ledger.md)
-where one exists; policy items are new and are numbered `OPA-n`.
+where one exists; policy items are numbered `OPA-n`.
 
 How each statement is known:
 
 - *observed*: produced by a run recorded in `docs/evidence/`.
-- *read*: found by reading the code on `feat/team-analytics-page` at `0a26a8c`
-  for this plan. Nothing was run for this plan: no test, build or stack.
+- *read*: found by reading the code on `feat/team-analytics-page` for this
+  plan. Part of that reading was done by read-only helpers whose reports were
+  taken as given.
 - *recorded*: taken from the ledger or a review write-up, not re-read.
 
-## 1. What decides the order
+Nothing was run for this plan except: one read of the stock issue policy from
+the stock server image, searches of the tree and history for a local path, and
+the teardown of the test stack on the owner's instruction.
 
-The fork conversion in [`../standard-fork/plan.md`](../standard-fork/plan.md)
-is still `needs-triage`. It deletes the separate service process, the Compose
-overlays, the copied policies and the stand-in access layer, so about half of
-the fixes below would be written and then thrown away. Each item therefore has
-one disposition:
+## 1. Decisions of the owner, 2026-11-14
 
-| Disposition | Meaning | Items |
-| --- | --- | --- |
-| **K** keep | Fix now. The code moves into the fork unchanged (UI, UI logging, SQL, refresh logic, page) | S13, A4, Q9, Q10, Q8, S15, Q6, L2, L10, L9, P9, P10, V2, V7 findings, R8 |
-| **T** throwaway | Fix now only if the conversion is declined or more than a few weeks away; it is deleted by the conversion | OPA-2, S9, V10, the Ingress |
-| **P** production | Throwaway under the conversion, but a deployment uses it today or a check of it depends on it, so fix now regardless | OPA-1, OPA-3, OPA-4, OPA-5, OPA-6, OPA-7 |
-| **C** conversion | Closed properly only by the conversion; an interim check is offered where cheap | V7 (lint as a gate), V4, L6 |
-| **V** verify | Not a code change: a run that was never made | OPA-8, V5, V8, V11, the security review |
+| # | Decision |
+| --- | --- |
+| 1 | **The fork conversion is dropped.** Its draft was deleted on the owner's instruction; it is in history up to commit `fb3148e`. The overlay layout stays |
+| 2 | **Compose is dead.** No deployment uses the Compose overlay. Its files and launchers are removed and their two live checks (issue permissions, task progress) move to the Kubernetes stack |
+| 3 | **A fork server image delivers the policies**: the stock release image with the two patched policy files and nothing else (ADR 0004). No ConfigMap mount |
+| 4 | **The import filter is widened**, accepting new identifiers for the mirrored history once. It brings in upstream's root lint configuration, `helm-chart/` and the four stock policy files, and drops `docker-compose.yml` |
+| 5 | **The policies are patched in place** inside the import; `opa/` goes away |
+| 6 | The Team Analytics service keeps its own image on the stock base |
+| 7 | Role floor: the added policy rule requires at least the `worker` global role; below it a member gets exactly the stock behaviour |
+| 8 | The API itself withholds figures of a period that is not fully processed |
+| 9 | An organization maintainer's status shows whether history is complete, a progress percentage, which periods can be offered, the freshness stamp and the cutover day; administrators keep the full block |
+| 10 | The cutover may move to an earlier hour, never a later one |
+| 11 | Frame navigation counts frames moved, as the glossary says |
+| 12 | A redo is not a creation |
+| 13 | A group drag is one alignment per object moved, sharing the time equally; moving the selection box follows the same rule |
+| 14 | The split bars by operation and the definitions footer are built |
+| 15 | The home-directory path is redacted going forward; history is left alone |
+| 16 | The never-applied Ingress is applied beside the stack's proxy and checked with one request per run |
+| 17 | Stated limits, not fixed: counts lost on tab close (cvat-core stays untouched); tags, interactor and OpenCV objects are not counted; a session is at most a day long; in 3D jobs only sessions and working time are measured |
+| 18 | Not a defect: a table lists every row of its own dimension under a page filter, so its legacy content can differ from a filtered, empty overview. Kept, with the missing test added |
+| 19 | The kept test stack was torn down (done with the launcher's `down`; the namespace and its port-forward are gone) |
 
-Waves 0 and 1 (section 4) contain only **P** and **K** items and the one
-verification run that belongs to them (OPA-8), so they can start before the
-conversion is decided.
+The glossary carries decisions 10, 12, 13 and 17. Decision 3 is ADR 0004;
+decisions 2 and 4 amend ADR 0003.
 
-## 2. Decisions for the owner
+## 2. Defaults nobody was asked about
 
-None of the recommendations below has been approved. The arrows in the earlier
-session's summary were recommendations too. The nine questions that summary
-calls "Q1 to Q9 of the revised round" are not in the repository; this table
-replaces them where they overlap and cannot say what else they asked.
+Each is what the work will do unless the owner says otherwise.
 
-| # | Decision | Recommendation | Blocks |
-| --- | --- | --- | --- |
-| G0 | Is the fork conversion going ahead, and roughly when? | Yes. Then every **T** item is skipped | wave 2 |
-| G1 | OPA-3: must the added member rule require a global role? | Yes: at least `worker`, in the added `allow` rule and the added filter branch of both files. A user in no group is normally a deactivated or half-provisioned account | wave 0, and the cherry-pick to `main` |
-| G2 | OPA-2: deliver the policies on Kubernetes now, or with the fork server image? | With the image, unless members need the wider issue access on a cluster deployment now. If now: a ConfigMap mounted into the server pod through the chart's `additionalVolumes` and `additionalVolumeMounts` (both keys exist in the v2.82.0 chart, *read*) | wave 2 |
-| G3 | S13: should the API itself withhold figures of a period that is not fully processed? | Yes. Answer `processed: false` without figures; the page already shows that state | wave 1 |
-| G4 | A4: what may an organization maintainer see in `status`? | A `complete` flag, a progress percentage, which periods may be offered, the freshness stamp and the cutover day. Not the instance's first event day or its day counts. The cutover day stays because the page names it and it tells only when the upgraded UI first logged anywhere. The page's progress line shows "N of M days" today and changes with it | wave 1 |
-| G5 | Q9: how is the cutover found and corrected? | Find it at start and in the daily check, not only when a tagged hour reaches the totals; let the daily check move it to an earlier hour; keep the manual correction for a wrongly dated event. Needs the cost of the long-range query measured first | wave 1 |
-| G6 | L2: is frame navigation "every invocation" (spec) or "every frame moved" (ticket 13, glossary)? | Every frame moved: a repeat that arrives while a frame is loading is not counted | wave 1 |
-| G7 | L10: which uncounted actions become counted? | Group drags and selection-box moves: yes, they are plain undercounts. Pasted tags, interactor and OpenCV objects need a class first (creation method "semi-automatic" is proposed); leave them out until it is named | wave 1 |
-| G8 | P9 and P10: build the split bars and the definitions footer, or drop them on record? | Build both; the signed-off prototype shows them | wave 1 |
-| G9 | Q5: a session longer than a day is cut | Do not fix. Count such sessions in the verification run and revisit if any exist; a longer read-back costs every refresh | — |
-| G10 | R8: is redacting forward enough, or must the path leave the branch history? | Redact forward only. The same home prefix is already in `INFRA_MIGRATION.md` on `main` (one line), and local `main` equals the last fetched `origin/main`, so it is published already. On the branch it also sits in compiled Python files committed 133 commits back and removed later; removing it from history would mean rewriting most of the branch, merges included, and would still leave `main` | any push |
-| G11 | V8: the kept stack must be torn down for a fresh full run | Tear down after wave 1; it was left running at the owner's request, so this needs the owner's word | wave 3 |
+| # | Default |
+| --- | --- |
+| a | **The lint gate is a hook pipeline (prek)**, holding ESLint, stylelint, the type check, ruff, the policy test and the node suites. Suites that need ClickHouse or the stack stay separate commands. The owner chose how the configuration arrives, not whether a gate exists |
+| b | **Lease length 120 s**, renewed every 40 s, so a killed replica blocks refreshes for at most two minutes instead of thirty |
+| c | **A redo still ends an alignment run**, as today, although it is no longer counted as an operation |
+| d | **A group move is its own alignment for each object moved.** It ends the runs before it and does not continue into a later drag of one of those objects |
+| e | **Detector use is verified with a supplied model answer**: the real UI is driven in the browser, and the model function's reply is supplied at the HTTP boundary. A deployed model function stays unverified and is said so |
+| f | **The volume goes through the events API for the current week only.** Older weeks stay direct inserts unless the API accepts old timestamps, which is not known |
+| g | The formatting-only change in `components/analytics/clickhouse/init.py` is reverted to the upstream file, since the in-tree chart will ship that directory to the cluster |
+| h | The ledger stays as the record of earlier decisions, with a dated note that its last column refers to the dropped plan |
 
-## 3. The items
+## 3. Order
 
-Columns: *How known* as defined above. *Test first* names the failing test to
-write before the fix and its seam (1 service against ClickHouse, 2 UI logging,
-3 page, P policy test); a dash means the item is tooling, configuration or
-documentation, which gets a check instead of a test. *Recheck* is how the
-original failure path is shown fixed.
+Each step ends with its checks, then an independent review of the integrated
+result where behaviour, interfaces or delivery changed.
 
-### 3.1 Issue and comment policies
+```
+0.1 hygiene ──┐
+0.2 re-import ─┬─ 0.3 lint findings ── C (UI logging), D (page)
+               └─ 1.1 policies in place ── 1.2 server image ── 1.3 stack ── 1.4 removals
+A (reads), B (refresh): after 0.1, beside everything above
+wave 3 (verification): after all of it
+```
 
-| # | Problem | How known | Disp. | Test first | Fix | Recheck |
-| --- | --- | --- | --- | --- | --- | --- |
-| OPA-1 | The mount path fix `f97d41b` is only on the feature branch; `main` still mounts into a directory the server does not read | observed (bundle built in the stock image, three ways by the reviewer) | P | — | Bring the fix to `main` together with OPA-3 to OPA-7, never alone (section 4) | OPA-8 |
-| OPA-2 | Nothing delivers the policies on Kubernetes; the cluster runs the stock rules | read (the stack's values and manifests mount no policy) | T | — | Decision G2 | the stack run reads `/api/auth/rules` and checks both files |
-| OPA-3 | The added rule admits any organization member whatever their global role, including none. The added filter branch is the same. The policy test covers `user` and `worker` only | read (`opa/rules/issues.rego`, `comments.rego`: the added `allow` and `else` branches test membership only) | P | P: a case with `privilege: null` in `verify/opa_issues_test.rego`. For create, view, update and delete it expects refusal. For `list` it expects exactly what the stock rules give that caller, since stock lets any member list, restricted to their own assignments | `utils.has_perm(utils.WORKER)` in the two added rules of each file. The patch **replaced** the stock member branch of the list filter (compared with the stock v2.82.0 file, *read*), so that branch is restored after the patched one; otherwise a member below the floor gets no filter at all. IAM-1 wording in `docs/fork-specification.md` | policy test on stock and patched rules; OPA-8 |
-| OPA-4 | The root override used from this checkout resolves its relative mounts beside `cvat/docker-compose.yml`, where no `opa/rules/` exists. Before the path fix that did nothing; now the server container fails to start | recorded (review of `f97d41b`) | P | — | Take the rules directory from a variable with the documented default, as the verification overlay already does; one sentence in the override header and in BUILD-1 | `docker compose config` rendered from the deployment layout and from this checkout: both name existing files |
-| OPA-5 | A policy file the server's user cannot read makes the bundle build raise | recorded (same review) | P | — | A precondition in `docs/upstream-upgrade.md`: both files exist and are world-readable before the server is recreated | part of OPA-8 |
-| OPA-6 | `verify/opa_issues.sh` accepts the patch marker in either file | read (`grep -l` over two files succeeds on one match) | P (OPA-8 relies on it) | — | Check each file by itself | run the check against a bundle with one stock file: it must fail |
-| OPA-7 | The upgrade document says to build the bundle in the image and gives no command | read | P | — | Add the command used for the 2026-11-14 check | follow the document literally once |
-| OPA-8 | The patch was never seen on a running stack: Compose applying the mounts, the bundle over HTTP, OPA loading it, real API outcomes | recorded | V | — | `verify/opa_issues.sh all` after OPA-3 and OPA-6, with an account in no group added to its matrix. Three of its images were not local on 2026-11-14. It starts a Compose stack, which the owner's Kubernetes-only rule and `INFRA_MIGRATION.md` argue against; it is still the only place the Compose overlay can be seen working, so it needs the owner's word, or G2 answered "now" to check on the cluster instead | its own output, kept as dated evidence |
+Constraints the order encodes:
 
-### 3.2 Service: access and what the API returns
+- The re-import is one shot: every further widening changes the identifiers
+  again. Its path list is proven in a scratch copy first (0.2).
+- UI packages wait for the lint findings commit, so they are not rebased over
+  a formatting sweep.
+- Compose artefacts and `opa/` are deleted only after the stack carries both
+  live checks and the image carries the policies (1.4).
+- The lease test gets a supplied clock before the lease is shortened; that
+  test already needed loosening on slow hosts.
+- The group drag spans the UI and the SQL; the event's shape is fixed in the
+  contract first, then both halves are built.
+- P9's service half follows S13 in the same package; its page half follows it.
+- Nothing is pushed before 0.1 and the security review.
 
-| # | Problem | How known | Disp. | Test first | Fix | Recheck |
-| --- | --- | --- | --- | --- | --- | --- |
-| S13 | Figures of a period that is not fully processed are returned with `processed: false`; only the page hides them | read (`covers()` is evaluated per endpoint and nothing withholds the answer) | K | 1: the existing processed-flag tests in `test_history.py`, `test_details_table.py`, `test_trends.py`, turned to expect no figures | Per endpoint, after the flag is known: `endpoints/overview.py`, `list.py`, `details.py`, `trends.py` (per bucket) | a direct call for an unprocessed period on the stack; 3: the page still shows its "being processed" state |
-| A4 | `status` shows the instance's first event day, day counts and cutover to an organization maintainer | read (`status/history.py` and `sql/read/history_state.sql` have no organization clause; `test_isolation.py` has no status case) | K | 1: in `test_isolation.py`, a maintainer's `status` carries no first event day and no day counts, and an admin's still does. 3: the progress line renders from the percentage | `endpoints/status.py` and `status/history.py`; on the page `history.tsx`, which reads the day counts today. Per decision G4 | the same call as a maintainer and as an admin on the stack |
-| Q8 | A project touched only by a technical account is missing from the details table | read (`sql/read/details.sql`: the row set comes from working time and operations, both of which exclude technical accounts; saved boxes are only joined onto it) | K | 1: in `test_details_table.py`, a project whose only work is a technical account's saved boxes has a row | Add the saved-box keys to the row set when the table is by project | the stack's `ta-bot` project in the details table |
+## 4. The work
 
-### 3.3 Service: cutover, legacy flag, refresh
+*Test first* names the failing test to write before the fix and its seam
+(1 service against ClickHouse, 2 UI logging, 3 page, P policy test). A dash
+means tooling, configuration or documentation, which gets a check instead.
 
-| # | Problem | How known | Disp. | Test first | Fix | Recheck |
-| --- | --- | --- | --- | --- | --- | --- |
-| Q9a | A wrong stored cutover stays until its row is deleted by hand | read (insert-once; the read takes the first row) | K | 1: in `test_cutover.py`, an earlier tagged event arriving after the cutover was stored moves it at the next daily check | `cutover.py`, `sql/control/cutover_*.sql`, `sql/read/cutover.sql`, per decision G5 | exercise the manual correction once too; it never was |
-| Q9b | Right after an upgrade every period reads as legacy until the first refresh | read (no row means legacy) | K | 1: a service started on stored tagged events answers its first request with the cutover already known | Run the finder in the start-up schema step, before requests are served | upgrade the kept stack in place and read `status` at once |
-| Q9c | An instance whose stored work is only untagged or 3D has no cutover, so its periods read as legacy. **The pasted wording ("a scope with only 3D work") is not what the code does:** the cutover is instance-wide, and a scope without tagged work is not legacy once any cutover exists | read (`cutover.py`; `test_cutover.py` asserts the scope case) | K | 1: tagged work that exists only in raw events, not yet in the totals, still yields a cutover | Covered by the Q9b change (the finder no longer waits for a tagged hour in the totals). An instance with 3D work only stays legacy; record that as the definition, not a defect | — |
-| Q10 | The legacy flag can differ between the details table and the overview | read (details and list clear their own dimension filter before deciding whether the scope has job work; the overview applies both filters) | K | 1: `test_cutover.py`, the existing same-cutover test repeated with an annotator and a project filter set | One shared rule for "the scope has job work". The difference is made in `endpoints/details.py` and `endpoints/list.py`, which drop the table's own filter before asking; the SQL files only receive the result | the filtered page on the stack: one notice, everywhere or nowhere |
-| S15 | A refresh window under 24 hours marks today's earlier hours as processed without computing them | read ("processed" is inferred from history reaching yesterday, not from the marked hours) | K | 1: with a 1-hour window, an event from earlier today is either computed or its period reads as not processed | Two service tests set a 1-hour window on purpose (`test_creation_methods.py`, `test_bounding_boxes.py`), so refusing short windows at start would break them. Preferred: let the history step also cover today's hours before the window. Fallback: refuse a window under 24 hours and rewrite those two tests | start with 12 hours on the stack and compare an early-morning figure with the raw events |
-| Q6 | A redone creation has no shape type, so it counts only under All shapes. **The pasted "counts as one object" is the UI's doing, not the SQL's:** the SQL counts the event's `count`, and the UI always logs 1 | read (`annotation-actions.ts` redo logging; `sql/refresh/operations.sql`) | K | 2: a redo of a creation carries the shape fields and the number of objects restored. 1: such an event counts under Bounding boxes | UI: add the fields after the redo resolves, from the ids it returns. SQL: read them like any creation | redo a propagated box in the browser and read the events table |
-| Q5 | A session longer than a day is cut | read (`sql/refresh/sessions.sql` reads one day back) | — | — | Decision G9: not fixed; counted in wave 3 | — |
-| S9 | A replica killed mid-step blocks every refresh for up to 30 minutes | recorded; the lease length is a constant of 1800 s (*read*) | T | 1: a killed holder is overtaken within the shorter lease | Shorter lease with the same renewal ratio. Only if G0 is "no" | kill the pod mid-step on the stack |
-| V10 | One lease test was loosened from 3 s to 8 s | read (`test_lease.py`, the hanging-renewal case; it still asserts that the release is not held up) | T | — | Not a product defect. Only if G0 is "no": replace wall-clock waits with a supplied clock | — |
+### Wave 0: foundations
 
-### 3.4 UI logging
+| # | Item | How known | Work | Check |
+| --- | --- | --- | --- | --- |
+| 0.1a | R8: a home-directory path in five tracked files (one line in each of four run logs, one line of `INFRA_MIGRATION.md`) | read (whole tree and every commit of `main..HEAD`, binary files included) | Redact the five lines. Keep the launcher's filter for Helm's symbolic-link warning and extend it to every Helm call: with the chart in the tree that warning prints the repository path | the same search over the tree finds nothing |
+| 0.1b | V2: the frontend tests skip themselves when jsdom is missing (about 62 page tests in 13 files and the whole keyboard-and-mouse logging file, counted by search); jsdom is only another package's optional dependency | read | Fail, not skip. Declare jsdom in a fork-owned manifest for the harness | with jsdom off the path the suites fail |
+| 0.2 | The widened import (decision 4) | — | See below | See below |
+| 0.3 | V7: ESLint never ran on about 6,500 lines of UI code; L9: import cycles between `index` and each of `input-summary`, `class-change`, `model-creation` | read | First run of ESLint, stylelint and the type check with upstream's configuration; findings fixed in their own commit. The cycle is removed by moving the record writer out of `index.ts`. The gate of default (a) | all three exit clean; the seam 2 and 3 suites stay green |
 
-| # | Problem | How known | Disp. | Test first | Fix | Recheck |
-| --- | --- | --- | --- | --- | --- | --- |
-| L2 | Frame navigation counts key repeats that did not move a frame | read (repeats are skipped for every action except frame navigation; a repeat while a frame loads asks for the same frame again) | K | 2: in `keyboard-mouse.test.cjs`, repeats while the frame is loading add nothing | `input-summary.ts` (`hotkeyUsed`): skip a frame-navigation repeat while the player is fetching. Decision G6 | hold `F` on a slow frame in the browser; the summary equals the frames moved |
-| L10a | A group drag logs only the grabbed shape; moving the selection box logs nothing | read (the canvas reports the whole group in one event that the UI saves without logging, and reports the grabbed shape a second time) | K | 2: a group drag of three boxes yields three aligned objects, not one and not four | `canvas-wrapper.tsx`, the group-moved handler; the single-shape event of the same gesture must not be counted twice | drag three selected boxes in the browser |
-| L10b | Pasted tags, interactor and OpenCV objects are not counted | read (no event on those paths, upstream or ours) | K | after G7 | after G7 | — |
-| L9 | The logging module has import cycles: `index` with each of `input-summary`, `class-change` and `model-creation` | read | K | — (no behaviour changes; the seam 2 suite must stay green) | Move the record writer out of `index.ts` into its own module | ESLint's cycle rule in V7 |
-| L6 | Counts since the last summary are lost on tab close | recorded | C | — | Needs a cvat-core change; decision D8 of the fork plan | — |
+**0.2 in detail.**
 
-### 3.5 Page
+- Paths added: `eslint.config.mjs`, `.eslintrc.cjs`, `.stylelintrc.json`,
+  `.prettierrc`, `.prettierignore`, `.editorconfig`; `helm-chart/`;
+  `cvat/apps/engine/rules/issues.rego` and `comments.rego`,
+  `cvat/apps/iam/rules/utils.rego`,
+  `cvat/apps/organizations/rules/organizations.rego`. Path removed:
+  `docker-compose.yml`. Upstream's root holds all of these at v2.82.0
+  (*read* from the release's file list).
+- Proof before the filter runs, in a scratch copy of those files at the
+  recorded upstream commit: the ESLint and stylelint configurations load on
+  our UI paths without a file the import lacks; the chart renders the same as
+  the cached one (with default (g) applied); the policy test passes against
+  the four stock files.
+- `mirror-cvat.sh` deletes the existing mirror before cloning. It is changed
+  to build the new mirror beside the old one and swap only on success.
+- The local tags `v2.82.0` and `cvat-v2.82.0` keep pointing at the old
+  filtered commit, which earlier merges cite. The new filtered commit gets its
+  own tag, and the documented delta inventory switches to it. Old and new
+  identifiers go into a dated baseline evidence file.
+- Check after the pull: every path of the old list except `docker-compose.yml`
+  is unchanged by it; every new path equals the upstream commit byte for byte.
+- It needs a full clone of upstream from the network.
 
-| # | Problem | How known | Disp. | Test first | Fix | Recheck |
-| --- | --- | --- | --- | --- | --- | --- |
-| P9 | Overview bars by project and by annotator are not split by operation | read (the overview answer has no per-row operations; only the full view's list has them) | K | 1: each overview row carries operation parts that add up as in the full view. 3: the two cards draw the segments and a legend | Service: per-row operations in the overview. Page: the two cards and `working-time-breakdown.tsx`, reusing the full view's segment logic | side by side with the prototype at 1400 px and 400 px |
-| P10 | The definitions footer of the design is absent | read (nothing in the page directory renders definitions) | K | 3: the overview ends with the definitions, in glossary wording | A small component in the page directory | same browser check |
+### Wave 1: policies, image, stack
 
-P9 needs the service change of its own row first; it also touches the overview
-SQL, so it follows S13 and Q10.
-
-### 3.6 Tests, lint, public repository
-
-| # | Problem | How known | Disp. | Fix | Recheck |
+| # | Item | How known | Test first | Work | Check |
 | --- | --- | --- | --- | --- | --- |
-| V7 | ESLint never ran on about 6,500 lines of UI code: the filtered import has no root ESLint configuration, and the package configuration requires one | read | K for the findings, C for the gate | One run with upstream v2.82.0's root configuration supplied from a full upstream checkout, not committed; findings fixed in their own commit before any other UI work. *Not run:* whether ESLint accepts a configuration outside the tree | the same run exits clean; it becomes a gate only with the conversion |
-| V7b | Type checks resolved workspace packages from another checkout | recorded for the implementation worktrees. In this checkout they resolve through its own workspace links (*read*) | K | Run the type check from a checkout with its own install and record it | exit 0 in the evidence file |
-| V2 | The frontend tests use a jsdom that is only another package's optional dependency, and **skip themselves when it is missing**: about 62 page tests in 13 files and the whole keyboard-and-mouse logging file would pass as skipped (*read*, counted by search) | read | K | Fail, not skip, when jsdom is absent; declare jsdom in a fork-owned manifest for the harness | remove jsdom from the path once: the suites must fail |
-| R8 | A home-directory path is in the tree in five files: one line in each of four committed run logs, and one line of `INFRA_MIGRATION.md` that is on `main` as well. In the branch history it is also inside compiled Python files that were committed and later removed | read (a search of the whole tree and of every commit in `main..HEAD`, binary files included) | K | Redact the five lines; filter that warning where the launcher captures logs. Decision G10 for the history | the same search over the tree finds nothing |
-| — | The commit security review never completed | recorded | V | Run it over `main..HEAD` after R8 | its report |
+| 1.1 | OPA-3: the added rule and the added list-filter branch admit any member whatever their global role, including none. The patch replaced the stock member branch of the list filter | read (`issues.rego` compared with the stock v2.82.0 file; `comments.rego` by reading only) | P: a case with `privilege: null` in `verify/opa_issues_test.rego`. Create, view, update, delete: refused. List: exactly the stock result for that caller | Apply the patch to the imported stock files with `utils.has_perm(utils.WORKER)` in the added rules, and the stock member branch restored after the patched one. The test reads the in-tree files and helpers | the policy test on the stock tag and on the patched tree |
+| 1.2 | OPA-2: nothing delivers the policies on Kubernetes | read | — | A Dockerfile and a build script beside `build-ui.sh`: stock server image plus the two files copied over the stock ones. Nothing else, no Python | the server's own bundle builder, run in the image, yields both patched files (the check of `docs/evidence/2026-11-14-opa-rules-mount-path.md`) |
+| 1.3a | The stack uses the fork image and the in-tree chart | — | — | Backend image set to the fork image. The chart comes from `cvat/helm-chart`; the download of the upstream archive goes away. **Its dependency archives are still fetched by Helm and still checked against `chart-deps.sha256`; the lock stays ours** | the render guard and a fresh `up` |
+| 1.3b | OPA-8: the patch was never seen on a running stack | recorded | — | The issue and comment matrix of `verify/opa_issues_check.py` runs in the stack with its seed, plus an account with no global role; the served bundle is checked for both files, each by itself | the matrix, kept as dated evidence |
+| 1.3c | The task-progress check ran only on Compose | read | — | Its seed and browser check run in the stack | its output |
+| 1.3d | The service's Ingress was never applied | recorded | — | Applied beside the proxy under the cluster's nginx class; one request through it per run | 200 from `status` through the Ingress |
+| 1.3e | V4: access cases never seen against a real CVAT | recorded | — | Added to the stack's access matrix: a removed member, an administrator by group who is not a superuser, a personal workspace under instance scope, credentials as an `Authorization` header | the matrix |
+| 1.4 | Compose artefacts and `opa/` have no user | read (nothing else references the imported Compose file) | — | Delete `docker-compose.override.yml`, the three `verify/docker-compose.*.yml`, `verify/opa_issues.sh`, `verify/run.sh`, `opa/`; their seed and check scripts stay where the stack uses them | a search for their names finds only history and dated evidence |
+| 1.5 | Documents that describe the old delivery | read | — | Fork specification (BUILD-1, IAM-1, the stated limits of decision 17), the upgrade procedure (policies are merged, not reapplied; the server image is rebuilt), the Team Analytics spec's stock-backend and chart-download lines, the READMEs, `INFRA_MIGRATION.md` | read against the tree after 1.4 |
 
-### 3.7 Never verified
+### Wave 2: product fixes, four packages with disjoint files
 
-| # | Gap | Disp. | Plan |
-| --- | --- | --- | --- |
-| V4 | Access against a real CVAT: removed member, admin by group and not by superuser flag, personal workspaces, credentials as an `Authorization` header | C | With the conversion these are REST tests on real roles. If G0 is "no": four cases added to the stack run's access matrix |
-| — | The production Ingress route was never applied | T | Goes away with the conversion. If G0 is "no": the test stack routes through the Ingress instead of its own proxy |
-| V5a | The detector record was posted through the API, not produced by the UI | V | Drive the real UI in the browser run with the model function's answer supplied at the HTTP boundary. A deployed model function stays unverified and is said so |
-| V5b | The 100-annotator volume was inserted straight into ClickHouse | V | Send the current week through the events API and Vector. Older weeks stay direct inserts unless the API accepts old timestamps, which is not known |
-| V8 | No full rerun after the two fix rounds: fast suites only, stack upgraded in place | V | `down`, `up`, `up`, `down` with the full suites on both ClickHouse images, after wave 1. Decision G11 |
-| V11 | Ten ticket criteria were ticked on a stand-in, a script, or a rule later replaced | V | Restate each in its ticket as what was actually shown (three already carry a note); tick again only what wave 3 shows |
+**A, service reads.** Owns `team_analytics/endpoints/`, `team_analytics/status/`,
+`team_analytics/overview/`, `sql/read/` and their tests.
 
-## 4. Waves
+| # | Item | How known | Test first | Fix |
+| --- | --- | --- | --- | --- |
+| S13 | Unprocessed figures are returned with `processed: false` | read | 1: the processed-flag tests in `test_history.py`, `test_details_table.py`, `test_trends.py`, turned to expect no figures | Per endpoint, once the flag is known: overview, list, details, trends per bucket |
+| A4 | Status shows instance-wide history dates and day counts to a maintainer | read | 1: in `test_isolation.py`, a maintainer's status has no first event day and no day counts; an administrator's has both | `endpoints/status.py`, `status/history.py` |
+| Q8 | A project touched only by a technical account has no row in the details table | read | 1: such a project has a row | The row set of `sql/read/details.sql` gains the saved-box keys when the table is by project |
+| P9 | The overview has no operations per row | read | 1: each overview row carries operation parts that add up as in the full view | The overview's annotator and project sections |
+| Q10 | Decision 18 | read | 1: `test_cutover.py` pins a table's legacy content with its own filter set | none |
 
-Each wave ends with the checks of its rows, then an independent review of the
-integrated result, since every wave changes behaviour.
+**B, service refresh.** Owns `cutover.py`, `history.py`, `refresh.py`,
+`config.py`, `sql/control/`, `sql/refresh/`, `sql/read/cutover.sql` and their
+tests.
 
-**Wave 0: safe to start now, no dependence on G0.**
+| # | Item | How known | Test first | Fix |
+| --- | --- | --- | --- | --- |
+| Q9a | A stored cutover never changes | read | 1: an earlier tagged event that arrives later moves the cutover at the next daily check; a later one does not | The daily check looks again; the read takes the earliest stored hour. The cost of the long-range query is measured on the loaded volume first |
+| Q9b | With no stored cutover every period reads as legacy until a tagged hour reaches the totals | read | 1: a service started on stored tagged events knows the cutover on its first answer; tagged work present only in raw events still yields one | The finder runs in the start-up step and no longer waits for the totals |
+| S15 | A refresh window under 24 hours counts today's earlier hours as processed without computing them | read ("processed" is inferred from history reaching yesterday) | 1: with a 1-hour window an event from earlier today is computed or its period reads as not processed | The history step also covers today's hours before the window. Two tests set a 1-hour window on purpose, so refusing short windows is the fallback, not the plan |
+| Q6 | A redo is counted as a creation | read (`sql/refresh/operations.sql`) | 1: draw, undo, redo is one creation; the redo's time is Other. The redo tests in `test_creation_methods.py` change with it | Remove the redo branch from the creation rule; default (c) for alignment runs |
+| L10a, SQL half | A group event must become one alignment per object | decision 13 | 1: a group event of three objects and 6 s yields three alignments of 2 s | `sql/refresh/operations.sql`, after the event's shape is fixed with package C |
+| V10 | The hanging-renewal test depends on wall-clock time | read | — | A supplied clock for the lease tests |
+| S9 | A killed replica blocks refreshes for 30 minutes | recorded; the lease is a constant of 1800 s (*read*) | 1: a killed holder is overtaken within the lease | Default (b), after V10 |
 
-1. R8 redaction and V2 (fail instead of skip). Small, independent.
-2. V7: the one-off ESLint run and its findings commit, before any other UI
-   edit, so later packages are not rebased over a formatting sweep.
-3. Policies, in this order: OPA-3 (after G1), OPA-4, OPA-5, OPA-6, OPA-7 on
-   the feature branch; then OPA-8. **Ordering constraint:** `f97d41b` is what
-   switches the patch on, and with it the missing role floor and the start
-   failure of OPA-4. It must reach `main` together with OPA-3 and OPA-4, as one
-   reviewed series, not as a lone cherry-pick.
+**C, UI logging.** Owns `utils/team-analytics-logging/`, the fork's edits in
+upstream UI files, `verify/team-analytics-logging/`.
 
-**Wave 1: kept fixes, in parallel packages with disjoint files.**
+| # | Item | How known | Test first | Fix |
+| --- | --- | --- | --- | --- |
+| L2 | Frame navigation counts repeats that moved no frame | read (a repeat while a frame loads asks for the same frame again) | 2: repeats while the frame is loading add nothing | `input-summary.ts`: skip a frame-navigation repeat while the player is fetching |
+| L10a, UI half | A group drag logs only the grabbed shape; moving the selection box logs nothing | read (the canvas reports the group in one event that is saved without logging, and reports the grabbed shape again) | 2: a group drag of three boxes logs one group event for three objects and no second event for the grabbed one | The group-moved handler in `canvas-wrapper.tsx`; the event's shape in `contract.ts` |
 
-| Package | Items | Owns |
-| --- | --- | --- |
-| A: reads | S13, A4, Q8, Q10 | `team_analytics/endpoints/`, `team_analytics/status/`, `sql/read/`, their tests; `history.tsx` and its page test for A4 |
-| B: cutover and refresh | Q9, S15, the SQL half of Q6 | `cutover.py`, `history.py`, `config.py`, `sql/control/`, `sql/refresh/`, `sql/read/cutover.sql`, their tests |
-| C: UI logging | L2, L10a, L9, the UI half of Q6 | `utils/team-analytics-logging/`, the edited upstream UI files, `verify/team-analytics-logging/` |
-| D: page | P10, then P9 | the page directory, `verify/team-analytics-page/` |
+**D, page.** Owns the page directory and `verify/team-analytics-page/`.
 
-Sequential edges: A and B both add cases to `test_cutover.py` (Q10 and Q9), so
-B lands first and A rebases on it. A's one page file (`history.tsx`) is outside
-D's work on the cards. P9's service half adds to the overview that S13 and Q10
-change, so it follows A. Q6's SQL half follows its UI half only for the
-browser recheck.
+| # | Item | How known | Test first | Fix |
+| --- | --- | --- | --- | --- |
+| P10 | No definitions footer | read | 3: the overview ends with the definitions, in glossary wording | A small component |
+| P9 | Bars are not split by operation | read | 3: the two cards draw the segments and a legend | The two cards and `working-time-breakdown.tsx`, reusing the full view's segment logic; after A |
+| A4 | The progress line shows "N of M days" | read (`history.tsx`) | 3: it renders from the percentage when the day counts are absent | `history.tsx`; after A |
 
-**Wave 2: only if G0 is "no" or G2 is "now".** OPA-2, S9, V10, V4 on the
-stack, the Ingress.
+### Wave 3: verification
 
-**Wave 3: verification.** After G11: the fresh full run (V8) carrying V5a,
-V5b, the count of sessions over a day (G9) and the rechecks of every wave 1
-row; the security review; V11. One dated evidence file.
+One dated evidence file. The stack starts from an empty namespace (decision 19).
 
-Nothing is pushed until R8, G10 and the security review are settled.
-
-## 5. From this plan to tickets
-
-Once section 2 is answered: a specification in this directory stating the
-decided behaviour, then one ticket per row group (the four packages of wave 1,
-the policy series, hygiene, the verification run), each with its test-first
-line from section 3 as acceptance criteria.
-
-## 6. Not verified, and what could not be mapped
-
-- Nothing in this plan was run. Every *read* statement comes from the sources
-  at `0a26a8c`. Files are named; line numbers are left out because they move.
-  Part of the reading was done by two read-only helpers whose reports were
-  taken as given, not re-read line by line.
-- The pasted list was cut in places. Items 2 to 4 of its "confirmed" part were
-  rebuilt from the review follow-ups below them (Kubernetes delivery, the role
-  floor, the root override). The fragment "…ry refresh for up to 30 minutes"
-  is read as S9. If an item of the original list is missing here, it was in
-  the cut text.
-- Remote state: `feat/team-analytics-page` has no upstream configured and the
-  remote was not fetched; "never pushed" rests on the local references.
-- For OPA-3 only `issues.rego` was compared with the stock v2.82.0 file
-  (taken from the stock server image). `comments.rego` carries the same two
-  additions by reading; its stock counterpart was not compared.
-- Whether the test namespace still holds the data of the last run was not
-  looked at; only that the namespace exists.
-- Whether the input summary is written in 3D jobs, which would give decision
-  G5 a better cutover signal than the first shape-tagged event.
-- Overview latency under load (ledger S12) is not in the owner's list and is
-  not planned here.
-
-## 7. Owner's answers, 2026-11-14
-
-Sections 1 to 4 above were written before these answers and are **not yet
-reworked**; where they disagree, this section wins. The plan is rewritten once
-the remaining questions are settled.
-
-| Question | Answer |
+| # | Run |
 | --- | --- |
-| G0, fork conversion | **Dropped.** There is no conversion, so nothing is "throwaway": the lease block (S9), the lease test (V10), the Ingress, live access cases (V4) and a permanent lint gate (V7) are all in scope, and policies cannot wait for a fork server image |
-| Is the Compose overlay live? | **No, Compose is dead.** OPA-1, OPA-4, OPA-5, OPA-6, OPA-7 and the Compose form of OPA-8 lose their reason; Kubernetes is the only delivery path for the policies (OPA-2) |
-| G1, role floor | Yes: at least the `worker` global role, stock list behaviour below it |
-| G3, unprocessed periods | Yes: the API withholds the figures |
-| G4, status for a maintainer | Yes: the reduced status |
-| G5, cutover | Yes: it may move to an earlier hour only (glossary updated) |
-| G6, frame navigation | Yes: frames moved, as the glossary says |
-| Redo (new) | Yes: a redo is not a creation (glossary updated). Q6 becomes "stop counting it" |
-| G7b, tags, interactor and OpenCV objects | Yes: left uncounted, stated as a limit (glossary updated) |
-| G8, split bars and definitions footer | Yes: build both |
-| G9, sessions over a day | Yes: not fixed; a session is at most a day long (glossary updated); counted once in the verification run |
-| G10, home-directory path | Yes: redact forward, history left alone |
-| G11, the kept stack | Torn down on the owner's instruction on 2026-11-14 with the launcher's `down`; the namespace and its port-forward are gone |
+| V8 | `up`, `up`, `down` with the fork server image and the full suites on both ClickHouse images |
+| — | The recheck of every wave 2 row on the stack: a direct call for an unprocessed period; status as maintainer and as administrator; the technical account's project in the details table; an in-place upgrade read at once for the cutover; a redo and a group drag in the browser read back from the events table; a held frame key on a slow frame; the cards beside the prototype at 1400 px and 400 px |
+| V5a | Default (e) |
+| V5b | Default (f) |
+| — | A count of sessions that reached the one-day limit |
+| — | The security review of `main..HEAD`, after 0.1 |
+| V11 | Each of the ten criteria ticked on a reading is restated in its ticket as what was shown; only what this wave shows is ticked again |
 
-The answers to G1 and G3 to G10 were given as "all between true" for the
-questions between the first two and the last; read here as yes to each.
+## 5. No longer planned
 
-Second round, same day:
+- OPA-1, OPA-4, OPA-5, OPA-6, OPA-7 (the mount path on `main`, the root
+  override, file permissions, the either-file check, the missing command):
+  they repair the Compose delivery, which decision 2 removes. The either-file
+  check survives as "each file by itself" in 1.3b.
+- Q9c, Q10, Q5, L6, L10b: decisions 17 and 18.
+- A session longer than a day and the tab-close loss are written into the
+  fork specification as limits, not fixed.
 
-| Question | Answer |
-| --- | --- |
-| `.scratch/standard-fork/plan.md` | **Delete** the plan file; the ledger stays |
-| Compose artefacts | Yes: delete the override, the three Compose files under `verify/`, `opa_issues.sh` and `run.sh` with their seed and check scripts; both live checks move to the Kubernetes stack |
-| Policies on Kubernetes | **A fork server image**, not a ConfigMap mount |
-| Lint gate | **Widen the import filter** to bring upstream's root lint configuration in, accepting new identifiers for the mirrored history |
-| L6, counts lost on tab close | Yes: a stated limit; cvat-core stays untouched |
-| The never-applied Ingress | Yes: applied beside the proxy and checked with one request per stack run |
-| G7a, group drag | Yes: one alignment per object moved, time shared equally; the selection box follows the same rule (glossary updated) |
-| Q10, legacy flag in tables | Yes: not a defect; kept, with the missing test added |
-| Q9c, 3D work | Yes: the definition, not a defect (glossary updated) |
+## 6. Carried over from the dropped conversion draft
 
-Still open: what the fork server image holds and what else the widened import
-brings in (round 3 of the interview).
+Two things this plan relies on were only written there (history, up to
+`fb3148e`); neither was run:
+
+- Upstream's lint commands, scoped to our paths: `yarn run eslint <paths>`,
+  `yarn run stylelint '<dir>/**/*.scss'`, `yarn run type-check`, after
+  `yarn install --immutable`.
+- The thin server image is valid only while the fork adds no Python
+  dependency. Here it adds no Python at all.
+
+## 7. Not verified
+
+- Every *read* statement comes from the sources; line numbers are left out
+  because they move. Nothing of sections 3 and 4 was tried.
+- That upstream's root lint configuration loads with only the files named in
+  0.2. The scratch-copy proof exists to find out before the one-shot filter.
+- That a squashed subtree pull accepts a re-filtered mirror whose commit ids
+  differ from the recorded ones.
+- That the chart's `analytics` link resolves inside the import as it does in
+  upstream's tree.
+- The cost of the cutover's long-range query.
+- Whether the events API accepts events with old timestamps.
+- Remote state: the branch has no upstream configured and the remote was not
+  fetched; "already on `main`" for the path of 0.1a rests on local references.
+- The pasted list was cut in places; items 2 to 4 of its "confirmed" part were
+  rebuilt from the review follow-ups below them, and the fragment about
+  "refresh for up to 30 minutes" is read as S9.
+- Overview latency under load (ledger S12), part-hour time zones (Q11) and
+  the eighteen unanswered review questions (O15) are not in the owner's list
+  and are not planned here.

@@ -20,3 +20,12 @@ The feature is delivered and verified on Kubernetes against CVAT v2.82.0 and not
 - Most chart pods declare no resource requests, so the namespace needs default limits alongside its quota.
 - The chart runs a newer ClickHouse than the Compose file. The design must not depend on anything that differs between the two.
 - The two existing Compose checks (task progress, issue permissions) are not migrated by this work.
+
+## Amendments, 2026-11-14
+
+Decided by the owner; see `.scratch/defect-fixes/plan.md` for the work that follows from them.
+
+- The chart comes through the filtered import after all: the filter is widened, accepting new import identifiers once. The first consequence above no longer holds. Chart dependencies are still fetched and pinned as before.
+- The two Compose checks are migrated to the Kubernetes stack, and the Compose overlay and launchers are removed. The last consequence above no longer holds.
+- There are three custom images, not two: ADR 0004 adds a fork server image.
+
