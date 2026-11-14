@@ -224,13 +224,15 @@ class FakeCvat:
 
 class Stack:
     def __init__(self, *, now: datetime = NOW, technical_accounts: tuple[str, ...] = (),
-                 cvat_url: str | None = None, refresh_window_hours: int = 48, refresh_lease_s: int = 1800) -> None:
+                 cvat_url: str | None = None, refresh_window_hours: int = 48, lease_clock=None) -> None:
         suffix = uuid.uuid4().hex[:12]
         self.events_db = f"ta_test_events_{suffix}"
         self.totals_db = f"ta_test_totals_{suffix}"
         _create_events_database(self.events_db)
         self.cvat = FakeCvat()
         self.now = now
+        # the clock the refresh lease runs on, for every service of this stack; None is the service's own
+        self.lease_clock = lease_clock
         self.config = Config(
             clickhouse_host=os.environ["CLICKHOUSE_HOST"],
             clickhouse_port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
@@ -241,7 +243,6 @@ class Stack:
             cvat_url=cvat_url or self.cvat.url,
             technical_accounts=technical_accounts,
             refresh_window_hours=refresh_window_hours,
-            refresh_lease_s=refresh_lease_s,
         )
         self.service = self.new_service()
         self.http = make_server(self.service, "127.0.0.1", 0)
@@ -250,7 +251,7 @@ class Stack:
 
     def new_service(self, clock=None) -> Service:
         """Another service instance (e.g. a second replica) on the same databases; same clock by default."""
-        service = Service(self.config, clock=clock or (lambda: self.now))
+        service = Service(self.config, clock=clock or (lambda: self.now), lease_clock=self.lease_clock)
         service.setup()
         return service
 
