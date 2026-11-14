@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Test first, through the service's read interface: draw, undo, redo gives one creation, Drawn, and the redo's time is under Other. The existing redo tests are changed and seen to fail before the fix.
 - [x] The same holds after a paste and after a propagation: a redo adds no object to any creation method.
@@ -48,3 +48,5 @@ operation and not yet listed as ending a run, and to pass again when it was.
 **2026-11-14. UI.** No file under `cvat/` changed, which is all this ticket shows for
 that criterion. A redo made in the browser and read back from the events table belongs
 to ticket 27.
+
+2026-11-14: Resolved on `feat/team-analytics-page` by merge `ff5dda4`. Evidence: `docs/evidence/2026-11-14-redo-is-not-a-creation.md`.
