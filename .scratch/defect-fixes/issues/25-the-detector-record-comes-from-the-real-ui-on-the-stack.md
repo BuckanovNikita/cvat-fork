@@ -4,7 +4,7 @@
 
 **Blocked by:** 08 (The stack runs on the fork server image and the in-tree chart).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] In the stack's browser run the annotator opens the detector in the real UI. Only the model list and the model's answer are supplied; nothing else is replaced.
 - [x] The UI creates the objects and sends the detector record through the real events API. The record that arrives in ClickHouse has the number of objects created and how many are bounding boxes.
@@ -25,3 +25,4 @@ figures equal the objects created" is read as follows: the project's Model is th
 objects plus the technical account's boxes, and `ta-worker-c`'s Model in the details holds
 the detector's objects alone. A deployed model function stays unverified (spec default
 (e)). New narrow subcommand: `run.sh check-final-ui`.
+- 2026-11-15: Merged into `feat/team-analytics-page` as `1a45bdec`, with no conflict. On the merged tree `bash -n` on `run.sh`, `py_compile` on `final_run.py` and `node --check` on `final_browser.cjs` passed; no launcher command was run by the merger. All six criteria were ticked from live runs; the ticket is resolved. Evidence: `docs/evidence/2026-11-15-detector-record-from-real-ui.md`.
