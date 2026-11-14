@@ -23,8 +23,8 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 from team_analytics.cutover import look_for_cutover
-from team_analytics.refresh import Refresher
-from team_analytics.sql import Sql
+from team_analytics.refresh import LeaseLost, Refresher
+from team_analytics.sql import Limit, Sql
 
 log = logging.getLogger(__name__)
 
@@ -103,8 +103,9 @@ def load_state(sql: Sql, now: datetime) -> HistoryState:
 
 
 class History:
-    def __init__(self, sql: Sql, refresher: Refresher, clock: Callable[[], datetime]) -> None:
+    def __init__(self, sql: Sql, refresher: Refresher, clock: Callable[[], datetime], search_limit: Limit) -> None:
         self._sql = sql
+        self._search_limit = search_limit  # of the cutover search in the daily check
         self._refresher = refresher
         self._clock = clock
 
@@ -143,8 +144,14 @@ class History:
             })
         self._sql.statements("control/history_record_check.sql", {"checked_at": _instant(now), "changed": len(days)})
         log.info("history check: %s day(s) to compute again", len(days))
-        # after the check is recorded: a search that fails is tried again by the next daily check, not at once
-        look_for_cutover(self._sql, now, self._refresher.ensure_lease)
+        # after the check is recorded: a search that fails, or reaches its limit, is tried again by the next
+        # daily check, not at once; the step ends without it
+        try:
+            look_for_cutover(self._sql, now, self._search_limit, self._refresher.ensure_lease)
+        except LeaseLost:
+            raise
+        except Exception:
+            log.exception("could not look for the cutover in the daily check")
         return len(days)
 
     def process_next(self) -> date | None:

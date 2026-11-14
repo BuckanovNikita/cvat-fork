@@ -8,10 +8,15 @@ One ClickHouse client serves every thread (HTTP requests and the refresh loop). 
 use (ClickHouse may not be up when the service starts) and has no session: a session would serialize
 queries and refuse concurrent ones, while a session-less client only shares its connection pool, which
 is safe across threads. File texts are read once.
+
+A statement run with a `Limit` gets that limit as ClickHouse settings, so the server stops it, and is sent
+through a second client of the same kind whose wait for an answer ends a few seconds after the limit. The
+shared client keeps the library's wait (300 s between two reads of the answer).
 """
 
 from __future__ import annotations
 
+import math
 import re
 import threading
 from collections.abc import Callable
@@ -30,6 +35,26 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SETTINGS = {"query_plan_execute_functions_after_sorting": 0}
 # Connections kept open for the threads that query at the same time.
 POOL_SIZE = 16
+# Seconds the service waits for the answer to a limited statement beyond its limit: ClickHouse stops the
+# statement at its limit and answers with an error, so the service never gives up on one that still runs.
+LIMIT_ANSWER_MARGIN_S = 5
+
+
+@dataclass(frozen=True)
+class Limit:
+    """What ClickHouse allows one statement: `seconds` of execution and `memory_bytes`. A statement that
+    reaches either is stopped by the server and fails."""
+
+    seconds: float
+    memory_bytes: int
+
+    def settings(self) -> dict[str, Any]:
+        return {"max_execution_time": self.seconds, "timeout_overflow_mode": "throw",
+                "max_memory_usage": self.memory_bytes}
+
+    def answer_wait_s(self) -> int:
+        """How long the service waits for the server's answer (whole seconds, as the client takes them)."""
+        return math.ceil(self.seconds) + LIMIT_ANSWER_MARGIN_S
 
 
 def identifier(name: str) -> str:
@@ -63,19 +88,22 @@ class Sql:
     def __init__(self, config: Config) -> None:
         self._names = {"events_db": identifier(config.events_db), "totals_db": identifier(config.totals_db)}
         self._config = config
-        self._client = None
+        # clients by how long they wait for an answer (None: the library's default), each made on first use
+        self._clients: dict[int | None, Any] = {}
         self._lock = threading.Lock()
 
-    def _shared_client(self):
+    def _shared_client(self, answer_wait_s: int | None = None):
         with self._lock:
-            if self._client is None:
-                self._client = clickhouse_connect.get_client(
+            if answer_wait_s not in self._clients:
+                wait = {} if answer_wait_s is None else {"send_receive_timeout": answer_wait_s}
+                self._clients[answer_wait_s] = clickhouse_connect.get_client(
                     host=self._config.clickhouse_host, port=self._config.clickhouse_port,
                     username=self._config.clickhouse_user, password=self._config.clickhouse_password,
                     autogenerate_session_id=False,
                     pool_mgr=clickhouse_connect.driver.httputil.get_pool_manager(maxsize=POOL_SIZE),
+                    **wait,
                 )
-            return self._client
+            return self._clients[answer_wait_s]
 
     def text(self, name: str, **identifiers: str) -> str:
         names = {**self._names, **{key: identifier(value) for key, value in identifiers.items()}}
@@ -86,12 +114,14 @@ class Sql:
         """The `.sql` files of one directory, in name order, as names relative to `sql/`."""
         return [f"{directory}/{path.name}" for path in sorted((SQL_DIR / directory).glob("*.sql"))]
 
-    def statements(self, name: str, params: dict[str, Any] | None = None, **identifiers: str) -> None:
-        """Runs a file of `;`-separated statements (DDL, inserts, mutations)."""
-        client = self._shared_client()
+    def statements(self, name: str, params: dict[str, Any] | None = None, limit: Limit | None = None,
+                   **identifiers: str) -> None:
+        """Runs a file of `;`-separated statements (DDL, inserts, mutations), each within `limit` when given."""
+        client = self._shared_client(None if limit is None else limit.answer_wait_s())
+        settings = SETTINGS if limit is None else {**SETTINGS, **limit.settings()}
         for statement in self.text(name, **identifiers).split(";\n"):
             if statement.strip():
-                client.command(statement, parameters=_values(params), settings=SETTINGS)
+                client.command(statement, parameters=_values(params), settings=settings)
 
     def rows(self, name: str, params: dict[str, Any] | None = None, **identifiers: str) -> list[dict[str, Any]]:
         result = self._shared_client().query(self.text(name, **identifiers), parameters=_values(params),

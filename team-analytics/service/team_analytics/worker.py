@@ -2,8 +2,10 @@
 
 A step is, in this order of priority:
   1. the ten-minute refresh of recent hours, when the last one (by any replica) is an interval old;
-  2. one day of history (or of days marked for a recount), newest first;
-  3. the daily check of raw counts, when the last one is a day old.
+  2. one day of history (or of days marked for a recount), newest first; with a refresh window shorter
+     than a day, today's hours that have left the window come first (history.py);
+  3. the daily check, when the last one is a day old: it compares raw counts and marks changed days for a
+     recount, then looks for an earlier cutover in the recorded events (cutover.py), within a time limit.
 Each step holds the shared refresh lease only for itself, so between two days of history a due refresh
 always comes first. A step that finds the lease taken (another replica is working) is retried soon.
 """

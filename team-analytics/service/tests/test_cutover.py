@@ -4,6 +4,7 @@ scope holds. It is known from the first answer after the service starts, and it 
 an earlier shape-tagged event turns up, never to a later one."""
 
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
@@ -311,6 +312,71 @@ class AtStartTest(CutoverCase):
         self.stack.refresh()
         self.settle()
         each_replica_reports_the_cutover("after a refresh, history and the daily check")
+
+
+class SlowSearchCase(CutoverCase):
+    """A cutover search slower than its limit (one second here) is stopped by ClickHouse, and the service goes on
+    without it as it does when the search fails."""
+
+    stack_options = {"config_options": {"cutover_search_at_start_s": 1, "cutover_search_in_check_s": 1}}
+
+    @staticmethod
+    def tagged_work() -> list[dict]:
+        """Eight bounding boxes drawn on 12 November from 11:00 on: the cutover, for a search that finishes."""
+        return [draw(at("2026-11-12 11:00:00") + timedelta(minutes=n), input_method="mouse", **BOX) for n in range(8)]
+
+    def slow_down_the_search(self) -> None:
+        """From now on every statement that reads the events' payload, the cutover search among them, takes half a
+        second per recorded event: eight events take four seconds, four times the limit. Real time, so a slow host
+        only makes the search slower."""
+        events = clickhouse_client(self.stack.events_db)
+        events.command("RENAME TABLE events TO events_recorded")
+        events.command("CREATE VIEW events AS SELECT * EXCEPT (payload), if(sleepEachRow(0.5) = 0, payload, payload) "
+                       "AS payload FROM events_recorded SETTINGS max_block_size = 1")
+
+    def assert_no_statement_left_running(self) -> None:
+        """Waits until nothing that reads this test's events runs in ClickHouse."""
+        server = clickhouse_client()
+        pattern = f"%{self.stack.events_db}.events%"
+        deadline = time.monotonic() + 60
+        while server.query("SELECT count() FROM system.processes WHERE query LIKE {p:String} "
+                           "AND query NOT LIKE '%system.processes%'", parameters={"p": pattern}).result_rows[0][0]:
+            self.assertLess(time.monotonic(), deadline, "a statement over the events is still running")
+            time.sleep(0.2)
+
+
+class SlowSearchAtStartTest(SlowSearchCase):
+    def test_a_service_whose_search_at_start_is_too_slow_starts_and_reports_no_cutover(self):
+        self.stack.add_events(self.tagged_work())
+        self.slow_down_the_search()
+        self.restart()
+        self.assertEqual(self.get("status")["cutover"], {"at": None})
+        self.assert_no_statement_left_running()
+        self.assertEqual(self.get("status")["cutover"], {"at": None}, "the search went on after the service gave up")
+
+
+class SlowSearchInDailyCheckTest(SlowSearchCase):
+    def test_a_daily_check_whose_search_is_too_slow_ends_without_it(self):
+        # untagged work only: the start and the first daily check find no cutover
+        self.stack.add_events([client("load:job", at("2026-11-12 10:00:00")), draw(at("2026-11-12 10:00:10"))])
+        self.stack.refresh()
+        self.settle()
+        # a day later: the refresh, then history, until the daily check is the only step left
+        self.stack.now = NOW + timedelta(days=1)
+        self.stack.service.step()
+        for _ in range(10):
+            if self.get("status")["history"]["complete"]:
+                break
+            self.stack.service.step()
+        else:
+            self.fail("history was never complete")
+        # tagged work in a processed day, which the daily check's search reads too slowly
+        self.stack.add_events(self.tagged_work())
+        self.slow_down_the_search()
+        self.assertEqual(self.stack.service.step(), 0, "the daily check did not end as a step that ran")
+        self.assertEqual(self.get("status")["cutover"], {"at": None})
+        self.assert_no_statement_left_running()
+        self.assertEqual(self.get("status")["cutover"], {"at": None}, "the search went on after the service gave up")
 
 
 class MovedCutoverTest(CutoverCase):
