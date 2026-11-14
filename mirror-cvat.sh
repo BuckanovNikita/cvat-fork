@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Builds .cvat-mirror.git: a bare mirror of cvat-ai/cvat holding only the paths needed to
-# build the frontend image, plus the compose files the deployment needs. It is the source
-# the cvat/ subtree is pulled from - roughly 25 MB of tree instead of 122 MB.
+# Builds .cvat-mirror.git: a bare mirror of cvat-ai/cvat holding only the paths the fork
+# uses: the frontend build, the analytics components, upstream's lint configuration, the
+# Helm chart and the four stock policy files. It is the source the cvat/ subtree is pulled
+# from.
 #
 # The new mirror is built beside the existing one, in .cvat-mirror.git.new, and replaces it
 # only after the clone and the filter both succeeded. A failed run leaves the existing
@@ -22,8 +23,16 @@ PATHS=(
     .yarnrc.yml package.json yarn.lock .dockerignore LICENSE
     # the frontend build
     Dockerfile.ui cvat-data cvat-core cvat-canvas cvat-canvas3d cvat-ui
-    # what the deployment mounts at runtime
-    docker-compose.yml components
+    # ClickHouse, Vector and Grafana setup; the chart reaches it through helm-chart/analytics
+    components
+    # upstream's lint configuration; eslint.config.mjs loads tests/.eslintrc.js
+    eslint.config.mjs .eslintrc.cjs tests/.eslintrc.js .stylelintrc.json
+    .prettierrc .prettierignore .editorconfig
+    # the Helm chart
+    helm-chart
+    # the stock issue and comment policies and the two helper policies they import
+    cvat/apps/engine/rules/issues.rego cvat/apps/engine/rules/comments.rego
+    cvat/apps/iam/rules/utils.rego cvat/apps/organizations/rules/organizations.rego
 )
 
 # What a killed run can leave behind: an unfinished build, or the previous mirror set aside
