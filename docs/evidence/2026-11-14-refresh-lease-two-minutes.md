@@ -25,6 +25,8 @@ Each run used a frozen copy of the named tree, on the default image
 | `4d25d4b` | `tests.test_refresh`, `tests.test_history`, `tests.test_shutdown` | 24 tests, OK | 24 tests, OK |
 | `d36dc53` (merge with `feat/team-analytics-page`) | `tests.test_lease` | 8 tests, OK | 8 tests, OK |
 | `d36dc53` | whole seam 1 suite | 271 tests, OK | not run |
+| `c927eb6` (second merge; it brought only the details-table SQL and test into the service) | `tests.test_lease` | 8 tests, OK | 8 tests, OK |
+| `c927eb6` | `tests.test_refresh`, `tests.test_history`, `tests.test_shutdown`, `tests.test_details_table` | 49 tests, OK | not run |
 
 Red before the fix, with the thirty-minute lease:
 
