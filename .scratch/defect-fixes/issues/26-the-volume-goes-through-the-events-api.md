@@ -4,7 +4,7 @@
 
 **Blocked by:** 08 (The stack runs on the fork server image and the in-tree chart).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] It is found out and recorded what the events API does with events that carry old timestamps.
 - [x] The current week of the volume, one hundred annotators, is sent through the real events API in each annotator's own session and arrives through Vector. None of it is inserted directly.
@@ -36,3 +36,5 @@ service's own two statements. A fresh stack does not run into this.
 
 A plain `run.sh check-final` on this stack (in `ta-org-v`) now stops at the volume step.
 That is on purpose.
+
+2026-11-15: Resolved on `feat/team-analytics-page` by merge `5df1b412`; evidence `docs/evidence/2026-11-15-volume-through-events-api.md`. A load from an empty namespace is still to be seen in ticket 27's final run.
