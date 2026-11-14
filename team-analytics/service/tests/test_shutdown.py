@@ -2,7 +2,8 @@
 
 Found in the final run on the test stack (ticket 18): after the service was stopped and started again, the
 new replica ran no refresh for minutes. A replica that dies inside a step leaves the shared refresh lease
-claimed until it expires (30 minutes), and every other replica waits for it.
+claimed until it expires (30 minutes then, two since; tests/test_lease.py), and every other replica waits
+for it.
 """
 
 import json

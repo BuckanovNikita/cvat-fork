@@ -22,7 +22,7 @@ from team_analytics.config import Config
 from team_analytics.cutover import Legacy, load_cutover
 from team_analytics.history import History
 from team_analytics.periods import BadRequest, Span, decimal, period_span
-from team_analytics.refresh import Refresher, RefreshResult
+from team_analytics.refresh import LeaseClock, Refresher, RefreshResult
 from team_analytics.sql import Sql
 from team_analytics.worker import Worker
 
@@ -110,12 +110,13 @@ class Request:
 
 
 class Service:
-    def __init__(self, config: Config, clock: Callable[[], datetime] = utc_now) -> None:
+    def __init__(self, config: Config, clock: Callable[[], datetime] = utc_now,
+                 lease_clock: LeaseClock | None = None) -> None:
         self.config = config
         self.sql = Sql(config)
         self._clock = clock
         self.access = Access(config, lambda: self._clock().astimezone(UTC))
-        self.refresher = Refresher(config, self.sql, lambda: self._clock().astimezone(UTC))
+        self.refresher = Refresher(config, self.sql, lambda: self._clock().astimezone(UTC), lease_clock)
         self.history = History(self.sql, self.refresher, lambda: self._clock().astimezone(UTC))
         self.worker = Worker(config, self.sql, self.refresher, self.history, lambda: self._clock().astimezone(UTC))
         self.endpoints = {module.PATH: module for module in discover(endpoints)}
