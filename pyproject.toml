@@ -1,0 +1,4 @@
+# Tools of the fork's check pipeline (prek.toml) that come from Python packages.
+# uv.lock locks them; ruff.toml holds ruff's settings.
+[dependency-groups]
+lint = ["ruff==0.17.3"]
