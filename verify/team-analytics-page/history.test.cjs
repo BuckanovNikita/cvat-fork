@@ -4,10 +4,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 const View = loadPage('team-analytics-view.tsx').default;
 
@@ -124,7 +122,7 @@ test('trends are replaced by a short notice until three complete weeks are ready
     }
 });
 
-domTest('an open page shows the figures once its period has been processed meanwhile', async (t) => {
+test('an open page shows the figures once its period has been processed meanwhile', async (t) => {
     t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.parse('2026-11-13T15:30:00Z') });
     let processed = false;
     const { fetch, requests } = suppliedFetch((url) => {
@@ -158,7 +156,7 @@ domTest('an open page shows the figures once its period has been processed meanw
     }
 });
 
-domTest('the page asks for the status in the viewer time zone and shows the bar beside the notice', async () => {
+test('the page asks for the status in the viewer time zone and shows the bar beside the notice', async () => {
     const { fetch, requests } = suppliedFetch((url) => (url.includes('/status') ?
         { body: { history: history() } } :
         { body: { ...FIGURES, processed: false } }));
