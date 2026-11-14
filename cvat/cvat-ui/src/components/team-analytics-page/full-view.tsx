@@ -86,8 +86,10 @@ function WorkingTimeList({
     summaryNoun: string;
 }): JSX.Element {
     const projects = list.by === 'projects';
-    const largest = Math.max(0, ...list.rows.map((row) => row.working_time_ms));
-    const rows: FullListRow[] = list.rows.map((row, index) => {
+    // a row with no working time (e.g. a project with only Model boxes) belongs to the tables, not here
+    const worked = list.rows.filter((row) => row.working_time_ms > 0);
+    const largest = Math.max(0, ...worked.map((row) => row.working_time_ms));
+    const rows: FullListRow[] = worked.map((row, index) => {
         const name = projects ? projectName(row.id, names) : row.user_name ?? `Annotator #${row.id}`;
         return {
             key: String(row.id),
@@ -111,7 +113,7 @@ function WorkingTimeList({
             onPick={onPick}
             rowsKind={kind === 'split' ? list.by : undefined}
             onRows={kind === 'split' ? onRows : undefined}
-            summary={`${formatCount(list.total.count)} ${summaryNoun} · ${formatHours(list.total.working_time_ms)} in total`}
+            summary={`${formatCount(worked.length)} ${summaryNoun} · ${formatHours(list.total.working_time_ms)} in total`}
             legend={(
                 <Legend hint='Select a row to filter the whole page.'>
                     {[...OPERATIONS.filter((key) => !(list.legacy && key === 'class_change')), 'other' as const]
@@ -365,9 +367,11 @@ export default function FullView({
         );
     }
 
+    // a failed reload keeps the shown rows, dimmed and marked as not updated
+    const stale = !!list && (pending || failed) && by !== null;
     return (
         <section
-            className={`cvat-team-analytics-full-view${pending && list ? ' cvat-team-analytics-pending' : ''}`}
+            className={`cvat-team-analytics-full-view${stale ? ' cvat-team-analytics-pending' : ''}`}
             aria-busy={pending}
         >
             <div className='cvat-team-analytics-full-header'>
@@ -386,6 +390,11 @@ export default function FullView({
                     <div className='cvat-team-analytics-full-subtitle'>{subtitle}</div>
                 </div>
             </div>
+            {list && failed && by !== null ? (
+                <div className='cvat-team-analytics-full-failed' role='status'>
+                    The list could not be updated; it shows the previous selection.
+                </div>
+            ) : null}
             {body}
         </section>
     );

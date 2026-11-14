@@ -556,3 +556,45 @@ domTest('a trend full view keeps the comparison chosen on the overview', async (
         assert.equal(last.get('ids'), '11');
     });
 });
+
+domTest('a list that cannot be updated keeps the previous rows dimmed and says so', async () => {
+    let lists = 0;
+    const { history, Page } = openPage({
+        search: '?view=annotators',
+        respond: (url) => {
+            if (url.includes('/list?')) {
+                lists += 1;
+                return lists === 1 ? listAnswer(url) : { status: 500, body: { error: 'internal' } };
+            }
+            return answer(url);
+        },
+    });
+    await opened(Page, async (view) => {
+        assert.equal(listRows(view.container).length, 12);
+        await act(async () => { history.push('/team-analytics?view=annotators&project=1'); });
+        await view.settle();
+        assert.ok(fullView(view.container).classList.contains('cvat-team-analytics-pending'));
+        assert.match(fullView(view.container).querySelector('.cvat-team-analytics-full-failed').textContent,
+            /could not be updated/);
+    });
+});
+
+domTest('a project with no working time is left out of the working time list but stays in the tables', async () => {
+    const respond = (url) => {
+        if (!url.includes('/list?') || !url.includes('by=projects')) return answer(url);
+        const body = listAnswer(url).body;
+        const idle = { ...listRow(9, null, 0), model: 5 };
+        return { body: { ...body, total: { ...body.total, count: 4 }, rows: [...body.rows, idle] } };
+    };
+    const lists = openPage({ search: '?view=projects', respond });
+    await opened(lists.Page, async (view) => {
+        assert.deepEqual(listRows(view.container).map((row) => row[1]), ['Street scenes', 'No project', 'Project #7']);
+        assert.match(fullView(view.container).querySelector('.cvat-team-analytics-full-summary').textContent,
+            /^3 projects/);
+    });
+    const tables = openPage({ search: '?view=methods&rows=projects', respond });
+    await opened(tables.Page, async (view) => {
+        assert.equal(tableRows(view.container).at(-1)[0], 'Project #9');
+        assert.equal(tableRows(view.container).at(-1)[7], '5');
+    });
+});
