@@ -60,7 +60,8 @@ function bars(section, kind) {
 }
 
 function legend(section) {
-    return [...section.querySelectorAll('.cvat-team-analytics-legend-item')].map((item) => text(item.outerHTML));
+    return [...section.querySelectorAll('.cvat-team-analytics-breakdown-legend-item')]
+        .map((item) => text(item.outerHTML));
 }
 
 // the full view's colours (operations.ts), as the browser reports them

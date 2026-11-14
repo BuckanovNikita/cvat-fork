@@ -62,12 +62,12 @@ export default function WorkingTimeBreakdown({
                 <Text type='secondary'>{subtitle}</Text>
                 <FullViewButton onClick={onFullView} />
             </div>
-            <div className='cvat-team-analytics-legend'>
-                <span className='cvat-team-analytics-legend-items'>
+            <div className='cvat-team-analytics-breakdown-legend'>
+                <span className='cvat-team-analytics-breakdown-legend-items'>
                     {splitParts(legacy).map((key) => (
-                        <span key={key} className='cvat-team-analytics-legend-item'>
+                        <span key={key} className='cvat-team-analytics-breakdown-legend-item'>
                             <span
-                                className='cvat-team-analytics-legend-swatch'
+                                className='cvat-team-analytics-breakdown-legend-swatch'
                                 style={{ background: OPERATION_LOOKS[key].color }}
                             />
                             {OPERATION_LOOKS[key].name}

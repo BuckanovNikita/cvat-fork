@@ -6,7 +6,7 @@
 
 @import 'base';
 
-.cvat-team-analytics-legend {
+.cvat-team-analytics-breakdown-legend {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -17,20 +17,20 @@
 }
 
 // the split's colours, wrapping inside the card on a narrow window
-.cvat-team-analytics-legend-items {
+.cvat-team-analytics-breakdown-legend-items {
     display: flex;
     flex-wrap: wrap;
     gap: $grid-unit-size * 0.75 $grid-unit-size * 1.75;
     min-width: 0;
 }
 
-.cvat-team-analytics-legend-item {
+.cvat-team-analytics-breakdown-legend-item {
     display: inline-flex;
     align-items: center;
     gap: $grid-unit-size * 0.75;
 }
 
-.cvat-team-analytics-legend-swatch {
+.cvat-team-analytics-breakdown-legend-swatch {
     flex: none;
     width: 12px;
     height: 12px;
