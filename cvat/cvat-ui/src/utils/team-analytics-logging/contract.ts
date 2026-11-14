@@ -32,8 +32,9 @@ export const PAYLOAD = {
 //   payload    `group` = GROUP.move, the shape fields of all objects moved (`rectangle_count` = how many
 //              of them are bounding boxes), `frame`, `input_method` 'mouse'; no `object_ref`, no `obj_id`
 // It counts one alignment per object moved, sharing the duration equally; it ends the alignment runs
-// before it, and no later drag continues it. When the gesture began by dragging one object, CVAT still logs its own `drag:object` of that
-// object right after; that event carries `group` = GROUP.grabbed and is no operation of its own.
+// before it, and no later drag continues it. When the gesture began by dragging one object, CVAT still
+// logs its own `drag:object` of that object right after; that event carries `group` = GROUP.grabbed and
+// is no operation of its own.
 export const GROUP = {
     move: 'move',
     grabbed: 'grabbed',
