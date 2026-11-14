@@ -70,6 +70,9 @@ the job's opening, so the opening event (no known gap before it) fell inside
 the gesture, and the rule left it untimed: counts right, time 0. That is the
 rule for any operation. The tests now give the gesture 5 s, starting 1 s after
 the opening.
+The old-rule column above was seen with that first version. The corrected
+tests (`5981c50`) were not run on the old rule; the counts they check differ
+either way (the old rule gives one or two alignments per gesture, never three).
 
 The modules the operations rule feeds were run on the fix: `test_bounding_boxes`,
 `test_operations`, `test_creation_methods`, `test_keyboard_mouse`,
