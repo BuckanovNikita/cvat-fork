@@ -299,9 +299,7 @@ The existing header link to the stock dashboards is renamed Grafana.
   - trends: twelve weeks or months for the scope or for up to five compared annotators
     or projects;
   - status: how far history is processed, which periods are available, and the time of
-    the last successful refresh. How far history is processed is a percentage; the first
-    day with events, the day counts and the moment from which history is processed are
-    given to the admin group only.
+    the last successful refresh.
 - Responses carry identifiers for projects and annotators and the annotator's user
   name. Project names are resolved by the page through the existing CVAT API, so a
   caller sees only names CVAT would show them; a project CVAT no longer returns is shown
@@ -464,3 +462,5 @@ The access rules get an independent review after the end-to-end run.
 ## Comments
 
 2026-11-14: Implemented on `feat/team-analytics-page` through tickets 01-18 (`issues/`), with review fixes in merge `401576e`. Evidence: `docs/evidence/2026-11-14-team-analytics-final-run.md`. The feature's section in `docs/fork-specification.md` records the rules added during review (cutover and partly legacy periods) and the known limitations.
+
+2026-11-14: For callers outside the admin group, this spec's description of status is superseded by the defect-fixes spec (`../defect-fixes/spec.md`, stories 7 to 14) and its ticket 15. They get whether history is complete, a percentage, the periods that can be offered, the freshness stamp and the cutover day. They get no first day, no day counts and no processing point.
