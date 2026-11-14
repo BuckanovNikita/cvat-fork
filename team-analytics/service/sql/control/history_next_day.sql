@@ -4,6 +4,11 @@
 -- latest ten-minute refresh (`trailing_from`) and the history step has not computed them since they left the
 -- window. `today_computed_to` is where the step got to (1970 when it has never run); it goes on from there,
 -- or from today's midnight when that is later. See schema/041_history_today.sql.
+-- Kept in step with read/history_state.sql, which decides the same for the readers: the four `WITH` values
+-- (event_rows, first_day, trailing, today_done), the days from the first day with events up to `today` (the
+-- ARRAY JOIN), and the condition that today waits (its start before `trailing` and `today_done < trailing`).
+-- The service's SQL files cannot share a fragment, so a change to one of these belongs in both, or the worker
+-- and the readers disagree about whether today is processed.
 WITH
     (SELECT count() FROM $events_db.events) AS event_rows,
     (SELECT toDate(min(timestamp)) FROM $events_db.events) AS first_day,
