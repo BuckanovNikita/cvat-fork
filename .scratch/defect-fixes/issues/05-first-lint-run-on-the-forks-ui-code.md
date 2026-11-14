@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 (Re-import the release with the widened filter).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] ESLint runs with upstream's configuration on every UI file the fork added or edited, and exits clean.
 - [x] stylelint runs on the fork's style files and exits clean.
@@ -35,3 +35,5 @@
 - "Nothing an annotator sees changes" rests on the suites, the byte-for-byte comparison
   of the compiled styles and the string checks in the evidence; no UI image was built
   and the page was not opened in a browser.
+
+2026-11-14: Merged into `feat/team-analytics-page` in merge `0b46153`; evidence `docs/evidence/2026-11-14-ui-lint-first-run.md`. On the merged tree, in the main checkout: ESLint (`--max-warnings 0 --no-warn-ignored`) on the 66 fork .ts/.tsx files and stylelint (`--max-warnings 0`) on the 9 fork .scss files exit 0; `tsc -p cvat/cvat-ui/tsconfig.json` exits 0 with the workspace packages resolved from this checkout; `verify/team_analytics_page.cjs` passes 207 of 207 and `verify/team_analytics_logging.cjs` 55 of 55, 0 skipped in each; `verify/task_progress.cjs` passes 20 with 1 skipped (the optional browser check).
