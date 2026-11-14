@@ -35,10 +35,15 @@ and have not been executed.
   questions over HTTP to decide who the caller is and then queries ClickHouse.
   CVAT's backend, its permission system and its API are not on that path. Only
   project names go through cvat-core.
-- The fork's delta inside `cvat/` is 75 files (55 new, 20 edited upstream
-  files). `git apply --check` of that delta onto full upstream `v2.82.0`
-  passes, and the filtered tree is byte-identical to upstream for every shared
-  path. The conversion is a replay, not a port.
+- The fork's delta inside `cvat/` is 75 files: 57 new and 18 edited upstream
+  files (17 under `cvat-ui/src/`, plus a formatting-only change to
+  `components/analytics/clickhouse/init.py`). `git apply --check` of that delta
+  onto full upstream `v2.82.0` passes, and the filtered tree is byte-identical
+  to upstream for every shared path. The conversion is a replay, not a port.
+- The patched issue and comment policies reach a server only through the two
+  Compose overlays. The Kubernetes test stack mounts no policy file, so it runs
+  the stock policies; nothing in this repository delivers IAM-1 on Kubernetes
+  today.
 - The stock-backend premise behind the current design was never an owner
   requirement (ledger O1 to O3). The owner asked for "possibly a dedicated
   backend endpoint"; an endpoint inside CVAT was not among the options
@@ -83,6 +88,11 @@ A sketch of the policy, to be proven by generated policy tests:
 
 ```rego
 package team_analytics
+
+import rego.v1
+import data.utils
+import data.organizations
+
 default allow := false
 allow if { utils.is_admin }
 allow if {
@@ -322,8 +332,12 @@ invocation.
   (ledger O5). A separate process gave that for free. Inside the backend: the
   app has no models, migrations or signal handlers, its `apps.py` imports
   nothing heavy, the job's failures stay in the worker, and "the server starts
-  and annotation works with ClickHouse down and with the totals database
-  missing" becomes an acceptance test.
+  and annotation works with ClickHouse down, with the totals database missing,
+  and with analytics switched off (`CVAT_ANALYTICS` unset)" becomes an
+  acceptance test. With analytics off there is no ClickHouse to read, so the
+  job must not be scheduled and the endpoints must refuse cleanly; upstream
+  appends a periodic job behind a flag in `cvat/settings/base.py`, which is the
+  pattern to follow.
 - **Analytical reads occupy CVAT's API workers.** An overview runs about
   thirteen queries, about two seconds in the measurement (ledger S12). The
   server runs few uvicorn processes. This needs a measurement before the
