@@ -40,3 +40,5 @@
   indistinguishable from a maintainer before.
 - Outstanding: the independent review of this access change, after merge; it is not done
   here.
+
+2026-11-14: Merged into `feat/team-analytics-page` as `5fae08e9`, without conflicts. On the merged tree `node --test verify/team_analytics_logging.cjs` ran 70 tests and `node --test verify/team_analytics_page.cjs` 212, 0 failed and 0 skipped each; the skip-gate grep finds nothing. The service suite was not run by the merger. The ticket stays open until the independent review of the access change after this merge. Evidence: `docs/evidence/2026-11-14-status-for-maintainers.md`.
