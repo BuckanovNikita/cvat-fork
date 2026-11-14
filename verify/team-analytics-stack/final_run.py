@@ -403,6 +403,9 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
     query = {"org": UI_ORG, "period": "week", "project": project, "shapes": "all"}
 
     def ready(body: dict) -> bool:
+        # a period that is not fully processed carries no figures (rows and counts are null)
+        if not body["processed"]:
+            return False
         ops = by_key(body["operations"]["rows"], "operation")
         return (
             body["creation_methods"]["model"]["objects"] == BOT_BOXES + DETECTOR["objects"]
@@ -441,8 +444,9 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
     )
     check(body["headline"] == {"annotators": 1, "projects": 1}, f"headline {body['headline']}")
     # the by-project list keeps every project of the scope (its own filter does not apply to it)
+    # (each row also carries its operation parts)
     check(
-        {"project_id": project, "working_time_ms": working_ms} in body["by_project"]["rows"],
+        any(r["project_id"] == project and r["working_time_ms"] == working_ms for r in body["by_project"]["rows"]),
         f"by project {body['by_project']}",
     )
     check(body["saved_boxes"]["by_annotator"][0]["boxes"] == saved_by_worker, f"saved boxes {body['saved_boxes']}")
@@ -676,7 +680,7 @@ def check_volume(timeout_s: int) -> None:
         owner,
         "overview",
         query,
-        lambda b: b["sessions"]["sessions"] == len(sessions) and b["processed"],
+        lambda b: b["processed"] and b["sessions"]["sessions"] == len(sessions),
         "volume figures",
         timeout_s,
     )
