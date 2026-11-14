@@ -2,8 +2,9 @@
 
 Use this procedure when importing a new CVAT release. The
 [fork specification](fork-specification.md) defines the behavior to preserve;
-the [dated baseline](evidence/2026-11-13-fork-baseline.md) identifies the starting
-revisions. Commands run from the repository root unless stated otherwise.
+the [dated baseline](evidence/2026-11-13-fork-baseline.md) and the
+[widened import baseline](evidence/2026-11-14-widened-import-baseline.md)
+identify the starting revisions. Commands run from the repository root unless stated otherwise.
 
 ## 1. Record the starting point
 
@@ -18,11 +19,22 @@ paths have been rewritten. Local `cvat-v*` tags identify filtered upstream trees
 not fork release snapshots. Recover import metadata from subtree merge commits
 if a tag is missing; do not guess the baseline from the custom image name.
 
-For the baseline documented here, inspect the current customization with:
+The import was re-filtered at v2.82.0 with a widened path list (the
+[widened import baseline](evidence/2026-11-14-widened-import-baseline.md)).
+Its filtered commit is the local tag `cvat-v2.82.0-widened`. The older tags
+`cvat-v2.82.0` and `v2.82.0` keep the commit of the earlier, narrower filter,
+which earlier merges cite; they no longer describe the import. The tags are
+local and never pushed: a fresh clone has none of them. To recreate the
+widened tag, build a mirror with the current `PATHS` and fetch as in section
+2; before tagging, compare the fetched commit and its tree with the ids in the
+widened import baseline. The tree must match; the commit id can differ if the
+clone held a different history.
+
+Inspect the current customization with:
 
 ```bash
-git diff --name-status cvat-v2.82.0 HEAD:cvat
-git diff cvat-v2.82.0 HEAD:cvat
+git diff --name-status cvat-v2.82.0-widened HEAD:cvat
+git diff cvat-v2.82.0-widened HEAD:cvat
 git log --first-parent --oneline
 ```
 
@@ -50,14 +62,49 @@ After selecting `TARGET` (for example, the chosen `vX.Y.Z` tag):
 ```bash
 git switch -c "upgrade/cvat-${TARGET}"
 ./mirror-cvat.sh
-git fetch .cvat-mirror.git "refs/tags/${TARGET}:refs/tags/cvat-${TARGET}"
+git fetch --no-tags .cvat-mirror.git "refs/tags/${TARGET}:refs/tags/cvat-${TARGET}"
 git subtree pull --prefix cvat .cvat-mirror.git "$TARGET" --squash
 ```
+
+`--no-tags` matters: a fetch with a destination otherwise also copies every
+mirror tag that points into the fetched history, which puts upstream's
+release tags (`vX.Y.Z`, filtered) into this repository. An existing local tag
+of the same name is not moved by it, but the new ones are noise. Afterwards
+`git show-ref --tags` must differ from before by exactly the one new tag.
 
 Keep an existing filtered baseline tag immutable; investigate a conflicting tag
 instead of force-updating it. Changing `PATHS` can also rewrite historical
 filtered commit IDs: retain the original baseline reference and record the
 filter change alongside the new raw-to-filtered mapping in dated evidence.
+
+**After changing `PATHS`.** Re-filtering gives every filtered commit a new id,
+so the commit the last snapshot records is not an ancestor of the new tag.
+The squashed pull still works: it finds the last snapshot by its
+`git-subtree-dir: cvat` line, writes a new snapshot of the new tree on top of
+it and merges it. But its snapshot message lists the subject of every commit
+of the new tag's history. Any squashed pull writes its snapshot message
+itself, so the snapshot cannot carry commit trailers. Whenever that message
+must be controlled (a re-filtered mirror, or required trailers), write the
+snapshot as `git subtree` does instead, then merge it the same way (tag name as chosen above;
+`<previous snapshot>` is the commit `git log -1 --grep='^git-subtree-dir: cvat/*$'` prints):
+
+```bash
+git fetch --no-tags .cvat-mirror.git "refs/tags/${TARGET}:refs/tags/<new tag>"
+new=$(git rev-parse "<new tag>^{commit}")
+snapshot=$(git commit-tree "<new tag>^{tree}" -p <previous snapshot> -F <message file>)
+git merge --no-ff -Xsubtree=cvat -F <merge message file> "$snapshot"
+git subtree pull --prefix cvat .cvat-mirror.git "$TARGET" --squash
+```
+
+The message file holds a subject, the two lines `git-subtree-dir: cvat` and
+`git-subtree-split: $new` (the full id), and the trailers. No other commit
+message may carry `git-subtree-` lines, or later pulls find the wrong
+snapshot. The last command must print `Subtree is already at commit <new>`
+and change nothing: that shows a later release pulls normally on top. Before
+the merge, check the new tag's tree against one computed independently, and
+after it, that every path the import kept is unchanged
+([the v2.82.0 re-import](evidence/2026-11-14-widened-import-baseline.md)
+lists the checks).
 Resolve merge conflicts against the specification, preserving new upstream
 behavior and transplanting only the required fork changes.
 
