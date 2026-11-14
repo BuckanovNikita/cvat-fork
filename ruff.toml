@@ -1,4 +1,5 @@
 line-length = 120
+target-version = "py310"
 
 # cvat/ is upstream's import and stays as upstream wrote it: no ruff run, by hand or
 # from the check pipeline, may lint or reformat it. tools/git-filter-repo is vendored.

@@ -40,25 +40,31 @@ if [ ! -e "${cmd[1]}" ]; then
     exit 2
 fi
 
-mapfile -t tracked < <(git -c core.quotePath=off ls-files -- "${globs[@]}")
+# Each git call's output goes to a variable first, so that a failing call stops
+# the script (set -e) instead of leaving an empty list.
+tracked_list="$(git -c core.quotePath=off ls-files -- "${globs[@]}")"
 present=()
-for f in "${tracked[@]}"; do
-    [ -f "$f" ] && present+=("$f")
-done
+while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$f" ] && present+=("$f")
+done <<<"$tracked_list"
 
 files=()
 if [ "${#present[@]}" -gt 0 ]; then
+    tag_list="$(git -c core.quotePath=off ls-tree -r "$tag")"
+    hashes="$(printf '%s\n' "${present[@]}" | git hash-object --stdin-paths)"
     # First input: the import tag's "<mode> <type> <blob>\t<path>", paths relative
     # to cvat/. Second: the working tree's "<blob>\t<path>" of each candidate.
     # Print the candidates whose blob differs or that the tag lacks.
-    mapfile -t files < <(
+    selected="$(
         awk -F '\t' '
             NR == FNR { split($1, f, " "); tag[$2] = f[3]; next }
             { rel = substr($2, length("cvat/") + 1); if (!(rel in tag) || tag[rel] != $1) print $2 }' \
-            <(git -c core.quotePath=off ls-tree -r "$tag") \
-            <(paste <(printf '%s\n' "${present[@]}" | git hash-object --stdin-paths) \
-                    <(printf '%s\n' "${present[@]}"))
-    )
+            <(printf '%s\n' "$tag_list") \
+            <(paste <(printf '%s\n' "$hashes") <(printf '%s\n' "${present[@]}"))
+    )"
+    while IFS= read -r f; do
+        [ -n "$f" ] && files+=("$f")
+    done <<<"$selected"
 fi
 
 if [ "${#files[@]}" -eq 0 ]; then

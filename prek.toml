@@ -15,7 +15,7 @@
 # and uv.lock, the OPA image where verify/policy_test.sh names it.
 #:schema https://www.schemastore.org/prek.json
 
-minimum_prek_version = "0.5.0"
+minimum_prek_version = "0.5.10"
 
 [[repos]]
 repo = "local"
@@ -50,7 +50,7 @@ require_serial = true
 [[repos.hooks]]
 id = "ruff"
 name = "ruff check, fork's Python"
-entry = "env RAYON_NUM_THREADS=1 uv run --quiet --locked --only-group lint ruff check"
+entry = "env RAYON_NUM_THREADS=1 uv run --locked --only-group lint ruff check"
 language = "system"
 pass_filenames = false
 always_run = true

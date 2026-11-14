@@ -1,10 +1,20 @@
 version = 1
 revision = 3
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 
-[manifest]
+[[package]]
+name = "cvat-fork-checks"
+version = "0"
+source = { virtual = "." }
 
-[manifest.dependency-groups]
+[package.dev-dependencies]
+lint = [
+    { name = "ruff" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
 lint = [{ name = "ruff", specifier = "==0.17.3" }]
 
 [[package]]
