@@ -70,6 +70,9 @@ NONE: frozenset[str] = frozenset()
 VIEWS = frozenset({"view issue", "view comment"})
 REFUSED = "refused"
 SHOWN = {True: "ALLOW", False: "DENY "}
+# Every refusal of the matrix, actions and lists, answered 403 on the stack (2026-11-15,
+# docs/evidence/2026-11-14-stack-issue-matrix.md); any other code fails its row.
+REFUSAL_STATUS = 403
 
 # (actor, organization the request names or None, target issue, allowed patched, allowed stock).
 # "create issue" targets the issue's job, the comment actions the issue's fixed comment, the
@@ -341,12 +344,12 @@ def with_org(path: str, org: str | None, **params: object) -> str:
 
 def outcome(status: int, effect_seen: bool, nothing_changed: bool) -> object:
     """True (allowed) for a success whose effect the owner reads back, False (refused) for a
-    client error other than 401 after which the owner reads nothing changed, anything else
-    (a server error, a lost session, a refusal with an effect) "inconsistent", which matches no
-    expectation. The status is printed, so the refusals' codes are on record."""
+    REFUSAL_STATUS after which the owner reads nothing changed, anything else (another 4xx, a
+    server error, a lost session, a refusal with an effect) "inconsistent", which matches no
+    expectation."""
     if status < 300 and effect_seen:
         return True
-    if 400 <= status < 500 and status != 401 and nothing_changed:
+    if status == REFUSAL_STATUS and nothing_changed:
         return False
     return "inconsistent"
 
@@ -388,11 +391,15 @@ class Live:
         for user, spec in ACCOUNTS["users"].items():
             me = self.must(user, "GET", "/api/users/self")
             self.user_ids[user] = me["id"]
-            self.must(ADMIN, "PATCH", f"/api/users/{me['id']}", {"groups": spec["groups"]})
+            status, answer = send(self.sessions[ADMIN], "PATCH", f"/api/users/{me['id']}", {"groups": spec["groups"]})
+            if status != 200:
+                raise SystemExit(f"{user}: PATCH groups -> {status} {str(answer)[:300]}")
             groups = self.must(user, "GET", "/api/users/self")["groups"]
-            if sorted(groups) != sorted(spec["groups"]):
-                raise SystemExit(f"{user}: groups read back as {groups}, expected {spec['groups']}")
-            print(f"  {user}: groups={groups}")
+            if sorted(groups) != sorted(spec["groups"]) or sorted(answer["groups"]) != sorted(spec["groups"]):
+                raise SystemExit(
+                    f"{user}: groups answered {answer['groups']}, read back {groups}, want {spec['groups']}"
+                )
+            print(f"  {user}: before {me['groups']}, PATCH -> {status} groups={answer['groups']}, read back {groups}")
         for org, spec in ACCOUNTS["organizations"].items():
             members = self.pages(owner_of(org), with_org("/api/memberships", org))[1]
             found = {m["user"]["username"]: (m["role"], m["is_active"]) for m in members}
@@ -560,7 +567,7 @@ class Live:
         the named organization."""
         status, rows = self.pages(actor, with_org(f"/api/{kind}", named))
         if status != 200:
-            return (REFUSED if 400 <= status < 500 and status != 401 else f"error {status}"), status, ""
+            return (REFUSED if status == REFUSAL_STATUS else f"error {status}"), status, ""
         listed = {r["id"] for r in rows}
         keys = list(ISSUES) if kind == "issues" else [comment_of(i) for i in ISSUES]
         got = {k for k in keys if self.ids[k] in listed}

@@ -4,13 +4,13 @@
 
 **Blocked by:** 08 (The stack runs on the fork server image and the in-tree chart).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The stack seeds tasks that cover every job stage and state, as the Compose seed did.
-- [ ] The browser check of the tasks list runs against the stack with the fork's UI image and passes.
+- [x] The stack seeds tasks that cover every job stage and state, as the Compose seed did.
+- [x] The browser check of the tasks list runs against the stack with the fork's UI image and passes.
 - [x] What the Compose launcher prepared and checked is listed in this ticket beside what the stack now does; nothing it covered is dropped.
-- [ ] The check is part of the launcher's run and is judged pass or fail.
-- [ ] The result is kept in a dated evidence file.
+- [x] The check is part of the launcher's run and is judged pass or fail.
+- [x] The result is kept in a dated evidence file.
 
 ## Compose launcher beside the stack
 
@@ -70,3 +70,21 @@ node suite covers it with the API mocked.
   5. Write the log lines, the task ids, the UI image ID and the lowest contrast per card into
      the evidence file's part two (criterion 5). Then ticket 12 may remove the Compose files.
 - 2026-11-14: Merged into `feat/team-analytics-page` as `3aa2b78b`, with no conflict. On the merged tree `bash -n` on `run.sh`, `py_compile` on `task_progress.py` and `node --check` on `task_progress_browser.cjs` passed; no launcher command was run. The ticket stays open: part two, the live run above, is outstanding. Evidence: `docs/evidence/2026-11-14-task-progress-on-stack.md`.
+- 2026-11-15, part two, done on the stack ticket 08 brought up (UI image
+  `sha256:310e9bbc6a47…`, built from `3dc1a7bc`). The outcome is in
+  `docs/evidence/2026-11-14-task-progress-on-stack.md`, "Part two: live outcome".
+  - Criteria 1, 2 and 4 (pass side): this ticket's `run.sh check-task-progress` passed with
+    new tasks 22 and 23. The server's schema listed the 3 stages and 4 states. All 12 pairs
+    and the single annotation/new job read back. Both cards in Chrome were as specified, with
+    lowest contrast 16.56:1, and the running UI image was the local tag's.
+  - Criterion 4, call from `up`: shown by ticket 08's second `up`, which is another ticket's
+    run. It ran this check (tasks 14 and 15) between `check_tracer` and `check_final`, and
+    `check_final` passed afterwards; exit 0.
+  - Criterion 4, fail side: with another local UI tag the check stopped with "the frontend
+    runs …" and exit 1.
+  - Criterion 5: the evidence file above.
+  - Seen in the screenshot and not asserted: on the 12-job card the legend wraps below the
+    card's edge and the bar is not visible. That is the UI's layout with twelve buckets; it
+    is outside this ticket.
+  - Not covered by any live run: a "not available" bucket.
+- 2026-11-15: Part two merged into `feat/team-analytics-page` as `07988385`, with no conflict. On the merged tree `bash -n` on `run.sh` passed; no launcher command was run by the merger. All five criteria were ticked from live runs; the ticket is resolved. Evidence: `docs/evidence/2026-11-14-task-progress-on-stack.md`.
