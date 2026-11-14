@@ -202,10 +202,24 @@ Behavior to preserve:
   (2 s). On SIGTERM the service
   finishes the step in progress and releases the lease before exiting. A
   replica killed mid-step releases nothing and holds up the others until its
-  lease runs out, at most 120 s after the kill: the lease is 120 s long and
-  is renewed every 40 s while a step runs.
+  lease runs out: the lease is 120 s long and is renewed every 40 s while a
+  step runs, so it runs out at most 120 s after the kill. The next replica
+  takes over at its next try after that; a replica that finds the lease taken
+  tries again every 5 s. Known limit: on SIGTERM the service waits at most
+  25 s for the step in progress. A step still running then (a long day of
+  history, or the daily check's cutover search, which may take up to its
+  60 s limit) ends with the process without releasing the lease, which then
+  holds the others up as a killed replica's does; a statement it had sent
+  goes on in ClickHouse until it ends or reaches its limit. The signal neither
+  releases the lease nor stops the statement: releasing it while the step's
+  statement still runs in ClickHouse could let another replica write beside
+  it, and stopping the statement would mean tracking and killing it by query
+  id.
 - One ClickHouse client without a session serves the HTTP threads and the
-  refresh loop. A request body is read and dropped, or the connection is closed
+  refresh loop; the cutover search at start and in the daily check goes
+  through a second one, which waits for an answer only a few seconds longer
+  than the search's limit. A request body is read and dropped, or the
+  connection is closed
   after the answer, so a body is never answered as a request.
 - Its routes are under `/team-analytics-api/v1/`. Every request is checked
   against CVAT with the caller's own cookie or token: `/api/users/self`,
@@ -256,8 +270,19 @@ Behavior to preserve:
   and every period reads as legacy. The search reads every recorded event
   before the stored cutover, or all of them while none is stored, so its cost
   grows with that history; what it cost at the volume of the design
-  measurements is in `docs/evidence/2026-11-14-cutover-search-cost.md`. If the
-  search fails at start, the service starts without it.
+  measurements is in `docs/evidence/2026-11-14-cutover-search-cost.md`. The
+  search at start and in the daily check runs with limits that ClickHouse
+  enforces on the statement: 23 s at start, 60 s in the daily check, and
+  512 MiB of memory in both. ClickHouse stops a search that reaches one, and
+  the service waits for its answer a few seconds longer than the limit, so it
+  never gives up on a statement that is still running. A search that fails or
+  is stopped at start lets the service start without it; in the daily check
+  the step ends without it. Either way the cutover is looked for again at the
+  next daily check or start, so on an instance whose history before the
+  cutover takes longer than the limit to read, the search keeps failing: the
+  cutover is then found only by the refresh that first stores a shape-tagged
+  hour while none is stored (that search has no time limit), and a late
+  earlier event never moves it.
 - New measurements travel inside existing client event types (ADR 0002):
   payload fields on draw, paste, propagate, drag, resize and delete, plus three
   `debug:info` records (`team_analytics:class_change`,
@@ -290,6 +315,17 @@ Behavior to preserve:
   with the group event but were stored by a service without the group-move
   rule hold a group drag as two alignments and a selection-box move as one;
   computing them again gives one per object moved.
+- Known limits of a refresh window shorter than a day
+  (`TEAM_ANALYTICS_REFRESH_WINDOW_HOURS` below 24): today's hours before the
+  window are computed by the history step once each has left the window. A
+  record that reaches ClickHouse after its hour was computed (client records
+  arrive in batches, often minutes late) is counted only when its day is
+  computed as a whole, after midnight; until then the period reads as
+  processed without it. And after each refresh that moves the window on, every
+  period reads as being processed until the history step that follows has
+  computed the hour that left it. The default window of 48 hours does not
+  behave so: the next ten-minute refresh counts a late record, and no hour of
+  today lies before the window.
 - The logging module never throws into the annotation view. After three
   failures it switches itself off for the page's life. It records nothing
   outside an open 2D job.
