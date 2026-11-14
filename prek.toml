@@ -1,0 +1,102 @@
+# The fork's check pipeline. Its invocation, its prerequisites and the suites kept
+# out of it: docs/upstream-upgrade.md, section 4, "Check pipeline". It is run by
+# that command and not installed as git hooks.
+#
+# Every hook checks and changes nothing. Each runs one process (or a one-core
+# container), the hooks one after another; ruff is held to one thread. Each hook
+# takes no file names from prek and selects what it checks itself, so every hook
+# runs on every invocation:
+# - the UI linters take only the fork's UI files (tools/gate/ui-lint.sh),
+# - ruff takes the fork's Python as ruff.toml selects it, never cvat/,
+# - the type check, the policy test and the suites cover what they always cover.
+#
+# Tool versions: the UI tools from the import's lock through cvat/node_modules, the
+# harness's browser environment from verify/package.json, ruff from pyproject.toml
+# and uv.lock, the OPA image where verify/policy_test.sh names it.
+#:schema https://www.schemastore.org/prek.json
+
+minimum_prek_version = "0.5.10"
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "eslint"
+name = "ESLint, fork's UI files"
+entry = "tools/gate/ui-lint.sh eslint"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "stylelint"
+name = "stylelint, fork's UI files"
+entry = "tools/gate/ui-lint.sh stylelint"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "type-check"
+name = "type check, cvat-ui"
+entry = "node cvat/node_modules/typescript/bin/tsc -p cvat/cvat-ui/tsconfig.json"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "ruff"
+name = "ruff check, fork's Python"
+entry = "env RAYON_NUM_THREADS=1 uv run --locked --only-group lint ruff check"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "policy-patched"
+name = "policy test, patched policies"
+entry = "verify/policy_test.sh"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "policy-stock"
+name = "policy test, stock policies"
+entry = "verify/policy_test.sh stock"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "task-progress"
+name = "suite: task progress"
+entry = "node --test verify/task_progress.cjs"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "ta-logging"
+name = "suite: Team Analytics UI logging"
+entry = "node --test verify/team_analytics_logging.cjs"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "ta-page"
+name = "suite: Team Analytics page"
+entry = "node --test verify/team_analytics_page.cjs"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
