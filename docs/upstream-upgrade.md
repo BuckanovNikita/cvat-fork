@@ -163,9 +163,42 @@ With the toolchain required by the imported package configuration:
 (cd cvat && DISABLE_HUSKY=1 yarn install --immutable)
 npm ci --prefix verify
 node --test verify/task_progress.cjs
-(cd cvat && yarn run type-check)
 (cd cvat && SOURCE_MAPS_ENABLED=false yarn run build:cvat-ui)
 ```
+
+Lint and type-check the fork's UI code with upstream's own configuration, which
+the import carries at its root (`cvat/eslint.config.mjs` with
+`cvat/.eslintrc.cjs`, `cvat/.stylelintrc.json`, `cvat/cvat-ui/tsconfig.json`).
+Each command runs from the repository root on the installed `cvat/node_modules`
+and needs neither `yarn` nor a change of directory:
+
+```bash
+node cvat/node_modules/eslint/bin/eslint.js --max-warnings 0 --no-warn-ignored <files>
+node cvat/node_modules/stylelint/bin/stylelint.mjs --max-warnings 0 <files>
+node cvat/node_modules/typescript/bin/tsc -p cvat/cvat-ui/tsconfig.json
+```
+
+ESLint takes the `.ts` and `.tsx` files, stylelint the `.scss` files, as paths
+from the repository root. Pass only the UI files the fork added or edited, never
+the whole import, and never let `--fix` touch upstream's files: they stay as
+upstream wrote them. A finding in an upstream line of a file the fork edited is
+left alone and recorded in the dated evidence. The list, against the import's
+tag (section 1):
+
+```bash
+git diff --name-only --diff-filter=d cvat-v2.82.0-widened HEAD:cvat -- '*.ts' '*.tsx' | sed 's|^|cvat/|'
+git diff --name-only --diff-filter=d cvat-v2.82.0-widened HEAD:cvat -- '*.scss' | sed 's|^|cvat/|'
+```
+
+`--max-warnings 0` is the fork's addition: upstream's `yarn run lint` fails on
+errors only, while the fork's files are kept free of warnings too, unused
+disable directives among them. `--no-warn-ignored` keeps a path the
+configuration ignores from counting as a warning. The type check is upstream's
+`yarn run type-check` (`tsc -p cvat-ui/tsconfig.json`) and always covers the
+whole UI. It resolves the workspace packages (`cvat-core`, `cvat-canvas`,
+`cvat-canvas3d`, `cvat-data`) through the links in `cvat/node_modules`, so in a
+worktree whose `cvat/node_modules` links to another checkout it checks against
+that checkout's packages; run it where the dependencies are installed.
 
 `npm ci --prefix verify` installs the frontend harness's own dependencies: the
 browser environment (jsdom) that the two Team Analytics frontend suites below
@@ -187,9 +220,8 @@ styles and task-card stylesheet in an isolated browser profile. Without
 `BROWSER_BIN`, this browser check is skipped; the other regression tests run.
 
 `DISABLE_HUSKY=1` matches the imported Dockerfile's dependency installation and
-avoids installing upstream Git hooks in the wrapper repository. The filtered
-tree may omit upstream lint configuration; report that limitation rather than
-claiming a successful lint run. A host build does not prove image packaging.
+avoids installing upstream Git hooks in the wrapper repository. A host build
+does not prove image packaging.
 
 ### OPA
 
