@@ -37,14 +37,19 @@ interface Props {
     onFullView?: () => void;
 }
 
-// A bar without a split for its row is drawn whole, in the working time colour of the page.
-const WORKING_TIME_COLOR = OPERATION_LOOKS.creation.color;
+// A row the answer gives no operation parts for (an older service during an upgrade) is drawn whole in a
+// neutral colour the legend gives to no operation, so it never reads as one operation's time. The legend
+// stays: other rows may carry parts.
+const UNSPLIT_COLOR = '#595959';
 
 // A row's bar: its operation parts as the full view draws them (operations.ts).
 function barParts(row: BreakdownRow, legacy: boolean): BarPart[] {
     if (row.operations) return operationParts(row.operations, row.name, legacy);
     return [{
-        key: 'working', color: WORKING_TIME_COLOR, grow: 1, title: `${row.name}: ${formatHours(row.working_time_ms)}`,
+        key: 'working',
+        color: UNSPLIT_COLOR,
+        grow: 1,
+        title: `${row.name}: ${formatHours(row.working_time_ms)}, not split by operation`,
     }];
 }
 
