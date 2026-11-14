@@ -291,6 +291,8 @@ domTest('a full view replaces the overview, keeps the header and filters, and is
 
         assert.equal(search(history).get('view'), 'annotators');
         assert.equal(view.container.querySelector('.cvat-team-analytics-cards'), null, 'the overview is replaced');
+        assert.equal(view.container.querySelector('.cvat-team-analytics-details'), null,
+            'the details table stays on the overview');
         assert.ok(view.container.querySelector('.cvat-team-analytics-header'));
         assert.ok(view.container.querySelector('.cvat-team-analytics-filters'));
         assert.equal(fullView(view.container).querySelector('h2').textContent, 'Working time by annotator');

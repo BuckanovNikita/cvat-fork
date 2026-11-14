@@ -21,6 +21,7 @@ import { lookupProjectNames } from './project-names';
 import { hotkeyLabels } from './hotkeys';
 import TeamAnalyticsView from './team-analytics-view';
 import TrendsSection, { useTrendsSelection } from './trends-section';
+import DetailsSection from './details-section';
 
 // The status (last refresh) is read again this often while the page is open.
 const STATUS_INTERVAL_MS = 60000;
@@ -147,6 +148,20 @@ export default function TeamAnalyticsPage(): JSX.Element {
                     selection={trendsSelection}
                     full={options?.full}
                     onOpenFull={options?.onOpenFull}
+                />
+            )}
+            renderDetails={() => (
+                <DetailsSection
+                    organization={organization}
+                    timeZone={timeZone}
+                    period={address.period}
+                    month={address.month}
+                    project={address.project}
+                    annotator={address.annotator}
+                    shapes={address.shapes}
+                    projectNames={projectNames}
+                    // clicking a row sets it as the filter; clicking the selected row again removes it
+                    onPick={(kind, id) => changeAddress({ [kind]: address[kind] === id ? null : id })}
                 />
             )}
         />
