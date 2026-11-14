@@ -153,6 +153,11 @@ file as another positional input to `opa test`. Keep it in a task-owned mounted
 temporary directory and remove it afterward. Both runs must match their own
 expectations; an identical result is not the goal because member access differs.
 
+Confirm where the target server image keeps `cvat/apps/engine/rules/` and that
+both Compose overlays mount the patched files there (`/opt/cvat/cvat/...` since
+2.72.0). Build the bundle in that image with the mounts applied and check that
+both files in it carry the patch; a wrong target fails silently.
+
 Check policy compilation with the same target helpers. If strict OPA lint fails,
 compare stock and patched rules before classifying an inherited warning. Retain
 the stock-versus-patched distinction in the recorded result.

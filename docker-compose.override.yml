@@ -11,5 +11,5 @@ services:
   # mount belongs here alone. Copy opa/rules next to this file in the deployment.
   cvat_server:
     volumes:
-      - ./opa/rules/issues.rego:/home/django/cvat/apps/engine/rules/issues.rego:ro
-      - ./opa/rules/comments.rego:/home/django/cvat/apps/engine/rules/comments.rego:ro
+      - ./opa/rules/issues.rego:/opt/cvat/cvat/apps/engine/rules/issues.rego:ro
+      - ./opa/rules/comments.rego:/opt/cvat/cvat/apps/engine/rules/comments.rego:ro

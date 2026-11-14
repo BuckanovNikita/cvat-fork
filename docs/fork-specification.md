@@ -141,10 +141,16 @@ custom UI suffix as the backend version. Align the build script, deployment
 override and frontend verification override when changing the default image.
 
 The deployment overlay mounts both copied policies read-only into
-`cvat_server`, under `/home/django/cvat/apps/engine/rules/`. The server packages
+`cvat_server`, under `/opt/cvat/cvat/apps/engine/rules/`. The server packages
 and serves `/api/auth/rules`; mounting files only into `cvat_opa` is insufficient.
 Restart/recreate the intended server after rule changes to invalidate its
 cached bundle, then verify OPA has loaded the changed bundle.
+
+The mount target must be the directory the server builds its bundle from.
+Upstream moved the installed sources from `/home/django` to `/opt/cvat` in
+2.72.0. A mount to a directory the server does not read raises no error and
+leaves the stock rules in force, so confirm the target in the release's server
+image and inspect the served bundle for both files.
 
 The deployment overlay expects `opa/` beside the deployment's base Compose
 file. Compose resolves relative mounts from the first Compose file, so simply

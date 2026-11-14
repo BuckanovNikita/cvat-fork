@@ -5,5 +5,5 @@
 services:
   cvat_server:
     volumes:
-      - ${OPA_RULES:?set OPA_RULES to an absolute path of opa/rules}/issues.rego:/home/django/cvat/apps/engine/rules/issues.rego:ro
-      - ${OPA_RULES:?set OPA_RULES to an absolute path of opa/rules}/comments.rego:/home/django/cvat/apps/engine/rules/comments.rego:ro
+      - ${OPA_RULES:?set OPA_RULES to an absolute path of opa/rules}/issues.rego:/opt/cvat/cvat/apps/engine/rules/issues.rego:ro
+      - ${OPA_RULES:?set OPA_RULES to an absolute path of opa/rules}/comments.rego:/opt/cvat/cvat/apps/engine/rules/comments.rego:ro
