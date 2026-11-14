@@ -21,7 +21,7 @@ import logger, { EventScope } from 'cvat-logger';
 import { getCVATStore } from 'cvat-store';
 import changeObjectOrientation from 'utils/change-object-orientation';
 import { sanitizeSelectedObjectIDs } from 'utils/multi-selection';
-import { operationFields } from 'utils/team-analytics-logging';
+import { frameRequested, frameShown, operationFields } from 'utils/team-analytics-logging';
 
 import {
     ActiveControl,
@@ -1112,6 +1112,7 @@ export function changeFrameAsync(
 ): ThunkAction {
     return async (dispatch: ThunkDispatch, getState: () => CombinedState): Promise<void> => {
         const { jobInstance: job, frame } = receiveAnnotationsParameters();
+        const navigationHotkey = frameRequested();
         const state: CombinedState = getState();
         const {
             propagate: {
@@ -1201,6 +1202,7 @@ export function changeFrameAsync(
                 userUnlockedInReviewMode.clear();
             }
 
+            frameShown(navigationHotkey, frame, toFrame);
             dispatch({
                 type: AnnotationActionTypes.CHANGE_FRAME_SUCCESS,
                 payload: {
