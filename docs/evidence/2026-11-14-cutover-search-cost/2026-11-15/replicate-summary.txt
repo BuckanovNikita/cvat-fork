@@ -1,0 +1,7 @@
+┌─statement─┬─cache─┬─runs─┬─done─┬─median_s─┬─fastest_s─┬─slowest_s─┬─peak_memory─┬─read_rows_min─┬─read_rows_max─┬─disk_read_min─┐
+│ aggregate │ cold  │   10 │   10 │    4.049 │      3.93 │       4.4 │ 17.38 MiB   │      36193328 │      36193328 │ 1.62 GiB      │
+│ in_order  │ cold  │   10 │   10 │    4.155 │      4.06 │      4.36 │ 50.44 MiB   │      36193328 │      36193328 │ 1.62 GiB      │
+│ aggregate │ warm  │   10 │   10 │     2.95 │      2.82 │      3.19 │ 17.14 MiB   │      36193328 │      36193328 │ 0.00 B        │
+│ in_order  │ warm  │   10 │   10 │    3.027 │      2.84 │      3.54 │ 51.35 MiB   │      36193328 │      36193328 │ 0.00 B        │
+└───────────┴───────┴──────┴──────┴──────────┴───────────┴───────────┴─────────────┴───────────────┴───────────────┴───────────────┘
+host load average after the runs: 4.57 4.41 4.70

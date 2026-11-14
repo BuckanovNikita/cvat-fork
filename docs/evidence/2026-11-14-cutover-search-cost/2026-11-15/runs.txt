@@ -1,0 +1,216 @@
+[22:11:13] early|aggregate|start|cold|1: page cache 3717103616 -> 1815470080 bytes
+[22:11:18] early|aggregate|start|cold|1: 4.588s, stored ['2025-11-14 06:00:00']
+[22:11:19] early|aggregate|start|cold|2: page cache 3717439488 -> 1815773184 bytes
+[22:11:24] early|aggregate|start|cold|2: 4.786s, stored ['2025-11-14 06:00:00']
+[22:11:26] early|aggregate|start|cold|3: page cache 3718049792 -> 1816330240 bytes
+[22:11:30] early|aggregate|start|cold|3: 4.619s, stored ['2025-11-14 06:00:00']
+[22:11:34] early|aggregate|start|warm|1: 3.582s, stored ['2025-11-14 06:00:00']
+[22:11:38] early|aggregate|start|warm|2: 3.506s, stored ['2025-11-14 06:00:00']
+[22:11:42] early|aggregate|start|warm|3: 3.564s, stored ['2025-11-14 06:00:00']
+[22:11:44] early|aggregate|daily|cold|1: page cache 3719356416 -> 1817808896 bytes
+[22:11:49] early|aggregate|daily|cold|1: 4.686s, stored ['2025-11-14 06:00:00']
+[22:11:50] early|aggregate|daily|cold|2: page cache 3719811072 -> 1818083328 bytes
+[22:11:55] early|aggregate|daily|cold|2: 4.729s, stored ['2025-11-14 06:00:00']
+[22:11:57] early|aggregate|daily|cold|3: page cache 3720151040 -> 1818427392 bytes
+[22:12:02] early|aggregate|daily|cold|3: 4.938s, stored ['2025-11-14 06:00:00']
+[22:12:06] early|aggregate|daily|warm|1: 4.110s, stored ['2025-11-14 06:00:00']
+[22:12:11] early|aggregate|daily|warm|2: 4.058s, stored ['2025-11-14 06:00:00']
+[22:12:15] early|aggregate|daily|warm|3: 4.150s, stored ['2025-11-14 06:00:00']
+[22:12:17] early|aggregate|none|cold|1: page cache 3721924608 -> 1820151808 bytes
+[22:12:22] early|aggregate|none|cold|1: 4.882s, stored ['2025-11-14 06:00:00']
+[22:12:24] early|aggregate|none|cold|2: page cache 3722309632 -> 1820536832 bytes
+[22:12:29] early|aggregate|none|cold|2: 4.936s, stored ['2025-11-14 06:00:00']
+[22:12:30] early|aggregate|none|cold|3: page cache 3722797056 -> 1821024256 bytes
+[22:12:35] early|aggregate|none|cold|3: 4.591s, stored ['2025-11-14 06:00:00']
+[22:12:39] early|aggregate|none|warm|1: 3.656s, stored ['2025-11-14 06:00:00']
+[22:12:43] early|aggregate|none|warm|2: 3.466s, stored ['2025-11-14 06:00:00']
+[22:12:47] early|aggregate|none|warm|3: 3.438s, stored ['2025-11-14 06:00:00']
+[22:12:48] early|in_order|start|cold|1: page cache 3724079104 -> 1822306304 bytes
+[22:12:49] early|in_order|start|cold|1: 0.264s, stored ['2025-11-14 06:00:00']
+[22:12:50] early|in_order|start|cold|2: page cache 1900515328 -> 1822646272 bytes
+[22:12:50] early|in_order|start|cold|2: 0.272s, stored ['2025-11-14 06:00:00']
+[22:12:52] early|in_order|start|cold|3: page cache 1900859392 -> 1822904320 bytes
+[22:12:52] early|in_order|start|cold|3: 0.267s, stored ['2025-11-14 06:00:00']
+[22:12:53] early|in_order|start|warm|1: 0.042s, stored ['2025-11-14 06:00:00']
+[22:12:53] early|in_order|start|warm|2: 0.043s, stored ['2025-11-14 06:00:00']
+[22:12:53] early|in_order|start|warm|3: 0.050s, stored ['2025-11-14 06:00:00']
+[22:12:55] early|in_order|daily|cold|1: page cache 1901125632 -> 1822990336 bytes
+[22:12:55] early|in_order|daily|cold|1: 0.266s, stored ['2025-11-14 06:00:00']
+[22:12:57] early|in_order|daily|cold|2: page cache 1901146112 -> 1823117312 bytes
+[22:12:57] early|in_order|daily|cold|2: 0.266s, stored ['2025-11-14 06:00:00']
+[22:12:59] early|in_order|daily|cold|3: page cache 1901318144 -> 1823404032 bytes
+[22:13:00] early|in_order|daily|cold|3: 0.276s, stored ['2025-11-14 06:00:00']
+[22:13:00] early|in_order|daily|warm|1: 0.046s, stored ['2025-11-14 06:00:00']
+[22:13:00] early|in_order|daily|warm|2: 0.049s, stored ['2025-11-14 06:00:00']
+[22:13:01] early|in_order|daily|warm|3: 0.040s, stored ['2025-11-14 06:00:00']
+[22:13:02] early|in_order|none|cold|1: page cache 1901621248 -> 1823485952 bytes
+[22:13:03] early|in_order|none|cold|1: 0.283s, stored ['2025-11-14 06:00:00']
+[22:13:04] early|in_order|none|cold|2: page cache 1901641728 -> 1823739904 bytes
+[22:13:05] early|in_order|none|cold|2: 0.267s, stored ['2025-11-14 06:00:00']
+[22:13:06] early|in_order|none|cold|3: page cache 1901940736 -> 1824030720 bytes
+[22:13:07] early|in_order|none|cold|3: 0.278s, stored ['2025-11-14 06:00:00']
+[22:13:07] early|in_order|none|warm|1: 0.042s, stored ['2025-11-14 06:00:00']
+[22:13:08] early|in_order|none|warm|2: 0.040s, stored ['2025-11-14 06:00:00']
+[22:13:08] early|in_order|none|warm|3: 0.043s, stored ['2025-11-14 06:00:00']
+[22:13:41] late|aggregate|start|cold|1: page cache 4962492416 -> 3060887552 bytes
+[22:13:46] late|aggregate|start|cold|1: 4.672s, stored ['2026-11-13 06:00:00']
+[22:13:48] late|aggregate|start|cold|2: page cache 4643811328 -> 2907238400 bytes
+[22:13:52] late|aggregate|start|cold|2: 4.454s, stored ['2026-11-13 06:00:00']
+[22:13:54] late|aggregate|start|cold|3: page cache 4630298624 -> 2893778944 bytes
+[22:13:59] late|aggregate|start|cold|3: 4.406s, stored ['2026-11-13 06:00:00']
+[22:14:02] late|aggregate|start|warm|1: 3.354s, stored ['2026-11-13 06:00:00']
+[22:14:06] late|aggregate|start|warm|2: 3.253s, stored ['2026-11-13 06:00:00']
+[22:14:09] late|aggregate|start|warm|3: 3.092s, stored ['2026-11-13 06:00:00']
+[22:14:11] late|aggregate|daily|cold|1: page cache 4628582400 -> 2892009472 bytes
+[22:14:15] late|aggregate|daily|cold|1: 4.090s, stored ['2026-11-13 06:00:00']
+[22:14:16] late|aggregate|daily|cold|2: page cache 4624773120 -> 2888200192 bytes
+[22:14:21] late|aggregate|daily|cold|2: 4.012s, stored ['2026-11-13 06:00:00']
+[22:14:22] late|aggregate|daily|cold|3: page cache 4621787136 -> 2885439488 bytes
+[22:14:27] late|aggregate|daily|cold|3: 4.052s, stored ['2026-11-13 06:00:00']
+[22:14:30] late|aggregate|daily|warm|1: 3.187s, stored ['2026-11-13 06:00:00']
+[22:14:34] late|aggregate|daily|warm|2: 3.178s, stored ['2026-11-13 06:00:00']
+[22:14:37] late|aggregate|daily|warm|3: 3.243s, stored ['2026-11-13 06:00:00']
+[22:14:39] late|aggregate|none|cold|1: page cache 4617101312 -> 2880528384 bytes
+[22:14:43] late|aggregate|none|cold|1: 4.087s, stored ['2026-11-13 06:00:00']
+[22:14:44] late|aggregate|none|cold|2: page cache 4614254592 -> 2877853696 bytes
+[22:14:49] late|aggregate|none|cold|2: 4.303s, stored ['2026-11-13 06:00:00']
+[22:14:50] late|aggregate|none|cold|3: page cache 4607590400 -> 2871115776 bytes
+[22:14:55] late|aggregate|none|cold|3: 4.223s, stored ['2026-11-13 06:00:00']
+[22:14:58] late|aggregate|none|warm|1: 3.464s, stored ['2026-11-13 06:00:00']
+[22:15:03] late|aggregate|none|warm|2: 4.145s, stored ['2026-11-13 06:00:00']
+[22:15:07] late|aggregate|none|warm|3: 3.346s, stored ['2026-11-13 06:00:00']
+[22:15:09] late|in_order|start|cold|1: page cache 4605947904 -> 2869374976 bytes
+[22:15:13] late|in_order|start|cold|1: 4.163s, stored ['2026-11-13 06:00:00']
+[22:15:14] late|in_order|start|cold|2: page cache 4605804544 -> 2869915648 bytes
+[22:15:19] late|in_order|start|cold|2: 4.167s, stored ['2026-11-13 06:00:00']
+[22:15:20] late|in_order|start|cold|3: page cache 4602753024 -> 2866806784 bytes
+[22:15:25] late|in_order|start|cold|3: 4.258s, stored ['2026-11-13 06:00:00']
+[22:15:28] late|in_order|start|warm|1: 3.041s, stored ['2026-11-13 06:00:00']
+[22:15:31] late|in_order|start|warm|2: 2.983s, stored ['2026-11-13 06:00:00']
+[22:15:35] late|in_order|start|warm|3: 3.144s, stored ['2026-11-13 06:00:00']
+[22:15:36] late|in_order|daily|cold|1: page cache 4601827328 -> 2865811456 bytes
+[22:15:41] late|in_order|daily|cold|1: 4.246s, stored ['2026-11-13 06:00:00']
+[22:15:42] late|in_order|daily|cold|2: page cache 4599181312 -> 2863173632 bytes
+[22:15:47] late|in_order|daily|cold|2: 4.192s, stored ['2026-11-13 06:00:00']
+[22:15:48] late|in_order|daily|cold|3: page cache 4596965376 -> 2860904448 bytes
+[22:15:53] late|in_order|daily|cold|3: 4.484s, stored ['2026-11-13 06:00:00']
+[22:15:56] late|in_order|daily|warm|1: 3.040s, stored ['2026-11-13 06:00:00']
+[22:15:59] late|in_order|daily|warm|2: 3.023s, stored ['2026-11-13 06:00:00']
+[22:16:03] late|in_order|daily|warm|3: 3.095s, stored ['2026-11-13 06:00:00']
+[22:16:04] late|in_order|none|cold|1: page cache 4595576832 -> 2859569152 bytes
+[22:16:09] late|in_order|none|cold|1: 4.256s, stored ['2026-11-13 06:00:00']
+[22:16:10] late|in_order|none|cold|2: page cache 4595433472 -> 2859372544 bytes
+[22:16:14] late|in_order|none|cold|2: 4.141s, stored ['2026-11-13 06:00:00']
+[22:16:16] late|in_order|none|cold|3: page cache 4595281920 -> 2859220992 bytes
+[22:16:20] late|in_order|none|cold|3: 4.136s, stored ['2026-11-13 06:00:00']
+[22:16:24] late|in_order|none|warm|1: 3.165s, stored ['2026-11-13 06:00:00']
+[22:16:27] late|in_order|none|warm|2: 2.972s, stored ['2026-11-13 06:00:00']
+[22:16:30] late|in_order|none|warm|3: 3.083s, stored ['2026-11-13 06:00:00']
+[22:16:43] steady|aggregate|start|cold|1: page cache 4762542080 -> 2861211648 bytes
+[22:16:47] steady|aggregate|start|cold|1: 4.286s, stored ['2026-11-13 06:00:00']
+[22:16:48] steady|aggregate|start|cold|2: page cache 4592943104 -> 2856882176 bytes
+[22:16:53] steady|aggregate|start|cold|2: 4.502s, stored ['2026-11-13 06:00:00']
+[22:16:55] steady|aggregate|start|cold|3: page cache 4578570240 -> 2842509312 bytes
+[22:16:59] steady|aggregate|start|cold|3: 4.176s, stored ['2026-11-13 06:00:00']
+[22:17:02] steady|aggregate|start|warm|1: 3.261s, stored ['2026-11-13 06:00:00']
+[22:17:06] steady|aggregate|start|warm|2: 3.175s, stored ['2026-11-13 06:00:00']
+[22:17:09] steady|aggregate|start|warm|3: 3.200s, stored ['2026-11-13 06:00:00']
+[22:17:11] steady|aggregate|daily|cold|1: page cache 4572889088 -> 2836881408 bytes
+[22:17:15] steady|aggregate|daily|cold|1: 4.156s, stored ['2026-11-13 06:00:00']
+[22:17:16] steady|aggregate|daily|cold|2: page cache 4565872640 -> 2829811712 bytes
+[22:17:21] steady|aggregate|daily|cold|2: 4.276s, stored ['2026-11-13 06:00:00']
+[22:17:22] steady|aggregate|daily|cold|3: page cache 4562870272 -> 2826981376 bytes
+[22:17:27] steady|aggregate|daily|cold|3: 4.105s, stored ['2026-11-13 06:00:00']
+[22:17:30] steady|aggregate|daily|warm|1: 3.123s, stored ['2026-11-13 06:00:00']
+[22:17:33] steady|aggregate|daily|warm|2: 3.174s, stored ['2026-11-13 06:00:00']
+[22:17:37] steady|aggregate|daily|warm|3: 2.988s, stored ['2026-11-13 06:00:00']
+[22:17:38] steady|aggregate|none|cold|1: page cache 4561219584 -> 2825699328 bytes
+[22:17:42] steady|aggregate|none|cold|1: 4.006s, stored ['2026-11-13 06:00:00']
+[22:17:43] steady|aggregate|none|cold|2: page cache 4560932864 -> 2825179136 bytes
+[22:17:48] steady|aggregate|none|cold|2: 4.003s, stored ['2026-11-13 06:00:00']
+[22:17:49] steady|aggregate|none|cold|3: page cache 4559265792 -> 2823208960 bytes
+[22:17:53] steady|aggregate|none|cold|3: 4.159s, stored ['2026-11-13 06:00:00']
+[22:17:57] steady|aggregate|none|warm|1: 3.075s, stored ['2026-11-13 06:00:00']
+[22:18:00] steady|aggregate|none|warm|2: 2.945s, stored ['2026-11-13 06:00:00']
+[22:18:03] steady|aggregate|none|warm|3: 3.108s, stored ['2026-11-13 06:00:00']
+[22:18:04] steady|in_order|start|cold|1: page cache 4057198592 -> 1906126848 bytes
+[22:18:09] steady|in_order|start|cold|1: 4.258s, stored ['2026-11-13 06:00:00']
+[22:18:10] steady|in_order|start|cold|2: page cache 3426594816 -> 1501859840 bytes
+[22:18:15] steady|in_order|start|cold|2: 4.196s, stored ['2026-11-13 06:00:00']
+[22:18:16] steady|in_order|start|cold|3: page cache 3238035456 -> 1502478336 bytes
+[22:18:20] steady|in_order|start|cold|3: 4.125s, stored ['2026-11-13 06:00:00']
+[22:18:23] steady|in_order|start|warm|1: 2.978s, stored ['2026-11-13 06:00:00']
+[22:18:26] steady|in_order|start|warm|2: 2.872s, stored ['2026-11-13 06:00:00']
+[22:18:30] steady|in_order|start|warm|3: 2.973s, stored ['2026-11-13 06:00:00']
+[22:18:31] steady|in_order|daily|cold|1: page cache 3131650048 -> 1395429376 bytes
+[22:18:35] steady|in_order|daily|cold|1: 4.099s, stored ['2026-11-13 06:00:00']
+[22:18:37] steady|in_order|daily|cold|2: page cache 3131633664 -> 1395572736 bytes
+[22:18:41] steady|in_order|daily|cold|2: 4.216s, stored ['2026-11-13 06:00:00']
+[22:18:42] steady|in_order|daily|cold|3: page cache 3132178432 -> 1396166656 bytes
+[22:18:47] steady|in_order|daily|cold|3: 4.259s, stored ['2026-11-13 06:00:00']
+[22:18:50] steady|in_order|daily|warm|1: 3.152s, stored ['2026-11-13 06:00:00']
+[22:18:54] steady|in_order|daily|warm|2: 3.368s, stored ['2026-11-13 06:00:00']
+[22:18:57] steady|in_order|daily|warm|3: 3.057s, stored ['2026-11-13 06:00:00']
+[22:18:59] steady|in_order|none|cold|1: page cache 3131850752 -> 1396125696 bytes
+[22:19:03] steady|in_order|none|cold|1: 4.295s, stored ['2026-11-13 06:00:00']
+[22:19:04] steady|in_order|none|cold|2: page cache 3132411904 -> 1396043776 bytes
+[22:19:09] steady|in_order|none|cold|2: 4.216s, stored ['2026-11-13 06:00:00']
+[22:19:10] steady|in_order|none|cold|3: page cache 3132407808 -> 1396346880 bytes
+[22:19:15] steady|in_order|none|cold|3: 4.294s, stored ['2026-11-13 06:00:00']
+[22:19:18] steady|in_order|none|warm|1: 3.119s, stored ['2026-11-13 06:00:00']
+[22:19:21] steady|in_order|none|warm|2: 2.927s, stored ['2026-11-13 06:00:00']
+[22:19:24] steady|in_order|none|warm|3: 2.877s, stored ['2026-11-13 06:00:00']
+[22:19:39] none|aggregate|start|cold|1: page cache 3348934656 -> 1447194624 bytes
+[22:19:43] none|aggregate|start|cold|1: 4.054s, stored []
+[22:19:44] none|aggregate|start|cold|2: page cache 3182927872 -> 1447055360 bytes
+[22:19:49] none|aggregate|start|cold|2: 4.065s, stored []
+[22:19:50] none|aggregate|start|cold|3: page cache 3183128576 -> 1446965248 bytes
+[22:19:54] none|aggregate|start|cold|3: 4.120s, stored []
+[22:19:57] none|aggregate|start|warm|1: 2.731s, stored []
+[22:20:01] none|aggregate|start|warm|2: 2.815s, stored []
+[22:20:04] none|aggregate|start|warm|3: 2.872s, stored []
+[22:20:05] none|aggregate|daily|cold|1: page cache 3182739456 -> 1446678528 bytes
+[22:20:09] none|aggregate|daily|cold|1: 4.028s, stored []
+[22:20:11] none|aggregate|daily|cold|2: page cache 3182784512 -> 1446862848 bytes
+[22:20:15] none|aggregate|daily|cold|2: 4.036s, stored []
+[22:20:16] none|aggregate|daily|cold|3: page cache 3183124480 -> 1447325696 bytes
+[22:20:21] none|aggregate|daily|cold|3: 4.091s, stored []
+[22:20:24] none|aggregate|daily|warm|1: 2.902s, stored []
+[22:20:27] none|aggregate|daily|warm|2: 2.778s, stored []
+[22:20:30] none|aggregate|daily|warm|3: 2.774s, stored []
+[22:20:31] none|aggregate|none|cold|1: page cache 3183865856 -> 1448116224 bytes
+[22:20:36] none|aggregate|none|cold|1: 4.042s, stored []
+[22:20:37] none|aggregate|none|cold|2: page cache 3184205824 -> 1447186432 bytes
+[22:20:41] none|aggregate|none|cold|2: 3.973s, stored []
+[22:20:43] none|aggregate|none|cold|3: page cache 3183312896 -> 1447182336 bytes
+[22:20:47] none|aggregate|none|cold|3: 3.954s, stored []
+[22:20:50] none|aggregate|none|warm|1: 3.167s, stored []
+[22:20:54] none|aggregate|none|warm|2: 3.127s, stored []
+[22:20:57] none|aggregate|none|warm|3: 2.826s, stored []
+[22:20:58] none|in_order|start|cold|1: page cache 3183718400 -> 1447964672 bytes
+[22:21:03] none|in_order|start|cold|1: 4.159s, stored []
+[22:21:04] none|in_order|start|cold|2: page cache 3184402432 -> 1448165376 bytes
+[22:21:09] none|in_order|start|cold|2: 4.158s, stored []
+[22:21:10] none|in_order|start|cold|3: page cache 3184320512 -> 1448398848 bytes
+[22:21:14] none|in_order|start|cold|3: 4.100s, stored []
+[22:21:17] none|in_order|start|warm|1: 2.832s, stored []
+[22:21:20] none|in_order|start|warm|2: 2.819s, stored []
+[22:21:24] none|in_order|start|warm|3: 2.971s, stored []
+[22:21:25] none|in_order|daily|cold|1: page cache 3183562752 -> 1447641088 bytes
+[22:21:29] none|in_order|daily|cold|1: 4.117s, stored []
+[22:21:31] none|in_order|daily|cold|2: page cache 1828909056 -> 93163520 bytes
+[22:21:35] none|in_order|daily|cold|2: 4.124s, stored []
+[22:21:37] none|in_order|daily|cold|3: page cache 1829134336 -> 93716480 bytes
+[22:21:41] none|in_order|daily|cold|3: 4.106s, stored []
+[22:21:44] none|in_order|daily|warm|1: 3.151s, stored []
+[22:21:48] none|in_order|daily|warm|2: 3.061s, stored []
+[22:21:51] none|in_order|daily|warm|3: 2.990s, stored []
+[22:21:53] none|in_order|none|cold|1: page cache 1830400000 -> 93343744 bytes
+[22:21:57] none|in_order|none|cold|1: 4.132s, stored []
+[22:21:59] none|in_order|none|cold|2: page cache 1829163008 -> 92917760 bytes
+[22:22:03] none|in_order|none|cold|2: 4.281s, stored []
+[22:22:05] none|in_order|none|cold|3: page cache 1828913152 -> 93335552 bytes
+[22:22:09] none|in_order|none|cold|3: 4.095s, stored []
+[22:22:12] none|in_order|none|warm|1: 3.075s, stored []
+[22:22:16] none|in_order|none|warm|2: 2.912s, stored []
+[22:22:19] none|in_order|none|warm|3: 3.072s, stored []
