@@ -15,7 +15,7 @@ to the repository root.
 | Organization issues/comments | `opa/rules/issues.rego`, `opa/rules/comments.rego` | Broader actions and listing for members of the resource organization |
 | Build and deployment | `build-ui.sh`, `docker-compose.override.yml` | Custom UI image and server-side OPA mounts |
 | Verification | `verify/` | Frontend regression tests, policy tests and legacy live verification harnesses |
-| Mechanical formatting | `ruff.toml`, `cvat/components/analytics/clickhouse/init.py` | Formatting convention; no intended ClickHouse behavior change |
+| Mechanical formatting | `ruff.toml` | Formatting convention for the fork's own Python. It is not applied inside the import: `cvat/components/analytics/clickhouse/init.py` equals upstream's file |
 | Team Analytics | `team-analytics/`, `build-team-analytics-service.sh`, the page and logging directories under `cvat/cvat-ui/src/`, wiring in eleven UI files (TA-1) | Work figures per annotator and project from CVAT's own events, read by a separate service |
 
 The authoritative import path selection is `PATHS` in `mirror-cvat.sh`.

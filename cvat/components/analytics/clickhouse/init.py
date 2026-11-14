@@ -26,8 +26,7 @@ def create_db(client: clickhouse_connect.driver.client.Client, db_name: str):
 
 
 def migration_000_initial(client: clickhouse_connect.driver.client.Client):
-    client.query(
-        textwrap.dedent("""\
+    client.query(textwrap.dedent("""\
         CREATE TABLE IF NOT EXISTS events
         (
             `scope` String NOT NULL,
@@ -52,18 +51,15 @@ def migration_000_initial(client: clickhouse_connect.driver.client.Client):
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (timestamp)
         SETTINGS index_granularity = 8192;
-        """)
-    )
+        """))
 
 
 def migration_001_add_access_token(client: clickhouse_connect.driver.client.Client):
-    client.query(
-        textwrap.dedent("""\
+    client.query(textwrap.dedent("""\
         ALTER TABLE events
         ADD COLUMN IF NOT EXISTS
         `access_token_id` Nullable(UInt64) DEFAULT NULL
-        """)
-    )
+        """))
 
 
 def migration_002_add_remote_addr(client: clickhouse_connect.driver.client.Client):
@@ -88,7 +84,9 @@ def main(args: list[str] | None = None) -> int:
     parser.add_argument("--db", help=f"Database name (env: {CLICKHOUSE_DB_ENV_VAR})")
     parser.add_argument("--user", help=f"Username (env: {CLICKHOUSE_USER_ENV_VAR})")
     parser.add_argument("--password", help=f"Password (env: {CLICKHOUSE_PASSWORD_ENV_VAR})")
-    parser.add_argument("--clear", action="store_true", help="Clear the existing DB and initialize a new one")
+    parser.add_argument(
+        "--clear", action="store_true", help="Clear the existing DB and initialize a new one"
+    )
     parsed_args = parser.parse_args(args)
 
     db_name = parsed_args.db or os.getenv(CLICKHOUSE_DB_ENV_VAR)
