@@ -18,7 +18,9 @@ import { shapeWording } from './shapes';
 import { HotkeyLabels, hotkeyLabel } from './hotkeys';
 import { lookupProjectNames } from './project-names';
 import { NotProcessedNotice } from './history';
-import { BarPart, FullList, FullListRow, FullTable } from './full-view-list';
+import {
+    BarPart, FullList, FullListRow, FullTable,
+} from './full-view-list';
 import WorkingTimeOverPeriodCard from './cards/working-time-over-period-card';
 
 const HOTKEY_COLOR = '#2a78d6';

@@ -16,7 +16,9 @@ function dayIn(moment: Date, timeZone: string): string {
 // '17:40', or 'Nov 12, 17:40' when it was not on the service's today, in the viewer's zone.
 export function refreshTime(at: string, now: string, timeZone: string): string {
     const moment = new Date(at);
-    const time = moment.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone });
+    const time = moment.toLocaleTimeString('en-GB', {
+        hour: '2-digit', minute: '2-digit', hour12: false, timeZone,
+    });
     if (dayIn(moment, timeZone) === dayIn(new Date(now), timeZone)) return time;
     return `${moment.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone })}, ${time}`;
 }

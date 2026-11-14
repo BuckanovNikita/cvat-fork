@@ -382,8 +382,8 @@ export async function loadTrends(query: TrendsQuery, fetch: FetchService = fetch
         reportRefusal(response, data);
         const readable = response.ok && !!data && Array.isArray(data.buckets) && Array.isArray(data.lines) &&
             Array.isArray(data.candidates) && data.lines.every(
-                (line: TrendLine) => Array.isArray(line?.points) && line.points.length === data.buckets.length,
-            );
+            (line: TrendLine) => Array.isArray(line?.points) && line.points.length === data.buckets.length,
+        );
         return readable ? data as Trends : null;
     } catch {
         return null;

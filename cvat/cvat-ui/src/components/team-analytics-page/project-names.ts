@@ -26,7 +26,7 @@ export async function lookupProjectNames(ids: number[]): Promise<ProjectNames> {
     for (const chunk of chunks) {
         try {
             // CVAT v2.82.0 lists `id` among the project filter fields; one page holds the chunk
-            // eslint-disable-next-line no-await-in-loop
+
             const projects = await getCore().projects.get({
                 filter: JSON.stringify({ in: [{ var: 'id' }, chunk] }),
                 pageSize: chunk.length,

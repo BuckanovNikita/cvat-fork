@@ -54,7 +54,7 @@ $trend-control-border: $player-slider-color;
     button[aria-pressed='true'] {
         background: $background-color-1;
         font-weight: 600;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 15%);
     }
 }
 
@@ -246,6 +246,7 @@ $trend-control-border: $player-slider-color;
 .cvat-team-analytics-trend-values {
     margin-top: $grid-unit-size;
     font-size: 13px;
+
     // a column per compared line: in a narrow card the values scroll sideways inside it
     overflow-x: auto;
 
