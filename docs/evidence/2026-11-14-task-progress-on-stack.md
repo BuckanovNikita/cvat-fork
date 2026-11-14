@@ -6,9 +6,9 @@ test stack now seeds the tasks and checks the tasks list in a browser:
 `verify/team-analytics-stack/run.sh check-task-progress`, also called from `up` after
 `check_tracer`.
 
-This file holds part one: what was checked without a running stack. No `up`, `cycle` or
-`seed` ran. No namespace was created, no release installed, no image built or pulled, and no
-browser was pointed at a server. Part two, the live run, is listed at the end and has not run.
+Part one (2026-11-14) is what was checked without a running stack. In it no `up`, `cycle` or
+`seed` ran, no namespace was created, no release installed, no image built or pulled, and no
+browser was pointed at a server. Part two (2026-11-15), the live outcome, is at the end.
 
 ## What was added
 
@@ -107,9 +107,9 @@ events in jobs (`team-analytics/service/sql/refresh/`).
 - `node --test verify/task_progress.cjs`: 20 pass, 1 skipped (the optional browser check,
   without `BROWSER_BIN`), as before. The suite is unchanged.
 
-## Unverified until part two
+## Unverified at the end of part one
 
-None of these has been seen:
+Not seen until part two, which now covers each of them:
 
 - the seed against a running server, including the schema read, the PATCHes and the
   read-back;
@@ -117,7 +117,7 @@ None of these has been seen:
 - the colours and the white card as the real stylesheet computes them;
 - the call from `up`.
 
-## Part two (live, not run)
+## Part two as planned in part one
 
 On a stack brought up from an empty namespace, with `TA_UI_IMAGE` built from the branch
 under test:
@@ -134,3 +134,85 @@ under test:
 4. `TA_SCREENSHOT_DIR` set on one of those runs, to keep `task-progress-list.png` beside the
    log.
 5. Record here the log lines, the task ids, the UI image ID and the lowest contrast per card.
+
+## Part two: live outcome, 2026-11-15
+
+The stack ran in namespace `cvat-ta-it-<user>` on `docker-desktop`, reached at
+`http://localhost:8490`. Its images were built from `3dc1a7bc`: UI
+`cvat/ui:v2.82.0-team-analytics` (`sha256:310e9bbc6a47…`), server
+`cvat/server:v2.82.0-fork-policies` (`sha256:4b38c649ae96…`) and service `42d4bb9ab97e`.
+Ticket 08 brought the stack up. Tickets 09 and 11 ran their own checks on it at the same
+time. This ticket ran only `run.sh check-task-progress` and `run.sh status`, from branch
+`ticket/10-task-progress` at `2bd0d1b8`, through the heavy lock. Logs are kept in the shared
+notes directory outside the repository.
+
+### The call from `up`: another ticket's run
+
+Ticket 08's second `up` on this stack ran every check in order and exited 0. It is ticket
+08's run, not this ticket's; its evidence is
+`2026-11-14-stack-fork-image-in-tree-chart.md`. Its log shows this check between
+`check_tracer` and `check_final`:
+
+```
+[ta-stack] task progress: UI image cvat/ui:v2.82.0-team-analytics (local sha256:310e9bbc6a4726e29ae9bc9d76b132af4987abf5570a600b96aa8585a2596178; running docker-pullable://cvat/ui@sha256:310e9bbc6a4726e29ae9bc9d76b132af4987abf5570a600b96aa8585a2596178)
+  server schema: stages ['annotation', 'validation', 'acceptance'], states ['new', 'in progress', 'completed', 'rejected']
+  task 14: 12 jobs, one in each stage/state, read back
+  task 15: 1 job, annotation/new, read back
+  task 14: 12 buckets as specified, total 12; legend rgba(0, 0, 0, 0.88), lowest contrast 16.56:1
+  task 15: 1 buckets as specified, total 1; legend rgba(0, 0, 0, 0.88), lowest contrast 16.56:1
+  ta-admin: the tasks list shows the progress of tasks 14,15 as specified
+[ta-stack] task progress check passed
+[ta-stack] final run: synthetic volume in ta-org-v (history fills while the browser works)
+...
+[ta-stack] final run passed
+```
+
+The same log goes on through the issue matrix and the access cases and ends `exit 0`. So
+`check_final`, which runs after this check, passed with the `ta-admin` tasks and browser
+session already in place.
+
+### This ticket's runs
+
+1. `run.sh check-task-progress`, with `TA_SCREENSHOT_DIR` set: exit 0, two new tasks.
+
+   ```
+   [ta-stack] task progress: UI image cvat/ui:v2.82.0-team-analytics (local sha256:310e9bbc6a4726e29ae9bc9d76b132af4987abf5570a600b96aa8585a2596178; running docker-pullable://cvat/ui@sha256:310e9bbc6a4726e29ae9bc9d76b132af4987abf5570a600b96aa8585a2596178)
+     server schema: stages ['annotation', 'validation', 'acceptance'], states ['new', 'in progress', 'completed', 'rejected']
+     task 22: 12 jobs, one in each stage/state, read back
+     task 23: 1 job, annotation/new, read back
+     task 22: 12 buckets as specified, total 12; legend rgba(0, 0, 0, 0.88), lowest contrast 16.56:1
+     task 23: 1 buckets as specified, total 1; legend rgba(0, 0, 0, 0.88), lowest contrast 16.56:1
+     ta-admin: the tasks list shows the progress of tasks 22,23 as specified
+   [ta-stack] task progress check passed
+   ```
+
+   The local image ID of the tag and the image ID the frontend pod runs are the same. The
+   lowest legend contrast is 16.56:1 on both cards. That is the value the 2026-11-13
+   fixture check computed for the fixed legend; here the stylesheet is the served one.
+2. `TA_UI_IMAGE=cvat/ui:v2.82.0-progress-colors-readable-text-001eb38 run.sh
+   check-task-progress`, a local tag that is not the deployed one: exit 1, before any task
+   was created.
+
+   ```
+   [ta-stack] error: the frontend runs 'cvat/ui:v2.82.0-team-analytics', not the UI image under test cvat/ui:v2.82.0-progress-colors-readable-text-001eb38
+   ```
+
+### What the screenshot shows beyond the checks
+
+`task-progress-list.png` of run 1 (kept with the logs, not committed) shows both cards in
+the filtered list, signed in as `ta-admin`. The single-job card reads
+`• 1 annotation / new • 1 total` above a full-width gray bar.
+
+On the 12-job card, the legend wraps onto seven lines. Its last line (`• 1 acceptance /
+rejected • 12 total`) extends below the card's lower edge, and the bar is not visible in the
+card. The check reads the segments' computed styles, not whether they are on screen, so it
+passes. This is the UI's layout with twelve nonzero buckets on a 1400-pixel-wide window. It
+is recorded here and not asserted, and nothing was changed for it in this ticket.
+
+### What stays unverified
+
+- A "not available" bucket on a live page (a viewer who sees only some of a task's jobs).
+  Neither the Compose launcher nor the stack covers it. The node suite covers it with the API
+  mocked.
+- `up` from an empty namespace with this check, run by this ticket itself. The call from
+  `up` was seen in ticket 08's run on a stack that already existed.
