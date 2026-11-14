@@ -320,19 +320,20 @@ class SlowSearchCase(CutoverCase):
 
     stack_options = {"config_options": {"cutover_search_at_start_s": 1, "cutover_search_in_check_s": 1}}
 
-    @staticmethod
-    def tagged_work() -> list[dict]:
-        """Eight bounding boxes drawn on 12 November from 11:00 on: the cutover, for a search that finishes."""
-        return [draw(at("2026-11-12 11:00:00") + timedelta(minutes=n), input_method="mouse", **BOX) for n in range(8)]
-
-    def slow_down_the_search(self) -> None:
-        """From now on every statement that reads the events' payload, the cutover search among them, takes half a
-        second per recorded event: eight events take four seconds, four times the limit. Real time, so a slow host
-        only makes the search slower."""
+    def add_tagged_work_read_slowly(self) -> None:
+        """Adds sixteen bounding boxes drawn on 12 November from 11:00 on (the cutover, for a search that finishes),
+        and from then on makes every statement that reads the events' payload, the cutover search among them, take
+        half a second per recorded event. Each event is a part of its own, with merges stopped, so that ClickHouse
+        sleeps for one row at a time (it refuses more than three seconds of sleep per block): with the two threads
+        of the test ClickHouse the search takes about four seconds, four times its limit. Real time, so a slow
+        host only makes the search slower."""
         events = clickhouse_client(self.stack.events_db)
+        events.command("SYSTEM STOP MERGES events")
+        for n in range(16):
+            self.stack.add_events([draw(at("2026-11-12 11:00:00") + timedelta(minutes=n), input_method="mouse", **BOX)])
         events.command("RENAME TABLE events TO events_recorded")
         events.command("CREATE VIEW events AS SELECT * EXCEPT (payload), if(sleepEachRow(0.5) = 0, payload, payload) "
-                       "AS payload FROM events_recorded SETTINGS max_block_size = 1")
+                       "AS payload FROM events_recorded")
 
     def assert_no_statement_left_running(self) -> None:
         """Waits until nothing that reads this test's events runs in ClickHouse."""
@@ -347,8 +348,7 @@ class SlowSearchCase(CutoverCase):
 
 class SlowSearchAtStartTest(SlowSearchCase):
     def test_a_service_whose_search_at_start_is_too_slow_starts_and_reports_no_cutover(self):
-        self.stack.add_events(self.tagged_work())
-        self.slow_down_the_search()
+        self.add_tagged_work_read_slowly()
         self.restart()
         self.assertEqual(self.get("status")["cutover"], {"at": None})
         self.assert_no_statement_left_running()
@@ -371,8 +371,7 @@ class SlowSearchInDailyCheckTest(SlowSearchCase):
         else:
             self.fail("history was never complete")
         # tagged work in a processed day, which the daily check's search reads too slowly
-        self.stack.add_events(self.tagged_work())
-        self.slow_down_the_search()
+        self.add_tagged_work_read_slowly()
         self.assertEqual(self.stack.service.step(), 0, "the daily check did not end as a step that ran")
         self.assertEqual(self.get("status")["cutover"], {"at": None})
         self.assert_no_statement_left_running()
