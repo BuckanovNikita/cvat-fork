@@ -293,10 +293,15 @@ Tests at `2c900d3` (supplied boundaries):
 | Check | Result |
 | --- | --- |
 | Seam 1, `verify/team_analytics_service.sh` | 265 tests, OK (1392 s) |
+| Seam 1, `tests.test_lease` and `tests.test_cutover` on `clickhouse/clickhouse-server:23.11-alpine` | 17 tests, OK (after the lease test change below) |
 | Seam 2, `node --test verify/team_analytics_logging.cjs` | 55 tests, all pass |
 | Seam 3, `node --test verify/team_analytics_page.cjs` | 206 tests, all pass |
 | `node --test verify/task_progress.cjs` with `BROWSER_BIN` set to Chrome | 21 tests, all pass |
 | Type check, `tsc -p cvat-ui/tsconfig.json` | exit 0 |
+
+After the run, the hanging-renewal test got an 8 s lease, so a stalled renewal leaves room for a
+whole refresh on a slow host. This changed the test only. `tests.test_lease` passed again on both
+ClickHouse images.
 
 The stack was upgraded in place, without `down`. `run.sh up` ran from the fix branch with UI image
 `cvat/ui:v2.82.0-team-analytics-review-fixes-2-2c900d3` and service image
@@ -309,7 +314,7 @@ Checks by hand on the upgraded stack:
 
 - Before the upgrade, the totals' earliest shape-tagged hour and the raw events' earliest tagged
   operation hour were both 2026-09-11 08:00. After it, table `cutover` held one row,
-  2026-09-11 08:00, stored at 08:40:24 UTC by the first refresh of the new service. As
+  2026-09-11 08:00, stored at 08:40:24 UTC during the upgrade. As
   `ta-admin`, `status` reported `cutover: {at: 2026-09-11T08:00:00+00:00}` and history complete.
 - As `ta-admin`, ta-org-a over the year (which holds the cutover) reported
   `partly_legacy: true`. The same year with a project filter matching no work reported
