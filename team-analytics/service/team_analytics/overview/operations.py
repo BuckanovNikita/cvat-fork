@@ -20,7 +20,7 @@ def build(request: Request) -> dict:
     return {
         "legacy": bool(first["legacy"]),
         # the period holds the cutover: bounding box figures, class changes and hotkey use cover the part after it
-        **legacy.describe(),
+        **legacy.describe(job_work=bool(first["job_work"])),
         # the shapes the figures cover: what was asked for, or all shapes in a legacy period
         "shapes": "all" if first["all_shapes"] else "bounding_boxes",
         "working_time_ms": int(first["working_ms"] or 0),

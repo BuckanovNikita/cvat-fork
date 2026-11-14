@@ -68,3 +68,19 @@ test('a period after the cutover has neither notice', () => {
     assert.doesNotMatch(text(html), /new activity logging started/);
     assert.match(html, /aria-label="Shapes"/);
 });
+
+test('an empty period that holds the cutover shows only the empty state, without either notice', () => {
+    // as an older service answers it: partly legacy, although the scope has no job work in the period
+    const empty = {
+        ...operations({ partly: true }),
+        working_time_ms: 0,
+        active_time_ms: 0,
+        rows: operations().rows.map((row) => ({
+            ...row, objects: 0, timed_objects: 0, time_ms: 0, average_ms: null, share: null,
+        })),
+    };
+    const html = page(empty);
+    assert.match(text(html), /No job work in this period/);
+    assert.doesNotMatch(text(html), LEGACY);
+    assert.doesNotMatch(text(html), /new activity logging started/);
+});

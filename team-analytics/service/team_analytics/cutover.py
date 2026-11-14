@@ -8,7 +8,8 @@ totals). Against it a span of time is
     (operations without a shape type count under All shapes only) and the page says since when the
     bounding box figures, class changes and hotkey use are complete;
   - otherwise (it begins at or after the cutover) not legacy, whatever its scope holds.
-A legacy period with no job work in its scope is still empty, not legacy: read files decide that part.
+A period with no job work in its scope is empty, neither legacy nor partly legacy: read files decide that part
+(`legacy` and `job_work` columns).
 """
 
 from __future__ import annotations
@@ -47,7 +48,8 @@ class Legacy:
         """For the read files: `legacy_period` (1 = all shapes, legacy when the scope has job work)."""
         return {"legacy_period": 1 if self.legacy_period else 0}
 
-    def describe(self) -> dict:
-        """For responses: `partly_legacy` and the `cutover` moment (ISO, or None)."""
-        return {"partly_legacy": self.partly_legacy,
+    def describe(self, *, job_work: bool) -> dict:
+        """For responses: `partly_legacy` and the `cutover` moment (ISO, or None). `job_work` = the scope has job
+        work in the span (from the read file); without it the span is empty, so not partly legacy either."""
+        return {"partly_legacy": self.partly_legacy and job_work,
                 "cutover": self.cutover.isoformat() if self.cutover else None}

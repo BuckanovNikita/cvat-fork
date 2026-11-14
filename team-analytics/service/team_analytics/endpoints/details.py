@@ -77,7 +77,7 @@ def handle(request: Request) -> dict:
         "page_size": PAGE_SIZE,
         "total": total,
         "legacy": bool(summary["legacy"]),
-        **legacy.describe(),
+        **legacy.describe(job_work=bool(summary["job_work"])),
         "shapes": "all" if summary["all_shapes"] else "bounding_boxes",
         "processed": load_state(request.sql, request.now).covers(span.start),
         "technical_accounts": len(request.config.technical_accounts),

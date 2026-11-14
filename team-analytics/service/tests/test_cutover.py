@@ -98,6 +98,18 @@ class WithCutoverTest(CutoverCase):
                 self.assertEqual((november["legacy"], november["partly_legacy"], november["cutover"]),
                                  (False, True, CUTOVER))
 
+    def test_an_empty_period_that_holds_the_cutover_is_neither_legacy_nor_partly_legacy(self):
+        # a project with no job work at all: the period holds the cutover, its scope holds nothing
+        empty = {"period": "month", "month": "2026-11", "project": "999", "shapes": "bounding_boxes"}
+        answers = {
+            "overview": self.operations(**empty),
+            "details": self.get("details", **empty),
+            "list": self.get("list", by="annotators", **empty),
+        }
+        for endpoint, body in answers.items():
+            with self.subTest(endpoint=endpoint):
+                self.assertEqual((body["legacy"], body["partly_legacy"]), (False, False))
+
     def test_trend_buckets_are_marked_by_the_cutover(self):
         monthly = self.get("trends", step="month", shapes="bounding_boxes")
         starts = [bucket["start"] for bucket in monthly["buckets"]]
