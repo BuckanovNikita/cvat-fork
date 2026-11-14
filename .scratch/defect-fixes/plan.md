@@ -1,7 +1,5 @@
 # Fix plan for the confirmed defects and recorded gaps
 
-Status: needs-triage
-
 Rewritten on 2026-11-14 after three rounds of questions to the owner. Nothing
 here is implemented. The decisions of section 1 are the owner's; the defaults
 of section 2 were not confirmed one by one. The behaviour is specified in
@@ -139,7 +137,7 @@ means tooling, configuration or documentation, which gets a check instead.
 
 | # | Item | How known | Test first | Work | Check |
 | --- | --- | --- | --- | --- | --- |
-| 1.1 | OPA-3: the added rule and the added list-filter branch admit any member whatever their global role, including none. The patch replaced the stock member branch of the list filter | read (`issues.rego` compared with the stock v2.82.0 file; `comments.rego` by reading only) | P: a case with `privilege: null` in `verify/opa_issues_test.rego`. Create, view, update, delete: refused. List: exactly the stock result for that caller | Apply the patch to the imported stock files with `utils.has_perm(utils.WORKER)` in the added rules, and the stock member branch restored after the patched one. The test reads the in-tree files and helpers | the policy test on the stock tag and on the patched tree |
+| 1.1 | OPA-3: the added rule and the added list-filter branch admit any member whatever their global role, including none. The patch replaced the stock member branch of the list filter | read (both policies compared with their stock v2.82.0 files) | P: cases with `privilege: null` in `verify/opa_issues_test.rego`, for a caller who is staff of the issue and one who is not: the patched result equals the stock result for every action and for the list filter. Stock lets issue staff view without a global role, so "refused everything" would be wrong | Apply the patch to the imported stock files with `utils.has_perm(utils.WORKER)` in the added rules, and the stock member branch restored after the patched one. The test reads the in-tree files and helpers | the policy test on the stock tag and on the patched tree |
 | 1.2 | OPA-2: nothing delivers the policies on Kubernetes | read | — | A Dockerfile and a build script beside `build-ui.sh`: stock server image plus the two files copied over the stock ones. Nothing else, no Python | the server's own bundle builder, run in the image, yields both patched files (the check of `docs/evidence/2026-11-14-opa-rules-mount-path.md`) |
 | 1.3a | The stack uses the fork image and the in-tree chart | — | — | Backend image set to the fork image. The chart comes from `cvat/helm-chart`; the download of the upstream archive goes away. **Its dependency archives are still fetched by Helm and still checked against `chart-deps.sha256`; the lock stays ours** | the render guard and a fresh `up` |
 | 1.3b | OPA-8: the patch was never seen on a running stack | recorded | — | The issue and comment matrix of `verify/opa_issues_check.py` runs in the stack with its seed, plus an account with no global role; the served bundle is checked for both files, each by itself | the matrix, kept as dated evidence |
@@ -168,9 +166,9 @@ tests.
 
 | # | Item | How known | Test first | Fix |
 | --- | --- | --- | --- | --- |
-| Q9a | A stored cutover never changes | read | 1: an earlier tagged event that arrives later moves the cutover at the next daily check; a later one does not | The daily check looks again; the read takes the earliest stored hour. The cost of the long-range query is measured on the loaded volume first |
+| Q9a | A stored cutover never changes | read | 1: an earlier tagged event that arrives later moves the cutover at the next daily check; a later one does not | The daily check looks again; the read takes the earliest stored hour. The cost of the long-range query is measured on the loaded volume first; if too costly, later moves come from the steps that compute an hour anyway. Removing the stored value does not undo a wrongly early event; that becomes a stated limit (see `spec.md`) |
 | Q9b | With no stored cutover every period reads as legacy until a tagged hour reaches the totals | read | 1: a service started on stored tagged events knows the cutover on its first answer; tagged work present only in raw events still yields one | The finder runs in the start-up step and no longer waits for the totals |
-| S15 | A refresh window under 24 hours counts today's earlier hours as processed without computing them | read ("processed" is inferred from history reaching yesterday) | 1: with a 1-hour window an event from earlier today is computed or its period reads as not processed | The history step also covers today's hours before the window. Two tests set a 1-hour window on purpose, so refusing short windows is the fallback, not the plan |
+| S15 | A refresh window under 24 hours counts today's earlier hours as processed without computing them | read ("processed" is inferred from history reaching yesterday) | 1: with a 1-hour window an event from earlier today is computed or its period reads as not processed | The history step also covers today's hours before the window. Two tests set a 1-hour window as a device for the edge between two refreshes, so short windows must stay possible |
 | Q6 | A redo is counted as a creation | read (`sql/refresh/operations.sql`) | 1: draw, undo, redo is one creation; the redo's time is Other. The redo tests in `test_creation_methods.py` change with it | Remove the redo branch from the creation rule; default (c) for alignment runs |
 | L10a, SQL half | A group event must become one alignment per object | decision 13 | 1: a group event of three objects and 6 s yields three alignments of 2 s | `sql/refresh/operations.sql`, after the event's shape is fixed with package C |
 | V10 | The hanging-renewal test depends on wall-clock time | read | — | A supplied clock for the lease tests |
@@ -181,7 +179,7 @@ upstream UI files, `verify/team-analytics-logging/`.
 
 | # | Item | How known | Test first | Fix |
 | --- | --- | --- | --- | --- |
-| L2 | Frame navigation counts repeats that moved no frame | read (a repeat while a frame loads asks for the same frame again) | 2: repeats while the frame is loading add nothing | `input-summary.ts`: skip a frame-navigation repeat while the player is fetching |
+| L2 | Frame navigation counts repeats that moved no frame | read (a repeat while a frame loads asks for the same frame again) | 2: a press or repeat while the frame is loading adds nothing, and neither does one at the last frame | A frame-navigation hotkey counts when the frame changes as a result; the frame-change success signal already exists |
 | L10a, UI half | A group drag logs only the grabbed shape; moving the selection box logs nothing | read (the canvas reports the group in one event that is saved without logging, and reports the grabbed shape again) | 2: a group drag of three boxes logs one group event for three objects and no second event for the grabbed one | The group-moved handler in `canvas-wrapper.tsx`; the event's shape in `contract.ts` |
 
 **D, page.** Owns the page directory and `verify/team-analytics-page/`.

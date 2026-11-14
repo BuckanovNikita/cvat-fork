@@ -121,8 +121,9 @@ for real.
     good.
 18. As a maintainer, I want the cutover never to move later, so that a period that showed
     full figures does not turn legacy.
-19. As a fork maintainer, I want the manual correction of a stored cutover kept and
-    documented, so that a wrongly dated event can still be undone.
+19. As a fork maintainer, I want the documents to say what a shape-tagged event with a
+    wrongly early date does to the cutover and what it takes to undo, so that I am not
+    told that removing the stored value is enough.
 20. As a maintainer who filtered the page to one project, I want the details table by
     project to keep listing every project, so that I can pick another one.
 21. As a maintainer, I want each table to describe the rows it lists, so that a project
@@ -169,10 +170,11 @@ for real.
 
 ### Hotkey actions
 
-36. As a maintainer, I want frame navigation to count frames moved, so that the figure
-    means what the glossary says.
-37. As a maintainer, I want a held frame-navigation key on a slow frame not to inflate the
-    hotkey share, so that slow data does not look like keyboard skill.
+36. As a maintainer, I want a frame-navigation hotkey to count only when the frame
+    actually changes, so that the figure means what the glossary says.
+37. As a maintainer, I want a frame-navigation key pressed or held while a frame is still
+    loading not to inflate the hotkey share, so that slow data does not look like keyboard
+    skill.
 38. As a maintainer, I want every other held key to stay one hotkey action, so that
     nothing else changes.
 
@@ -202,10 +204,11 @@ for real.
 48. As an organization member, I want this to hold on the Kubernetes deployment, so that
     the patch is in force where CVAT actually runs.
 49. As an administrator, I want an account with no global role to get exactly what stock
-    CVAT gives it, so that a deactivated or half-provisioned account gains nothing from
-    the patch.
-50. As an administrator, I want that account still able to list the issues it is assigned
-    to, as in stock CVAT, so that the floor removes the patch and nothing more.
+    CVAT gives it for every action, so that a deactivated or half-provisioned account
+    gains nothing from the patch.
+50. As an administrator, I want that account to keep what stock CVAT allows it, such as
+    viewing and listing the issues it is assigned to, so that the floor removes the patch
+    and nothing more.
 51. As an organization owner, I want non-members, removed members and other organizations
     refused as before, so that the patch widens access only inside the organization.
 52. As a fork maintainer, I want the policies delivered inside the server image, so that
@@ -323,7 +326,11 @@ for real.
   `worker` global role, in both policies. The same holds for the added branch of the list
   filter. The stock member branch of the list filter, which the patch had replaced, is
   restored after the patched one, so that a member below the floor gets the stock result
-  and not an undefined filter.
+  and not an undefined filter. Both policies were compared with their stock files; the
+  patch is the same two additions in each.
+- The invariant: for a caller with no global role, the patched policies decide exactly
+  as the stock ones for every action. Stock CVAT lets such a caller view an issue it is
+  staff of, so "refused everything" would be wrong.
 - The fork server image is the stock release image with the two patched policies copied
   over the stock ones, and nothing else (ADR 0004). A build script beside the UI's builds
   it. It is never pulled; like the other two images it must be present on the node.
@@ -366,12 +373,22 @@ for real.
 - The cutover is looked for in the recorded events at service start and in the daily
   check, no longer only when a shape-tagged hour reaches the stored totals. A found hour
   earlier than the stored one replaces it; a later one never does. Reads use the earliest
-  stored hour. The manual correction (removing the stored value) stays and is exercised
-  once. The cost of the long-range query is measured on the loaded volume before this is
-  adopted.
+  stored hour.
+- This search is a long-range query, at start and once a day. That contradicts the Team
+  Analytics spec's rule of no long-range query, as the one-time search already did. Its
+  cost is measured on the loaded volume before it is adopted. If it proves too costly,
+  the long-range search runs only while no cutover is stored, as today, and later moves
+  come from the steps that compute an hour anyway (a history day, a recounted day) when
+  that hour holds an earlier shape-tagged event.
+- A shape-tagged event with a wrongly early date moves the cutover earlier, and removing
+  the stored value does not undo it: the next search finds the same event. The only
+  correction is to remove that event and then the stored value. This is written into the
+  fork specification as a limit. It replaces the earlier limit, which said that removing
+  the stored value was enough.
 - The history step also covers today's hours that lie before the refresh window, so a
-  short window leaves no hour counted as processed without being computed. Refusing
-  windows under a day is the fallback if that proves unsound.
+  short window leaves no hour counted as processed without being computed. Two existing
+  tests set a one-hour window as a device for exercising the edge between two refreshes,
+  so short windows must stay possible; refusing them is not an option.
 - A redo is no longer turned into a creation, so it has no creation method and its time
   is Other. It still ends an alignment run (default).
 - A group move becomes one alignment per object moved, each with an equal share of the
@@ -388,8 +405,10 @@ for real.
   (ADR 0002). CVAT's own log of the grabbed shape is neither removed nor counted a second
   time. Moving the selection box produces the same event. The event's fields are fixed in
   the logging contract before the UI half and the calculation half are built.
-- A repeat of a frame-navigation hotkey that arrives while a frame is loading is not
-  counted. Every other rule of hotkey and mouse counting is unchanged.
+- A frame-navigation hotkey counts one hotkey action when the frame changes as a result.
+  A press or a repeat that arrives while a frame is loading, or that cannot move (the
+  first or last frame, navigation blocked), counts nothing. Every other rule of hotkey
+  and mouse counting is unchanged.
 - The function that writes a Team Analytics record moves into a module of its own, which
   removes the three import cycles. Behaviour does not change.
 
@@ -442,8 +461,8 @@ carry everything:
    Other; a group event of three objects and six seconds as three alignments of two
    seconds; a killed lease holder overtaken within the lease. The existing tests that
    assert the old redo and unprocessed-period behaviour change with it.
-2. **The events the UI logging sends.** New cases: repeats of a frame-navigation hotkey
-   while a frame is loading add nothing; a group drag of three boxes sends one group
+2. **The events the UI logging sends.** New cases: a frame-navigation hotkey pressed or
+   held while a frame is loading adds nothing, and neither does one at the last frame; a group drag of three boxes sends one group
    event for three objects and no second counted event for the grabbed one; moving the
    selection box sends the same event.
 3. **The page against supplied service responses.** New cases: the two cards draw
@@ -458,9 +477,10 @@ carry everything:
    service suite on both ClickHouse versions.
 
 **The policy test** evaluates the rules against synthetic inputs, now reading the
-policies and helpers from the import. New case: a caller with no global role is refused
-create, view, update and delete, and gets exactly the stock result for list. It runs
-against the stock tag and the patched tree, each with its own expectations.
+policies and helpers from the import. New cases: for a caller with no global role the
+patched policies give the stock result for every action and for the list filter, once
+for a caller who is staff of the issue and once for one who is not. It runs against the
+stock tag and the patched tree, each with its own expectations.
 
 Each failing test is written and seen to fail before its fix. Prior art is the existing
 suites at each seam; nothing here needs a new harness.
@@ -493,6 +513,13 @@ integration and verification. The access rules and the policies get their own.
   current week of the volume goes through the events API, since it is not known whether
   the API accepts old timestamps; the ClickHouse setup file returns to upstream's; the
   ledger stays with a dated note.
+- **A correction to what the owner was told.** When the owner agreed that the cutover
+  may move earlier, the recommendation said the manual correction would remain for a
+  wrongly dated event. It does not work for that case, as described under "Service:
+  refresh". The owner has not seen this corrected statement.
+- **Frame navigation at the first or last frame.** The owner decided "frames moved" for
+  a key held on a slow frame. Counting nothing when the key cannot move at all is this
+  spec's reading of the same glossary line, not a separate answer from the owner.
 - **The widened import is one shot.** Every further widening changes the identifiers
   again, which is why the path list is proven first. It needs a full clone of upstream.
 - **Not verified, to be found out by the work:** that upstream's lint configuration loads
