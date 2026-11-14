@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from tests.support import at, working_time
 from tests.test_operations import ALICE, BOB, ORG, OperationsCase, client, draw, seconds
 
@@ -253,6 +255,89 @@ class AlignmentTest(OperationsCase):
 
         row = self.by_name(self.operations(shapes="bounding_boxes"))["alignment"]
         self.assertEqual((row["objects"], row["time_ms"]), (1, 10_000))
+
+
+def group_move(end, objects: int, *, rectangles: int | None = None, duration_ms: int = 500,
+               shape_type: str = "rectangle", grabbed: int | None = 1, frame: int = 0,
+               browser: int = BROWSER) -> list[dict]:
+    """A group move as the new UI logs it: one drag:object for the gesture with the objects moved in
+    its count, then, when the gesture began on an object, CVAT's own drag of that object marked as
+    grabbed, 1 ms later. `grabbed=None` is a move of the selection box (no grabbed object)."""
+    events = [client("drag:object", end, count=objects, duration=duration_ms, group="move",
+                     shape_type=shape_type, object_type="shape",
+                     rectangle_count=objects if rectangles is None else rectangles,
+                     frame=frame, input_method="mouse", client_id=browser)]
+    if grabbed is not None:
+        events.append(adjust("drag:object", end + timedelta(milliseconds=1), grabbed, frame,
+                             duration_ms=duration_ms, browser=browser, group="grabbed",
+                             input_method="mouse"))
+    return events
+
+
+class GroupMoveTest(OperationsCase):
+    """A group move is one alignment for each object moved, sharing the gesture's time equally."""
+
+    t = "2026-11-13 10:00:00"
+
+    def alignment(self, shapes: str = "all") -> dict:
+        return self.by_name(self.operations(shapes=shapes))["alignment"]
+
+    def test_a_group_drag_of_three_boxes_over_six_seconds_is_three_alignments_of_two_seconds(self):
+        t = self.t
+        self.stack.add_events([
+            client("load:job", seconds(t, 0)),
+            *group_move(seconds(t, 6), 3, duration_ms=6_000),
+        ])
+
+        row = self.alignment()
+        self.assertEqual((row["objects"], row["timed_objects"], row["time_ms"]), (3, 3, 6_000))
+        self.assertEqual(row["average_ms"], 2_000)
+        self.assertEqual(row["mouse_objects"], 3)
+
+    def test_the_grabbed_drag_at_the_same_millisecond_is_not_counted_again(self):
+        t = self.t
+        group, grabbed = group_move(seconds(t, 6), 3, duration_ms=6_000)
+        grabbed["timestamp"] = group["timestamp"]
+        self.stack.add_events([client("load:job", seconds(t, 0)), group, grabbed])
+
+        row = self.alignment()
+        self.assertEqual((row["objects"], row["timed_objects"], row["time_ms"]), (3, 3, 6_000))
+
+    def test_moving_the_selection_box_counts_the_same_way(self):
+        t = self.t
+        self.stack.add_events([
+            client("load:job", seconds(t, 0)),
+            *group_move(seconds(t, 6), 3, duration_ms=6_000, grabbed=None),
+        ])
+
+        row = self.alignment()
+        self.assertEqual((row["objects"], row["timed_objects"], row["time_ms"]), (3, 3, 6_000))
+
+    def test_a_group_of_boxes_and_other_shapes_counts_only_its_boxes_under_bounding_boxes(self):
+        t = self.t
+        self.stack.add_events([
+            client("load:job", seconds(t, 0)),
+            *group_move(seconds(t, 6), 3, rectangles=2, shape_type="mixed", duration_ms=6_000),
+        ])
+
+        boxes = self.alignment(shapes="bounding_boxes")
+        self.assertEqual((boxes["objects"], boxes["time_ms"]), (2, 4_000))
+        everything = self.alignment()
+        self.assertEqual((everything["objects"], everything["time_ms"]), (3, 6_000))
+
+    def test_a_drag_a_group_move_including_the_box_and_another_drag_are_three_alignments_of_it(self):
+        t = self.t
+        self.stack.add_events([
+            client("load:job", seconds(t, 0)),
+            drag(seconds(t, 5), 1),
+            # boxes 1 and 2 moved together, box 1 grabbed
+            *group_move(seconds(t, 10), 2, duration_ms=2_000, grabbed=1),
+            drag(seconds(t, 15), 1),
+        ])
+
+        # three alignments of box 1 and one of box 2; only the 1 ms after the group event is no alignment's
+        row = self.alignment()
+        self.assertEqual((row["objects"], row["timed_objects"], row["time_ms"]), (4, 4, 14_999))
 
 
 class AlignmentWindowTest(OperationsCase):
