@@ -237,8 +237,13 @@ Two things this plan relies on were only written there (history, up to
   upstream's tree.
 - The cost of the cutover's long-range query.
 - Whether the events API accepts events with old timestamps.
-- Remote state: the branch has no upstream configured and the remote was not
-  fetched; "already on `main`" for the path of 0.1a rests on local references.
+- Remote state, fetched on 2026-11-14: the remote's `main` equalled local
+  `main` before this branch was landed on it, so the one path line in
+  `INFRA_MIGRATION.md` is published. The remote also holds this branch up to
+  `f492c65`, the commit before implementation began; every commit that carries
+  the path in the run logs or in compiled files came after it and is not
+  published. An earlier version of this plan said the branch had no upstream
+  and had never been pushed; both were wrong.
 - The pasted list was cut in places; items 2 to 4 of its "confirmed" part were
   rebuilt from the review follow-ups below them, and the fragment about
   "refresh for up to 30 minutes" is read as S9.
