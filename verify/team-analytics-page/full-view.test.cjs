@@ -531,16 +531,32 @@ test('a trend: a large chart, a legend with whole names and latest values on top
     });
 });
 
-test('a full view of a period not wholly processed shows no partial figures', async () => {
-    const { Page } = openPage({
-        search: '?view=annotators',
-        respond: (url) => (url.includes('/list?') ? { body: { ...listAnswer(url).body, processed: false } } : answer(url)),
+// A list of a period not wholly processed, as the service sends it: the envelope, and every figure null.
+function noFiguresList(url) {
+    const by = new URL(url, 'http://localhost').searchParams.get('by');
+    const envelope = { period: OVERVIEW.period, processed: false, by };
+    if (by === 'hotkeys') return { body: { ...envelope, hotkey_actions: null, rows: null } };
+    return {
+        body: {
+            ...envelope, legacy: false, partly_legacy: false, cutover: null, shapes: 'bounding_boxes', total: null, rows: null,
+        },
+    };
+}
+
+for (const search of ['?view=annotators', '?view=projects', '?view=split&rows=projects', '?view=hotkeys']) {
+    test(`a full view of a period not wholly processed shows no partial figures (${search})`, async () => {
+        const { Page, lookups } = openPage({
+            search,
+            respond: (url) => (url.includes('/list?') ? noFiguresList(url) : answer(url)),
+        });
+        await opened(Page, async (view) => {
+            assert.equal(listRows(view.container).length, 0);
+            assert.ok(view.container.querySelector('.cvat-team-analytics-not-processed'));
+            assert.doesNotMatch(view.container.textContent, /could not be loaded/);
+            assert.deepEqual(lookups.filter((ids) => ids.includes(7)), [], 'no list row asks for a name');
+        });
     });
-    await opened(Page, async (view) => {
-        assert.equal(listRows(view.container).length, 0);
-        assert.ok(view.container.querySelector('.cvat-team-analytics-not-processed'));
-    });
-});
+}
 
 test('a trend full view keeps the comparison chosen on the overview', async () => {
     const { requests, Page } = openPage();

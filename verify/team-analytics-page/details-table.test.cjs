@@ -163,10 +163,30 @@ test('the selected row is marked', () => {
     assert.match(html, /aria-pressed="false"[^>]*title="alice"/);
 });
 
+// A table of a period not wholly processed, as the service sends it: the envelope, and every figure null.
+function noFigures(by = 'annotators') {
+    return {
+        by,
+        page: null,
+        page_size: 10,
+        total: null,
+        legacy: false,
+        partly_legacy: false,
+        cutover: null,
+        shapes: 'bounding_boxes',
+        processed: false,
+        technical_accounts: 1,
+        rows: null,
+        ...(by === 'projects' ? { project_ids: null } : {}),
+    };
+}
+
 test('a period that is not processed yet shows no figures', () => {
-    const html = card({ details: details({ processed: false }) });
-    assert.doesNotMatch(text(html), /alice/);
-    assert.match(text(html), /not processed yet/i);
+    for (const by of ['annotators', 'projects']) {
+        const html = card({ details: noFigures(by), by });
+        assert.match(text(html), /not processed yet/i);
+        assert.doesNotMatch(text(html), /NaN|of 0|Previous/);
+    }
 });
 
 // --- the section: its own requests, search, paging and picking ----------------------------------------------
@@ -219,6 +239,21 @@ async function type(container, value) {
 function button(container, label) {
     return [...container.querySelectorAll('button')].find((b) => b.textContent === label);
 }
+
+test('an answer without figures shows the not processed state, by annotator and by project', async () => {
+    const { fetch } = suppliedFetch((url) => ({ body: noFigures(new URL(url, 'http://localhost').searchParams.get('by')) }));
+    const page = await mount(section(fetch));
+    try {
+        await page.settle();
+        assert.match(page.container.textContent, /This period is not processed yet/);
+        await click(button(page.container, 'Projects'));
+        await page.settle();
+        assert.match(page.container.textContent, /This period is not processed yet/);
+        assert.doesNotMatch(page.container.textContent, /could not be/);
+    } finally {
+        await page.unmount();
+    }
+});
 
 test('the table asks for the period, filters and shapes, pages with next and narrows by name', async () => {
     const { fetch, requests } = suppliedFetch(detailsAnswer);
