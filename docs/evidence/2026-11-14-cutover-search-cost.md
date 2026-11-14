@@ -126,3 +126,31 @@ ClickHouse settings. The figures above are those of the earlier aggregate; the n
 statement was not measured at this scale. See
 [`2026-11-14-refresh-lease-two-minutes.md`](2026-11-14-refresh-lease-two-minutes.md),
 "Independent review".
+
+## 2026-11-15: the in-order statement, measured
+
+The review of tickets 23 and 24 (finding 2) asked for the statement that now ships, which
+reads the events in timestamp order and stops at the first match, to be measured at this
+scale before it is relied on, because once a cutover is stored every search finds nothing
+and reads every record before it.
+
+Files: [`2026-11-14-cutover-search-cost/2026-11-15/`](2026-11-14-cutover-search-cost/2026-11-15/)
+(`measure.sh` is the procedure; `in_order.sql` and `aggregate.sql` are the two statements as
+they ran; the other files are its output).
+
+### What decides, written before the figures were read
+
+The limits are the ones above, now settings of the statement: 23 s at start, 60 s in the
+daily check, 512 MiB in both.
+
+- A statement fits a state at start (or in the daily check) when all its runs there under
+  the start's (or the daily check's) limits complete and none is stopped, and its peak
+  memory is at most 512 MiB. The deciding figure is the slowest cold run under the limits;
+  the runs with no limit show how long it would take.
+- The in-order statement is worse than the aggregate in a state when, with no limit, its
+  fastest cold run is slower than the aggregate's slowest cold run, or its fastest warm run
+  slower than the aggregate's slowest warm run. A smaller difference is not told apart from
+  the machine: the first measurement's cold runs of one statement spread from 4.4 to 6.5 s.
+- The in-order statement stays when it is not worse in the steady state and fits in every
+  state where the aggregate fits. Otherwise each state gets the cheaper form. Where neither
+  fits, the figures are recorded and nothing else is designed.
