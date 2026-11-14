@@ -252,6 +252,22 @@ class AtStartTest(CutoverCase):
         self.assertEqual((week["legacy"], week["partly_legacy"], week["cutover"], week["shapes"]),
                          (False, False, CUTOVER, "bounding_boxes"))
 
+    def test_an_event_dated_in_the_future_is_not_the_cutover(self):
+        self.stack.add_events([
+            client("load:job", at("2026-11-20 10:00:00")),
+            draw(at("2026-11-20 10:00:10"), input_method="mouse", **BOX),
+        ])
+        self.restart()
+        self.assertEqual(self.get("status")["cutover"], {"at": None})
+
+        # so it does not stand in the way of the real one, which the refresh that first stores tagged work finds
+        self.stack.add_events([
+            client("load:job", at("2026-11-13 10:00:00")),
+            draw(at("2026-11-13 10:00:10"), input_method="mouse", **BOX),
+        ])
+        self.stack.refresh()
+        self.assertEqual(self.get("status")["cutover"], {"at": "2026-11-13T10:00:00+00:00"})
+
     def test_a_service_started_before_cvat_created_its_events_table_still_starts(self):
         events = clickhouse_client(self.stack.events_db)
         events.command("RENAME TABLE events TO events_not_yet")
