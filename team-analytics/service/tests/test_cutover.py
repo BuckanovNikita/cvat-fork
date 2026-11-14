@@ -320,8 +320,8 @@ class SlowSearchCase(CutoverCase):
 
     stack_options = {"config_options": {"cutover_search_at_start_s": 1, "cutover_search_in_check_s": 1}}
 
-    def add_tagged_work_read_slowly(self) -> None:
-        """Adds sixteen bounding boxes drawn on 12 November from 11:00 on (the cutover, for a search that finishes),
+    def add_tagged_work_read_slowly(self, since: str) -> None:
+        """Adds sixteen bounding boxes drawn one a minute from `since` on (the cutover, for a search that finishes),
         and from then on makes every statement that reads the events' payload, the cutover search among them, take
         half a second per recorded event. Each event is a part of its own, with merges stopped, so that ClickHouse
         sleeps for one row at a time (it refuses more than three seconds of sleep per block): with the two threads
@@ -330,7 +330,7 @@ class SlowSearchCase(CutoverCase):
         events = clickhouse_client(self.stack.events_db)
         events.command("SYSTEM STOP MERGES events")
         for n in range(16):
-            self.stack.add_events([draw(at("2026-11-12 11:00:00") + timedelta(minutes=n), input_method="mouse", **BOX)])
+            self.stack.add_events([draw(at(since) + timedelta(minutes=n), input_method="mouse", **BOX)])
         events.command("RENAME TABLE events TO events_recorded")
         events.command("CREATE VIEW events AS SELECT * EXCEPT (payload), if(sleepEachRow(0.5) = 0, payload, payload) "
                        "AS payload FROM events_recorded")
@@ -348,7 +348,7 @@ class SlowSearchCase(CutoverCase):
 
 class SlowSearchAtStartTest(SlowSearchCase):
     def test_a_service_whose_search_at_start_is_too_slow_starts_and_reports_no_cutover(self):
-        self.add_tagged_work_read_slowly()
+        self.add_tagged_work_read_slowly("2026-11-12 11:00:00")
         self.restart()
         self.assertEqual(self.get("status")["cutover"], {"at": None})
         self.assert_no_statement_left_running()
@@ -361,18 +361,12 @@ class SlowSearchInDailyCheckTest(SlowSearchCase):
         self.stack.add_events([client("load:job", at("2026-11-12 10:00:00")), draw(at("2026-11-12 10:00:10"))])
         self.stack.refresh()
         self.settle()
-        # a day later: the refresh, then history, until the daily check is the only step left
+        # a day later, after the refresh that is due: tagged work of the last minutes, which the next refresh would
+        # store, but which is in no day that history computes or the daily check counts
         self.stack.now = NOW + timedelta(days=1)
         self.stack.service.step()
-        for _ in range(10):
-            if self.get("status")["history"]["complete"]:
-                break
-            self.stack.service.step()
-        else:
-            self.fail("history was never complete")
-        # tagged work in a processed day, which the daily check's search reads too slowly
-        self.add_tagged_work_read_slowly()
-        self.assertEqual(self.stack.service.step(), 0, "the daily check did not end as a step that ran")
+        self.add_tagged_work_read_slowly("2026-11-14 15:00:00")
+        self.settle()  # the day before, then the daily check, whose search reads too slowly; then it waits
         self.assertEqual(self.get("status")["cutover"], {"at": None})
         self.assert_no_statement_left_running()
         self.assertEqual(self.get("status")["cutover"], {"at": None}, "the search went on after the service gave up")

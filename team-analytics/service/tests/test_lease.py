@@ -285,8 +285,8 @@ class LostLeaseTest(LeaseTestCase):
             self.assertTrue(failing.acquire(timeout=PATIENCE_S), "replica A did not try to renew its lease")
         self.a_third_of_the_lease_passes()  # the lease has run out
         self.finish(thread)
-        self.assertFalse(outcome["a"].ran)
         self.assertEqual(self.status_and_figures(), before, "replica A's work after losing the lease became visible")
+        self.assertFalse(outcome["a"].ran)
 
     def status_and_figures(self) -> tuple[str | None, int]:
         """The latest refresh as status reports it, and Alice's working time in this week's overview."""
