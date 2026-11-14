@@ -22,7 +22,7 @@ How each criterion was shown (seam 1, the modules named in the evidence file; th
 
 1. On `e1d92b8` with only the new tests, the four `ShortWindowTest` tests of `tests.test_history` failed: the week read as processed while the event from 10:00 was in no figure. They pass with the fix.
 2. `FillTest.test_with_the_default_window_today_takes_no_step_of_its_own` passes before and after the fix (nine working steps, then waiting), and `FillTest.test_history_is_processed_one_day_at_a_time_most_recent_first` passes unchanged.
-3. `AlignmentWindowTest` and `RedoAcrossWindowEdgeTest` pass unchanged.
+3. `AlignmentWindowTest` and `RedoAcrossWindowEdgeTest` pass unchanged, and still pass after ticket 19 changed the second (run on the merge `55c8de0c`).
 4. The new order test puts today's hours first and then the days before, most recent first. `History.check` and `control/history_changed_days.sql` are not touched, and the tests of `LateEventTest` and `LateEventInASessionTest` pass.
 5. No edit was needed. The fork specification did not list this limit: not at `e1d92b8`, not after merging the integration branch at `fabc1cb`, and not at any point of the file's history. Its two known limits are about the stored cutover and the input summary.
 

@@ -61,9 +61,15 @@ the newest record whatever its date. This case was reasoned, not run.
 | `20cef29`: `996e486` merged with the integration branch at `fabc1cb` | default | `test_history`, `test_refresh`, `test_status`, `test_bounding_boxes`, `test_creation_methods`, `test_shutdown`, `test_entry_point` | 71 tests, all passed |
 | `20cef29` | `clickhouse/clickhouse-server:23.11-alpine` | `test_history`, `test_status` | 27 tests, all passed |
 
-The last two rows are the final runs. The merge brought no change to the
-service, only a reformatting of CVAT's ClickHouse setup script, which the
-tests use to create the events database.
+| `55c8de0c`: the integration branch merged again at `ad7cf9e7`, with ticket 19 | default | `test_history`, `test_creation_methods`, `test_bounding_boxes`, `test_operations` | 81 tests, all passed |
+
+The first merge brought no change to the service, only a reformatting of
+CVAT's ClickHouse setup script, which the tests use to create the events
+database. The second brought ticket 19's operations rule and its change to the
+redo test with a one-hour window, now
+`RedoAcrossWindowEdgeTest.test_a_redo_just_after_a_window_edge_adds_nothing_to_the_creation_before_it`.
+It passes beside this change, as does `AlignmentWindowTest`. The 23.11 image
+was not run on that last tree.
 
 What the final runs show, by test:
 
