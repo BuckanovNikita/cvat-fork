@@ -4,6 +4,8 @@
 #
 #   NAME=<container> measure.sh smoke   one run of each statement, nothing kept
 #   NAME=<container> measure.sh all     every state; writes setup.txt, explain.txt, runs.txt, report.txt here
+#   NAME=<container> measure.sh replicate   after `all`: the steady state again, the statements interleaved;
+#                                           writes replicate-runs.txt, replicate-summary.txt
 #
 # The container is the first measurement's (../run.sh up: 2 CPUs, 10 GiB, the fixture loaded at full scale).
 # `all` changes the data on the way (two mutations of the payload column), so it runs once per load.

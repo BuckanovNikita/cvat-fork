@@ -2,7 +2,7 @@
 -- shape-tagged operation event before {until}. The events table is ordered by timestamp, so the statement
 -- reads it in that order and stops at the first match; with no match (every search once a cutover is
 -- stored) it reads every row before {until}, as the earlier aggregate did, and at the benchmark's scale takes
--- as long as it did (docs/evidence/2026-11-14-cutover-search-cost.md, 2026-11-15). Operation events as in
+-- about as long (docs/evidence/2026-11-14-cutover-search-cost.md, 2026-11-15). Operation events as in
 -- refresh/operations.sql: client rows of a user inside a job, the operation scopes and the class change
 -- record, with `shape_type` in the payload.
 -- {until} bounds the search from above, so nothing later is read (the callers are in cutover.py): the stored

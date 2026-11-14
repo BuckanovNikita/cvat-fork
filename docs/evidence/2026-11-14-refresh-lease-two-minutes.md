@@ -163,7 +163,8 @@ The follow-up is on branch `fix/refresh-review`, from `0d2661d6` on.
    finds no match and reads every row before the stored cutover, as the aggregate did.
    Its cost at the benchmark's scale was not measured with this follow-up; it was
    measured on 2026-11-15 (`2026-11-14-cutover-search-cost.md`, section of that date):
-   reading in order takes as long as the aggregate where nothing matches, and the
+   reading in order takes about as long as the aggregate where nothing matches (2.6 %
+   longer in the steady state, with more memory), and the
    statement stops after a fraction of a second where the first tagged record is early.
    The related low point, a stop signal during a long daily search leaving the lease
    held: not changed, recorded as a known limit in `docs/fork-specification.md`.

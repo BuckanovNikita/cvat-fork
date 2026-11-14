@@ -88,7 +88,9 @@ files hold the second pass; the first pass's lines are quoted from its log.
   the machine was in use.
 - "Bounded by the stored cutover" is the search an instance repeats at every start and
   daily check once its cutover is stored: it reads only what lies before the cutover. In
-  the fixture the first event is already tagged, so there is nothing before it.
+  the fixture the first event is already tagged, so there is nothing before it. The
+  steady state with a year of untagged records before the stored cutover, which reads
+  every one of them, was measured on 2026-11-15 (section of that date below).
 - The variant is not the shipped statement. It asks for a key that no payload holds, so
   nothing matches: that is the search on an instance whose whole year lies before the
   cutover, or that has no shape-tagged event at all. It costs what the full-range search
@@ -127,8 +129,8 @@ events in timestamp order and stops at the first match, and runs with these limi
 ClickHouse settings. The figures above are those of the earlier aggregate. See
 [`2026-11-14-refresh-lease-two-minutes.md`](2026-11-14-refresh-lease-two-minutes.md),
 "Independent review". The new statement was measured at this scale on 2026-11-15 (below):
-it costs what the aggregate costs when it finds nothing, and stops early when it finds a
-match early.
+when it finds nothing it costs about what the aggregate costs, 2.6 % more time and more
+memory, and it stops early when it finds a match early.
 
 ## 2026-11-15: the in-order statement, measured
 
@@ -185,14 +187,15 @@ before that run:
 
 ### How it ran
 
-- The same container as the first measurement: `cvat/clickhouse:23.12.2-debian-11-r0`
+- A new container made as the first measurement's was: `cvat/clickhouse:23.12.2-debian-11-r0`
   (23.12.2.59), `--cpus 2 --memory 10g`, `max_threads` auto(2), no published port, loaded
   with `../run.sh up` (`base_n` 325, 36,326,651 rows, 13 parts, 2.44 GiB on disk). It was
   removed afterwards.
 - The machine was not otherwise idle. The host has 32 threads; while the runs went on,
   other agents' jobs (a test stack and a service suite) were running and its user was
-  watching video. The host load average was 4.4 to 7.8 (`setup.txt`,
-  `replicate-summary.txt`). The container could use at most two CPUs of it.
+  using it. The host load average was 4.4 to 7.8 (`setup.txt`,
+  `replicate-summary.txt`). The container could use at most two CPUs of it. Rows read
+  count whole granules, so they can exceed the rows before the bound.
 - Each statement ran through `clickhouse-client` with the service's setting
   (`query_plan_execute_functions_after_sorting = 0`) and, for "start" and "daily", with the
   limits the service sends: `max_execution_time` 23 or 60, `timeout_overflow_mode` throw,
@@ -208,7 +211,7 @@ How each state was made on the fixture:
 | --- | --- | --- | --- | --- | --- |
 | early | the fixture as loaded | none | after the last event | 36,326,651 | 11,566,490, the first at 2025-11-14 06:00:22 |
 | late | `shape_type` renamed to a key of the same length in every payload before 2026-11-13 (one mutation) | none | after the last event | 36,326,651 | 43,398, the first at 2026-11-13 06:00:11 |
-| steady | as late, with 2026-11-13 06:00 stored | 2026-11-13 06:00 | the stored cutover | 36,193,328 | 0 |
+| steady | as late, with 2026-11-13 06:00 stored | 2026-11-13 06:00 | the stored cutover | 36,191,234 | 0 |
 | none | the key renamed in the remaining payloads too | none | after the last event | 36,326,651 | 0 |
 
 In `setup.txt` the late state's "stored cutover" line is what the early state's last run
@@ -217,8 +220,9 @@ left, read before the next run emptied the table, and a first tagged record of
 
 ### Figures
 
-Seconds, slowest of three runs (fastest in brackets where they differ by more than 0.3 s);
-peak memory is the largest of the cell. No run of either statement was stopped, under any
+Seconds, slowest of three runs. Within a cell the three runs were at most 0.34 s apart,
+except the late aggregate's warm runs with no limit (fastest in brackets). Peak memory is
+the largest of the cell. No run of either statement was stopped, under any
 limit (`stops.txt` is empty).
 
 | State | Statement | Start limits, cold | Daily limits, cold | No limit, cold | No limit, warm | Peak memory | Rows read |
@@ -241,10 +245,11 @@ The steady state again, interleaved, ten runs each, no limit (`replicate-summary
 
 - With a tagged record early in the data, the in-order statement stops after 14 granules:
   0.27 s cold against 4.9 s for the aggregate.
-- Wherever nothing or almost nothing comes before the first match (late, steady, none),
-  both read the same rows and take the same time within the machine's spread. The
-  in-order read is not slower in order: in the replication its medians are 2.6 % above
-  the aggregate's, cold and warm.
+- Wherever all or almost all records come before the first match, or there is none
+  (late, steady, none), both read the same rows and take about the same time. Reading in
+  order is slightly slower: in the first pass the gap is within the machine's spread, and
+  in the replication the in-order medians are 2.6 % above the aggregate's, cold and warm,
+  about 0.1 s.
 - The in-order statement holds about 50 MiB where the aggregate holds 17 MiB with nothing
   to match. The rule does not count it; both are a tenth of the 512 MiB limit or less.
 
