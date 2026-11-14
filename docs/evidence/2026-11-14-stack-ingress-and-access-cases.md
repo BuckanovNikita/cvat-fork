@@ -103,6 +103,12 @@ Run in the worktree on 2026-11-14. Only cluster reads were made.
     `SessionAuthentication` and `BasicAuthenticationEx`, and its e-mail verification is
     `none`. The header requests are sent with no cookie jar, so the header is the only
     credential.
+  - In the stock image, a read-only access token is refused only for methods that are
+    not safe (`access_tokens/permissions.py`). A token is revoked on `DELETE`, and the
+    list holds only usable tokens, so the stale-token cleanup sees only a token left by
+    an interrupted run. Basic and Bearer are judged apart, so a Bearer problem cannot
+    hide the Basic result. `status` is sent without a period, as the existing access
+    matrix sends it.
 
 ## Unverified
 

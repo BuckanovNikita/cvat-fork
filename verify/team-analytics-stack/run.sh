@@ -574,8 +574,13 @@ check_ingress_gone() {
         | grep -qx "$TA_INGRESS_HOST"; then
         die "an Ingress for $TA_INGRESS_HOST remains"
     fi
-    code="$(curl -sS -o /dev/null -w '%{http_code}' --resolve "$TA_INGRESS_HOST:443:127.0.0.1" \
-        "https://$TA_INGRESS_HOST/team-analytics-api/v1/status")" || die "no answer from the ingress controller"
+    # the controller may answer 503 for a moment while it drops the route
+    for _ in $(seq 1 15); do
+        code="$(curl -sS -o /dev/null -w '%{http_code}' --resolve "$TA_INGRESS_HOST:443:127.0.0.1" \
+            "https://$TA_INGRESS_HOST/team-analytics-api/v1/status")" || die "no answer from the ingress controller"
+        [ "$code" = 404 ] && break
+        sleep 2
+    done
     [ "$code" = 404 ] || die "the ingress controller answers $code for $TA_INGRESS_HOST, expected 404 (no route)"
     log "no Ingress names $TA_INGRESS_HOST; the controller answers 404 for it"
 }

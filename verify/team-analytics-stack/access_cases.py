@@ -79,6 +79,19 @@ def query(path: str, **params: str) -> str:
     return API + path + "?" + urllib.parse.urlencode({"tz": "UTC", **params})
 
 
+def endpoint_query(endpoint: str, org: str) -> str:
+    """`status` as the existing matrix asks it (no period), `overview` for the week."""
+    return query(endpoint, org=org, **({"period": "week"} if endpoint == "overview" else {}))
+
+
+def overview_names(body: object) -> list[str] | None:
+    """The annotators an overview lists; None when the week is not processed (no figures)."""
+    if not isinstance(body, dict) or not body.get("processed", True):
+        return None
+    rows = (body.get("by_annotator") or {}).get("rows")
+    return [row["user_name"] for row in rows] if isinstance(rows, list) else None
+
+
 def error_of(status: int, body: object) -> str | None:
     return body.get("error") if status != 200 and isinstance(body, dict) else None
 
@@ -163,7 +176,7 @@ def removed_member() -> None:
     time.sleep(max(wait, 0))
     for org, want in ((REMOVED_ORG, "forbidden"), ("", "forbidden")):
         for endpoint in ("status", "overview"):
-            status, body = leaver.call(query(endpoint, org=org, period="week"))
+            status, body = leaver.call(endpoint_query(endpoint, org))
             if (status, error_of(status, body)) != (403, want):
                 fail(case, f"{LEAVER}, org={org or '-'} {endpoint} after the cache expired: {status} {body}, expected 403 {want}")
             log(f"{LEAVER}, org={org or '-'} {endpoint}: 403 {want}")
@@ -174,10 +187,12 @@ def removed_member() -> None:
 
 
 def annotators(session: Session, org: str) -> list[str]:
-    status, body = session.call(query("overview", org=org, period="week"))
-    if status != 200:
-        raise SystemExit(f"[access] FAIL {session.username}, org={org or '-'} overview: {status} {body}")
-    return [row["user_name"] for row in body["by_annotator"]["rows"]]
+    status, body = session.call(endpoint_query("overview", org))
+    names = overview_names(body) if status == 200 else None
+    if names is None:
+        raise SystemExit(f"[access] FAIL group-admin: {session.username}, org={org or '-'} overview: {status} "
+                         f"{str(body)[:300]}, expected 200 with the processed week's annotators")
+    return names
 
 
 def group_admin() -> None:
@@ -315,55 +330,69 @@ def header_get(authorization: str, path: str) -> tuple[int, object]:
 
 def decision(status: int, body: object, endpoint: str) -> tuple:
     """What the access rules decided, and for an overview the annotators it lists."""
-    names = None
-    if status == 200 and endpoint == "overview" and isinstance(body, dict):
-        names = sorted(r["user_name"] for r in body["by_annotator"]["rows"])
+    names = overview_names(body) if status == 200 and endpoint == "overview" else None
     return status, error_of(status, body), names
 
 
 def issue_token(session: Session) -> dict:
+    # revoked tokens are not listed, so only one left by an interrupted run is found here
     for token in session.request("GET", "/api/auth/access_tokens?page_size=100")["results"]:
-        if token["name"] == TOKEN_NAME:  # left by an interrupted run
+        if token["name"] == TOKEN_NAME:
             session.request("DELETE", f"/api/auth/access_tokens/{token['id']}")
     expiry = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
     return session.request("POST", "/api/auth/access_tokens", {"name": TOKEN_NAME, "read_only": True, "expiry_date": expiry})
 
 
-def header_credentials() -> None:
-    case = "header-credentials"
+def compare_scheme(scheme: str) -> str | None:
+    """Every HEADER_CASES pair on every endpoint with the cookie and with `scheme`; the first
+    difference, or None. Basic sends the account's password; Bearer a read-only personal access
+    token issued for the case and revoked after it."""
     for username, org, want_status, want_error in HEADER_CASES:
         session = Session(username)
-        token = issue_token(session)
+        token = issue_token(session) if scheme == "Bearer" else None
         try:
-            schemes = {
-                "Basic": "Basic " + base64.b64encode(f"{username}:{PASSWORD}".encode()).decode(),
-                "Bearer": f"Bearer {token['value']}",
-            }
+            authorization = (
+                f"Bearer {token['value']}" if token
+                else "Basic " + base64.b64encode(f"{username}:{PASSWORD}".encode()).decode()
+            )
             for endpoint in HEADER_ENDPOINTS:
-                path = query(endpoint, org=org, period="week")
+                path = endpoint_query(endpoint, org)
                 cookie = decision(*session.call(path), endpoint)
-                if cookie[:2] != (want_status, want_error):
-                    fail(case, f"{username}, org={org or '-'} {endpoint} with the cookie: {cookie}, expected {want_status} {want_error}")
-                for scheme, authorization in schemes.items():
-                    got = decision(*header_get(authorization, path), endpoint)
-                    if got != cookie:
-                        fail(case, f"{username}, org={org or '-'} {endpoint} with {scheme}: {got}, the cookie got {cookie}")
-                log(f"{username}, org={org or '-'} {endpoint}: {want_status} {want_error or ''} with the cookie, Basic and Bearer")
+                unprocessed = endpoint == "overview" and want_status == 200 and cookie[2] is None
+                if cookie[:2] != (want_status, want_error) or unprocessed:
+                    return f"{username}, org={org or '-'} {endpoint} with the cookie: {cookie}, expected {want_status} {want_error}"
+                got = decision(*header_get(authorization, path), endpoint)
+                if got != cookie:
+                    return f"{username}, org={org or '-'} {endpoint} with {scheme}: {got}, the cookie got {cookie}"
+                log(f"{username}, org={org or '-'} {endpoint}: {want_status} {want_error or ''} with the cookie and with {scheme}")
         finally:
-            session.request("DELETE", f"/api/auth/access_tokens/{token['id']}")
-    path = query("status", org="ta-org-a")
-    status, body = get_json(urllib.request.build_opener(), path)
+            if token:
+                session.request("DELETE", f"/api/auth/access_tokens/{token['id']}")
+    wrong = ("Basic " + base64.b64encode(b"ta-maintainer:not-the-password").decode()) if scheme == "Basic" else "Bearer not-a-token"
+    status, body = header_get(wrong, query("status", org="ta-org-a"))
+    if (status, error_of(status, body)) != (401, "not_authenticated"):
+        return f"a wrong {scheme} credential: {status} {body}, expected 401 not_authenticated"
+    log(f"a wrong {scheme} credential: 401 not_authenticated")
+    return None
+
+
+def header_credentials() -> None:
+    """Basic and Bearer are judged apart, each on its own line, so one cannot hide the other."""
+    case = "header-credentials"
+    status, body = get_json(urllib.request.build_opener(), query("status", org="ta-org-a"))
     if (status, error_of(status, body)) != (401, "not_authenticated"):
         fail(case, f"no credentials: {status} {body}, expected 401 not_authenticated")
-    for scheme, authorization in (
-        ("Basic", "Basic " + base64.b64encode(b"ta-maintainer:not-the-password").decode()),
-        ("Bearer", "Bearer not-a-token"),
-    ):
-        status, body = header_get(authorization, path)
-        if (status, error_of(status, body)) != (401, "not_authenticated"):
-            fail(case, f"a wrong {scheme} credential: {status} {body}, expected 401 not_authenticated")
-    log("no credentials, a wrong password, an unknown token: 401 not_authenticated")
-    passed(case, f"{len(HEADER_CASES)} accounts x {len(HEADER_ENDPOINTS)} endpoints: Basic and Bearer decided as the cookie")
+    log("no credentials: 401 not_authenticated")
+    failures = []
+    for scheme in ("Basic", "Bearer"):
+        problem = compare_scheme(scheme)
+        if problem:
+            print(f"[access] FAIL {case} ({scheme}): {problem}", flush=True)
+            failures.append(scheme)
+        else:
+            passed(f"{case} ({scheme})", f"{len(HEADER_CASES)} accounts x {len(HEADER_ENDPOINTS)} endpoints decided as with the cookie")
+    if failures:
+        raise SystemExit(f"[access] FAIL {case}: {', '.join(failures)}")
 
 
 def main() -> None:
