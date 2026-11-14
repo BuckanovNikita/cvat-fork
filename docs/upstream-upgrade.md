@@ -182,12 +182,15 @@ ESLint takes the `.ts` and `.tsx` files, stylelint the `.scss` files, as paths
 from the repository root. Pass only the UI files the fork added or edited, never
 the whole import, and never let `--fix` touch upstream's files: they stay as
 upstream wrote them. A finding in an upstream line of a file the fork edited is
-left alone and recorded in the dated evidence. The list, against the import's
-tag (section 1):
+left alone and recorded in the dated evidence. The list compares committed
+content with the tag of the import now in the tree: `cvat-v2.82.0-widened`
+(section 1) until the next upgrade, then the new tag of section 2. Against an
+older tag it would also list every UI file upstream changed since.
 
 ```bash
-git diff --name-only --diff-filter=d cvat-v2.82.0-widened HEAD:cvat -- '*.ts' '*.tsx' | sed 's|^|cvat/|'
-git diff --name-only --diff-filter=d cvat-v2.82.0-widened HEAD:cvat -- '*.scss' | sed 's|^|cvat/|'
+import_tag=cvat-v2.82.0-widened
+git diff --name-only --diff-filter=d "$import_tag" HEAD:cvat -- '*.ts' '*.tsx' | sed 's|^|cvat/|'
+git diff --name-only --diff-filter=d "$import_tag" HEAD:cvat -- '*.scss' | sed 's|^|cvat/|'
 ```
 
 `--max-warnings 0` is the fork's addition: upstream's `yarn run lint` fails on

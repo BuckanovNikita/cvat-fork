@@ -25,11 +25,22 @@ script files at the end. Nothing else of the import was linted.
 | Start (`ad7cf9e`) | exit 1: 30 errors, 2 warnings in 15 files (12 `object-curly-newline`, 9 `max-len`, 5 unused disable directives, 2 `@stylistic/indent`, 2 `@typescript-eslint/explicit-function-return-type`, 1 `no-use-before-define`, 1 `no-param-reassign`) | exit 2: 7 errors in 5 files (4 `alpha-value-notation`, 3 `scss/double-slash-comment-empty-line-before`) | exit 0 |
 | After `--fix` of both tools (`0555aaf`) | exit 1: 11 errors, 2 warnings | exit 0 | not run |
 | After the fixes by hand (`43fd752`) | exit 0 | exit 0 | exit 0 |
-| After the move (`763ad43`) and at the end | exit 0 | exit 0 | exit 0 |
+| After the move (`763ad43`) and after the merge of the integration branch | exit 0 | exit 0 | exit 0 |
 
-The ESLint counts at the start match ticket 03's run on its scratch copy (25
-errors and 7 warnings there: the five unused directives counted as warnings,
-since that run did not ask to report them as errors).
+Flags: at the start ESLint ran with `--exit-on-fatal-error
+--report-unused-disable-directives` (the five unused directives as errors) and
+stylelint with none. The `--fix` runs took no other flag. After the fixes by
+hand and after the move ESLint ran with `--max-warnings 0
+--report-unused-disable-directives`. The last runs, on the tree of the move and
+again after the merge of the integration branch, used the three commands exactly
+as section 4 of the upgrade procedure writes them (`--max-warnings 0
+--no-warn-ignored` for ESLint, `--max-warnings 0` for stylelint), on the lists
+made as written there.
+
+The ESLint findings at the start are the 32 of ticket 03's run on its scratch
+copy, where they read 25 errors and 7 warnings: without
+`--report-unused-disable-directives` the configuration reports the five unused
+directives as warnings.
 
 Every finding was in a file the fork added. None of the 17 upstream files the
 fork edited had a finding, and none of them changed in the three commits
@@ -55,7 +66,7 @@ skipped test is the optional browser check (no `BROWSER_BIN`).
   three, `index.ts` with each of `class-change.ts`, `input-summary.ts` and
   `model-creation.ts`. After: none. Upstream's configuration does not enable
   `import/no-cycle`, and an ESLint run with that rule switched on did not find
-  these cycles either, because its resolver does not follow the `.ts` imports.
+  these cycles either; why it reported nothing was not looked into.
 - **What callers import.** The module was loaded the way seam 2 loads it
   (`loadSource` of `verify/team-analytics-logging/helper.cjs`) and its runtime
   export names listed before and after the move: the same 19 names. The type
@@ -97,3 +108,8 @@ both checkouts (`diff -rq`), and this ticket changes none of them.
   started. The checks above cover the source, the compiled styles and the suites.
 - The type check in a checkout with its own installed dependencies: the merger
   reruns it in the main checkout.
+
+The scripts of the three stated checks (import cycles, runtime exports, Sass
+compilation) and the saved tool outputs stay in the defect fixes' shared notes
+directory, outside the repository, as `t05/cycles.cjs`, `t05/exports.cjs` and
+`t05/sass.cjs`.
