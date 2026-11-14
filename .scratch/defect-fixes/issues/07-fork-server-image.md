@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 (Policies patched in place with the role floor).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A build script beside the UI's builds the image from the stock release image and the two patched policies of the import. Nothing is installed and no Python changes.
 - [x] The image's tag names the release and marks it as the fork's. Its default is set in the script, as for the UI image.
@@ -31,3 +31,5 @@ refuses a base that is not local, never pulls and has no push step, and the buil
 showed no pull. The first half is not shown: the Docker daemon's network cannot be switched
 off from here, so the build never ran with the network off. Both halves currently rest on the
 local-base check, `--pull=false`, the absence of `RUN` steps, the events and the build log.
+
+2026-11-14: Resolved by merge `bdfb5232` into `feat/team-analytics-page`; evidence in `docs/evidence/2026-11-14-fork-server-image.md`. On the merged tree: `bash -n` exits 0 for `build-server.sh` and `verify/policy_bundle.sh`; the bundle built from `cvat/server:v2.82.0-fork-policies` equals the import's two policies, and the bundle built from `cvat/server:v2.82.0` differs from them and equals `cvat-v2.82.0-widened`; nothing under `cvat/` changed.
