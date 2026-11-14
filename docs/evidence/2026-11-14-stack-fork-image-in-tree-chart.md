@@ -51,8 +51,10 @@ All Helm commands ran through the heavy lock, lane A. The cluster was only read
 - `build-chart` with `TA_CACHE_DIR` set to a fresh directory under the home directory, so
   no earlier build or archive could stand in: exit 0. Its output shows `repo add` for the
   five repositories, "Saving 7 charts", one "Downloading" line per dependency, and the build
-  directory as `~/.cache/cvat-fork/<fresh>/chart-1ae40b02e8ddd520/helm-chart`. No
-  `codeload` request is made; nothing in the launcher names it any more.
+  directory as `~/.cache/cvat-fork/<fresh>/chart-1ae40b02e8ddd520/helm-chart`.
+  The network was not traced; what shows the download is gone is the tree:
+  `git grep -E 'codeload|TA_UPSTREAM|fetch-chart|fetch_upstream' -- verify/team-analytics-stack`
+  finds nothing.
 - In that build: `sha256sum -c chart-deps.sha256` reports `OK` for all seven archives; its
   `Chart.lock` equals the stack's; the chart directory, without `charts/` and `Chart.lock`,
   equals `cvat/helm-chart` (`diff -r`, links not followed) and the copied analytics component
@@ -119,6 +121,17 @@ repacked bundles are stored that way) and so reported both policies unpatched. T
 unpacks the bundle and reads the files, as `policy_bundle.sh` does; the rows above are after
 that change.
 
+### The fetch, read and run without a stack
+
+- Read: the proxy's `/api` location (`proxy.yaml`) passes straight to the backend, with no
+  auth subrequest.
+- Read in the fork server image (a one-off container, no network, one core):
+  `cvat/apps/iam/views.py` `RulesView` has `permission_classes = [AllowAny]` and
+  `authentication_classes = []`, and `iam/urls.py` routes `rules` to it. It returns
+  `get_opa_bundle()[0]`, the same bytes `policy_bundle.sh from-image` writes.
+- `run.sh check-policies` with no stack (nothing on the host port): curl cannot connect,
+  "could not fetch .../api/auth/rules", exit 1. It fails closed.
+
 ### No local path in the captured output
 
 Every output captured above (build, preflight, renders and their diff, doctored renders,
@@ -137,14 +150,21 @@ bundle checks): no match for the home directory or for `/home/<user>`.
 Needs the orchestrator's word (a UI image build and a stack `up`), both heavy lanes free.
 
 1. `IMAGE=cvat/ui:v2.82.0-team-analytics ./build-ui.sh` and
-   `IMAGE=cvat/team-analytics:v2.82.0 ./build-team-analytics-service.sh` from this branch;
+   `IMAGE=cvat/team-analytics:v2.82.0 ./build-team-analytics-service.sh` from the final head;
    `cvat/server:v2.82.0-fork-policies` is already local.
-2. `kubectl --context docker-desktop get ns cvat-ta-it-$USER` must report it absent, then
+2. `verify/policy_bundle.sh from-image cvat/server:v2.82.0-fork-policies | verify/team-analytics-stack/run.sh check-bundle`:
+   "policy bundle check passed" (catches a server image older than the import's policies
+   before a stack start).
+3. `verify/team-analytics-stack/run.sh preflight` on the final head: "preflight passed". The
+   default cache holds no build of the in-tree chart, so this step downloads the seven
+   dependency archives (network) and checks them against `chart-deps.sha256`.
+4. `kubectl --context docker-desktop get ns cvat-ta-it-$USER` reports it absent; then
    `verify/team-analytics-stack/run.sh up 2>&1 | tee <log>`: exit 0, with "policy bundle
-   check passed" after the port-forward and every later check passing.
-3. While it is up: every backend pod (`tier=backend`) runs
-   `cvat/server:v2.82.0-fork-policies` (`kubectl get pods -o jsonpath` of the container
-   images).
-4. `verify/team-analytics-stack/run.sh down`: "nothing of ... remains"; afterwards no such
+   check passed" right after the port-forward and every later check passing.
+5. While it is up: `kubectl --context docker-desktop -n cvat-ta-it-$USER get pods -l tier=backend -o jsonpath='{..image}'`
+   names no `cvat/server` image other than `cvat/server:v2.82.0-fork-policies` (the pods also
+   carry `busybox:1.36.1` init containers). Only the server, utils and webhooks workers and
+   the initializer have pods; the other six workers have zero replicas.
+6. `verify/team-analytics-stack/run.sh down`: "nothing of ... remains"; afterwards no such
    namespace and no persistent volume bound to it.
-5. `grep -c -i -F "$HOME" <log>` and the same for `/home/$(id -un)`: 0 each.
+7. `grep -c -i -F "$HOME" <log>` and the same for `/home/$(id -un)`: 0 each.
