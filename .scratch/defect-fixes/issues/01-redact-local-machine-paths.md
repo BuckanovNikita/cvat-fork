@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A search of the whole tracked tree for the local home prefix, binary files included, finds nothing.
 - [x] The four run logs of the 2026-11-14 final run and the infrastructure migration note keep their meaning; only the path is replaced by a placeholder.
@@ -57,3 +57,5 @@
   not run against real Helm.
 - `feat/team-analytics-page` was merged in at `e1d92b8` and the search of criterion 1 was
   repeated on the merged tree: nothing.
+
+2026-11-14: Resolved on `feat/team-analytics-page` by merge `9fa742e`. Evidence: `docs/evidence/2026-11-14-redact-local-paths.md`.
