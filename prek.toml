@@ -1,9 +1,6 @@
-# The fork's check pipeline, run by its command and not installed as git hooks:
-#
-#   prek run --all-files
-#
-# Prerequisites and the suites kept out of it: docs/upstream-upgrade.md, section 4.
-# The pipeline is a default nobody was asked about (defect fixes, plan, default (a)).
+# The fork's check pipeline. Its invocation, its prerequisites and the suites kept
+# out of it: docs/upstream-upgrade.md, section 4, "Check pipeline". It is run by
+# that command and not installed as git hooks.
 #
 # Every hook checks and changes nothing. Each runs one process (or a one-core
 # container), the hooks one after another; ruff is held to one thread. Each hook

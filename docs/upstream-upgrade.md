@@ -152,8 +152,50 @@ changes, and record their acceptance evidence.
 
 Run applicable checks once on the integrated result; rerun them only after
 relevant changes or failures. Keep failures, warnings, skipped checks and their
-reasons in dated evidence. No root Spec Kit, OpenSpec or prek pipeline exists
-at the recorded baseline; use a native workflow if one is introduced later.
+reasons in dated evidence. No root Spec Kit or OpenSpec workflow exists at the
+recorded baseline; use a native workflow if one is introduced later.
+
+### Check pipeline
+
+One command runs, from the repository root, every check that needs neither
+ClickHouse nor a stack:
+
+```bash
+prek run --all-files
+```
+
+`prek.toml` holds the hooks: ESLint and stylelint on the fork's UI files, the
+type check, ruff on the fork's Python, the policy test on the patched and on
+the stock policies, and the three fast frontend suites, one after another. A
+hook pipeline is a default the owner was not asked about. No hook rewrites a
+file. The UI linters run the commands under "Frontend" below on the tracked
+files under `cvat/` whose content differs from the import tag
+(`tools/gate/ui-lint.sh`), so a new file is checked once it is tracked; after
+an upgrade, change the script's default tag (`IMPORT_TAG` overrides it) with
+the policy test's `STOCK_TAG`. ruff never reads `cvat/` (`ruff.toml`), and
+formatting is not checked: the fork's Python was never formatted with ruff.
+Run the pipeline by its command; do not install it as git hooks.
+
+Prerequisites on a fresh checkout:
+
+- `prek`, `uv`, Node and Docker on the path; network on the first run, when
+  `uv` installs ruff into `.venv` as `uv.lock` locks it and Docker pulls the
+  OPA image that `verify/policy_test.sh` names.
+- The import tag (section 1; tags are not pushed).
+- `cvat/node_modules` and `verify/node_modules`, installed as under
+  "Frontend" below.
+
+Kept out of the pipeline, each a separate command with its own prerequisites:
+
+- `verify/team_analytics_service.sh`: the service seam, under "Team
+  Analytics"; Docker, the stock server image and a ClickHouse image.
+- `verify/team-analytics-stack/run.sh cycle`: the stack, under "Team
+  Analytics"; both built images, a cluster and the reserved host port.
+- `BROWSER_BIN=<browser> node --test verify/task_progress.cjs`: the browser
+  check of the task legend, under "Frontend"; without `BROWSER_BIN` the
+  pipeline's run skips it.
+- `verify/run.sh` and `verify/opa_issues.sh all`: the legacy live launchers,
+  under "Packaging and integration".
 
 ### Frontend
 
