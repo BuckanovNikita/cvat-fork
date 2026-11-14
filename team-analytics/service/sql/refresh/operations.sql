@@ -11,6 +11,11 @@
 --              other operation, a change:frame, an action:redo of 'Created objects', or a pause longer
 --              than the session gap (300 s, also the look-back) between two of them ends it. Events
 --              without `object_ref` (legacy) are one alignment each.
+--              A group move (payload `group` = 'move': selected objects dragged together, or the
+--              selection box moved) is one alignment per object moved: objects = the event's count, and
+--              the gesture's time is shared between them like any operation's. It ends the runs before
+--              it and is continued by none. CVAT's own drag of the grabbed object of that gesture
+--              (`group` = 'grabbed') is no operation: only a previous action, like a zoom.
 --   class_change: the UI's debug:info record named 'team_analytics:class_change'; objects = the
 --              record's count (only objects whose label changed; a change back is another record).
 --   deletion:  delete:object; objects = the event's count. action:undo is no operation, so an undone
@@ -140,6 +145,8 @@ FROM
                                         multiIf(
                                             -- outside a job an event is only a previous action, never an operation
                                             job_id IS NULL, '',
+                                            -- the grabbed object's drag of a group move: counted in the group event
+                                            scope = 'drag:object' AND JSONExtractString(body, 'group') = 'grabbed', '',
                                             scope IN ('draw:object', 'paste:object', 'propagate:object'), 'creation',
                                             scope IN ('drag:object', 'resize:object'), 'alignment',
                                             scope = 'delete:object', 'deletion',
@@ -152,14 +159,17 @@ FROM
                                             scope = 'propagate:object', 'propagated',
                                             '') AS method,
                                         if(op = '', '', if(JSONHas(body, 'shape_type'), 'tagged', 'untagged')) AS shape,
-                                        if(op = 'alignment', toUInt64(1), toUInt64(ifNull(count, 1))) AS objects,
+                                        -- a group move counts the objects moved; any other drag or resize one object
+                                        JSONExtractString(body, 'group') = 'move' AS group_move,
+                                        if(op = 'alignment' AND NOT group_move, toUInt64(1), toUInt64(ifNull(count, 1))) AS objects,
                                         if(shape != 'tagged', toUInt64(0), least(objects, if(
                                             JSONHas(body, 'rectangle_count'),
                                             JSONExtractUInt(body, 'rectangle_count'),
                                             if(JSONExtractString(body, 'shape_type') = 'rectangle'
                                                 AND JSONExtractString(body, 'object_type') = 'shape', objects, 0)))) AS box_objects,
-                                        -- one object of one browser in one job, on one frame; '' = no reference (legacy)
-                                        if(op = 'alignment' AND JSONHas(body, 'object_ref'),
+                                        -- one object of one browser in one job, on one frame; '' = no reference (legacy,
+                                        -- or a group move): an alignment of its own
+                                        if(op = 'alignment' AND NOT group_move AND JSONHas(body, 'object_ref'),
                                             concat(toString(assumeNotNull(job_id)), '/', JSONExtractRaw(body, 'client_id'), '/',
                                                    JSONExtractRaw(body, 'object_ref'), '/', JSONExtractRaw(body, 'frame')),
                                             '') AS align_key,
