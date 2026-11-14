@@ -89,6 +89,15 @@ it can fail. The copies were never part of the tree.
   Against a copy in which the search does not stop at the end of the current hour: it
   failed, with the event's hour a week ahead reported as the cutover.
 
+## The seam 1 runner's volumes
+
+`verify/team_analytics_service.sh` removed its containers without their anonymous volumes,
+and `clickhouse/clickhouse-server:23.11-alpine` declares two, so every run on that image
+left both behind. Since `b7cb367` the runner removes them with the containers (`docker rm
+-v`). Shown once at `b7cb367`, holding the shared lock so that no other run made or removed
+volumes meanwhile: 67 unused volumes before a run of `tests.test_working_time` on that
+image (4 tests, OK), 67 after, none new. The 67 were there before and were left alone.
+
 ## Not verified
 
 - The whole seam 1 suite. Only the eleven modules above ran, by the ticket's
