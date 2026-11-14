@@ -23,8 +23,22 @@ regard to letter case, in these forms:
 - inside compressed content: gzip, zip and tar members, and every zlib stream found
   anywhere in a file, which is how PDF streams and PNG chunks are stored.
 
+The same pass looked for the directory reached some other way, and for other marks of the
+machine. None of these is the home prefix; they are listed with what they found:
+
+- the WSL network share name, a Windows user directory, the Docker Desktop bind-mount
+  directory, a block device name, a `file://` address of an absolute path, the
+  directories of agent tooling: nothing;
+- any path under the WSL mount directory: one, in `INFRA_MIGRATION.md` (see "Also seen,
+  not changed");
+- the launcher's cache directory by its name under the home directory: the four redacted
+  log lines, where it now follows `<home>`;
+- the user's name as a whole word: the stack's namespace name in seven evidence files,
+  and four chance byte runs in the ONNX model of the import. Nowhere is it part of a path.
+
 The script that did this is not committed. Before it was trusted it was run on a
-throwaway repository holding one file per form, and it reported each of them.
+throwaway repository holding one file per form of the prefix, and it reported each of
+them.
 
 Anyone can repeat the plain form of the search (`-a` reads binary files as text):
 
