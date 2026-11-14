@@ -4,7 +4,7 @@
 
 **Blocked by:** 08 (The stack runs on the fork server image and the in-tree chart).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The service's Ingress manifest is applied in the stack's namespace beside the proxy, under the cluster's Ingress class, and adds no cluster-wide object.
 - [x] One status request through the Ingress with a real session is answered; the same request without a session is refused as signed out.
@@ -43,3 +43,5 @@ Criterion 8 was left unticked at that point: the stack stayed up for further tic
 
 2026-11-15, step 8: the stack was taken down once the live work had finished. `run.sh down` exited 0, and so did `run.sh check-ingress-gone`, which found no Ingress naming the host and a 404 from the controller. Afterwards nothing of the stack remained: no namespace, no Ingress, none of the five persistent volumes, no port-forward, port 8490 free, no state directory. Details are in "Teardown, 2026-11-15" of the evidence file.
 - 2026-11-15: The live run merged into `feat/team-analytics-page` as `aa03acae`, with no conflict. On the merged tree `py_compile` on `access_cases.py` passed; no launcher command was run by the merger. The ticket stays open for criterion 8 (teardown removes the Ingress), shown when the stack comes down. Evidence: `docs/evidence/2026-11-14-stack-ingress-and-access-cases.md`.
+
+2026-11-15: Resolved on `feat/team-analytics-page` by merges `f273549f` (the checks), `aa03acae` (the live cases) and `c0e2cdde` (the teardown); evidence `docs/evidence/2026-11-14-stack-ingress-and-access-cases.md`.
