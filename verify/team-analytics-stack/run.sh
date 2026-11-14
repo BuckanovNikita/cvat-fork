@@ -13,6 +13,8 @@
 #   run.sh check-final    the final run: the real UI annotates in a browser and its records arrive,
 #                         figures for that work and for loaded volume, every account and endpoint,
 #                         the page, then the page and annotation with the service stopped
+#   run.sh check-final-ui only the real UI's part of check-final and its figures (a new
+#                         project each run; no volume, no service stop)
 #   run.sh check-task-progress  tasks with a job in every stage and state, then the tasks list
 #                         in a browser with the stack's UI image: legend, segments, colours, total
 #   run.sh check-policies fetch the policy bundle the running server serves and check both
@@ -466,6 +468,22 @@ final_browser() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
         nice -n19 node "$HERE/final_browser.cjs" "$@"
 }
+# The real UI's part of the final run: a new project in ta-org-c, the browser annotates it (the
+# detector with its model list and answers supplied in the browser), the records in ClickHouse.
+final_ui() {
+    log "final run: the real UI annotates a new job in ta-org-c"
+    final_py prepare-ui >"$1"
+    final_browser annotate "$1"
+    final_py check-ui-records "$1"
+}
+# Only the real UI's part and its figures (ticket 25): no volume, access, page or service stop.
+check_final_ui() {
+    local state="$STATE_DIR/final-ui-only.json"
+    mkdir -p "$STATE_DIR"
+    final_ui "$state"
+    final_py check-ui-figures "$state" $((TA_REFRESH_INTERVAL_S * 5 + 120))
+    log "final run, real UI part: passed"
+}
 service_replicas() {
     "${K[@]}" -n "$TA_NAMESPACE" scale deploy/team-analytics --replicas="$1" >&2
     if [ "$1" = 0 ]; then
@@ -480,10 +498,7 @@ check_final() {
     mkdir -p "$STATE_DIR"
     log "final run: synthetic volume in ta-org-v (history fills while the browser works)"
     final_py load-volume
-    log "final run: the real UI annotates a new job in ta-org-c"
-    final_py prepare-ui >"$state"
-    final_browser annotate "$state"
-    final_py check-ui-records "$state"
+    final_ui "$state"
     log "final run: figures, access, page"
     final_py check-ui-figures "$state" $((TA_REFRESH_INTERVAL_S * 5 + 120))
     final_py check-volume 1200
@@ -752,6 +767,7 @@ case "${1:-}" in
     check-event) check_event ;;
     check-tracer) check_tracer ;;
     check-final) check_final ;;
+    check-final-ui) check_final_ui ;;
     check-task-progress) check_task_progress ;;
     check-policies) check_policies ;;
     check-bundle) check_bundle ;;
