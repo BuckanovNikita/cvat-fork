@@ -153,6 +153,15 @@ allow if {
     organizations.is_member
 }
 
+# Local patch (role floor): a member of the organization owning the comment, with at
+# least the worker global role, may perform any action on it, staff of the
+# job/task/project or not. Below that global role the stock rules decide alone.
+allow if {
+    input.auth.organization.id == input.resource.organization.id
+    organizations.is_member
+    utils.has_perm(utils.WORKER)
+}
+
 base_filter := {} if { # Django Q object to filter list of entries
     utils.is_admin
 } else := qobject if {
@@ -172,6 +181,9 @@ base_filter := {} if { # Django Q object to filter list of entries
     utils.is_organization
     utils.has_perm(utils.USER)
     organizations.has_perm(organizations.MAINTAINER)
+} else := {} if { # Local patch (role floor): such a member lists every comment of the organization
+    organizations.is_member
+    utils.has_perm(utils.WORKER)
 } else := qobject if {
     organizations.has_perm(organizations.WORKER)
     user := input.auth.user
