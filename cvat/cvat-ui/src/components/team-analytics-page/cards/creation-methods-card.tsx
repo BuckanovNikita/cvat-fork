@@ -94,7 +94,9 @@ function CreationMethodsCard({
                                 <td className='cvat-team-analytics-method-bar-cell'>
                                     <span
                                         className='cvat-team-analytics-method-bar'
-                                        style={{ width: `${(model.objects / largest) * 100}%`, background: MODEL_COLOR }}
+                                        style={{
+                                            width: `${(model.objects / largest) * 100}%`, background: MODEL_COLOR,
+                                        }}
                                     />
                                 </td>
                                 <td>{formatCount(model.objects)}</td>
