@@ -44,6 +44,23 @@ die() { log "error: $*"; exit 1; }
 # cannot run a shell function.
 helm_run() { nice -n19 helm "$@" 2> >(grep -v 'found symbolic link in path' >&2); }
 
+# Every path the launcher prints goes through show_path, so that no captured output names
+# the machine's own directories: a path inside the repository is shown relative to the
+# repository root, a path under the home directory with ~ for it, any other path as it is.
+# Paths are compared resolved, so another name of the same directory is recognised too.
+show_path() {
+    local p root home
+    p="$(realpath -m -- "$1")"
+    root="$(realpath -m -- "$HERE/../..")"
+    home="$(realpath -m -- "${HOME:-/}")"
+    if [ "$p" = "$root" ]; then printf '.\n'
+    elif [ "${p#"$root"/}" != "$p" ]; then printf '%s\n' "${p#"$root"/}"
+    elif [ "$home" != / ] && [ "$p" = "$home" ]; then printf '~\n'
+    elif [ "$home" != / ] && [ "${p#"$home"/}" != "$p" ]; then printf '~/%s\n' "${p#"$home"/}"
+    else printf '%s\n' "$1"
+    fi
+}
+
 case "$TA_NAMESPACE" in
     *[!a-z0-9-]* | -* | *- | "") die "TA_NAMESPACE '$TA_NAMESPACE' is not a DNS label" ;;
 esac
@@ -469,6 +486,6 @@ case "${1:-}" in
     check-final) check_final ;;
     forward) start_port_forward ;;
     status) status ;;
-    fetch-chart) build_chart; echo "$CHART_DIR" ;;
+    fetch-chart) build_chart; show_path "$CHART_DIR" ;;
     *) sed -n '5,18p' "$0" >&2; exit 2 ;;
 esac
