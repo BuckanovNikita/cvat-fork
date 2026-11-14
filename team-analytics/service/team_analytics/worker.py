@@ -8,6 +8,8 @@ A step is, in this order of priority:
      recount, then looks for an earlier cutover in the recorded events (cutover.py), within a time limit.
 Each step holds the shared refresh lease only for itself, so between two days of history a due refresh
 always comes first. A step that finds the lease taken (another replica is working) is retried soon.
+Whether there is history or a check to do is decided under the lease, so a step with nothing to do also
+claims it once (about once per refresh interval).
 """
 
 from __future__ import annotations
@@ -43,10 +45,18 @@ class Worker:
         age = self._refresh_age_s()
         if age is None or age >= interval:
             return 0.0 if self._refresher.run().ran else RETRY_S
-        if self._history.next_day() is not None:
-            ran, _ = self._refresher.leased(self._history.process_next)
-            return 0.0 if ran else RETRY_S
+        ran, worked = self._refresher.leased(self._history_or_check)
+        if not ran:
+            return RETRY_S
+        return 0.0 if worked else max(1.0, interval - age)
+
+    def _history_or_check(self) -> bool:
+        """Holding the lease: one day of history, else the daily check when it is due. Which day is next is read
+        once, under the lease, so the day found is the day computed, and a day another replica computed
+        meanwhile is not computed again. Returns whether there was work."""
+        if self._history.process_next() is not None:
+            return True
         if self._history.check_due():
-            ran, _ = self._refresher.leased(self._history.check)
-            return 0.0 if ran else RETRY_S
-        return max(1.0, interval - age)
+            self._history.check()
+            return True
+        return False
