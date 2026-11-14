@@ -214,3 +214,31 @@ line from section 3 as acceptance criteria.
   G5 a better cutover signal than the first shape-tagged event.
 - Overview latency under load (ledger S12) is not in the owner's list and is
   not planned here.
+
+## 7. Owner's answers, 2026-11-14
+
+Sections 1 to 4 above were written before these answers and are **not yet
+reworked**; where they disagree, this section wins. The plan is rewritten once
+the remaining questions are settled.
+
+| Question | Answer |
+| --- | --- |
+| G0, fork conversion | **Dropped.** There is no conversion, so nothing is "throwaway": the lease block (S9), the lease test (V10), the Ingress, live access cases (V4) and a permanent lint gate (V7) are all in scope, and policies cannot wait for a fork server image |
+| Is the Compose overlay live? | **No, Compose is dead.** OPA-1, OPA-4, OPA-5, OPA-6, OPA-7 and the Compose form of OPA-8 lose their reason; Kubernetes is the only delivery path for the policies (OPA-2) |
+| G1, role floor | Yes: at least the `worker` global role, stock list behaviour below it |
+| G3, unprocessed periods | Yes: the API withholds the figures |
+| G4, status for a maintainer | Yes: the reduced status |
+| G5, cutover | Yes: it may move to an earlier hour only (glossary updated) |
+| G6, frame navigation | Yes: frames moved, as the glossary says |
+| Redo (new) | Yes: a redo is not a creation (glossary updated). Q6 becomes "stop counting it" |
+| G7b, tags, interactor and OpenCV objects | Yes: left uncounted, stated as a limit (glossary updated) |
+| G8, split bars and definitions footer | Yes: build both |
+| G9, sessions over a day | Yes: not fixed; a session is at most a day long (glossary updated); counted once in the verification run |
+| G10, home-directory path | Yes: redact forward, history left alone |
+| G11, the kept stack | Torn down on the owner's instruction on 2026-11-14 with the launcher's `down`; the namespace and its port-forward are gone |
+
+The answers to G1 and G3 to G10 were given as "all between true" for the
+questions between the first two and the last; read here as yes to each.
+
+Still open: the group-drag rule, the legacy flag in tables, the 3D definition,
+and what the two reversals above change (round 2 of the interview).

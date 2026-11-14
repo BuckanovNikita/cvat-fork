@@ -39,7 +39,7 @@ The bucket for job work in tasks that belong to no project.
 ### Time
 
 **Session**:
-One uninterrupted interval of job work by one person. A pause longer than the session gap ends it. Seen for a single project, a session counts if it touched that project, and its length is only the time spent inside it.
+One uninterrupted interval of job work by one person, at most a day long. A pause longer than the session gap ends it. Seen for a single project, a session counts if it touched that project, and its length is only the time spent inside it.
 _Avoid_: Visit, login, shift
 
 **Session gap**:
@@ -66,11 +66,11 @@ _Avoid_: Bbox (in user-facing text), rectangle, box track
 Every kind of object together, bounding boxes included. Figures recorded before shape tagging exist only in this form.
 
 **Operation**:
-One of the four things a person does to an object: Creation, Alignment, Class change or Deletion. Operations count what people did, not what survives: an undone creation is still a creation.
+One of the four things a person does to an object: Creation, Alignment, Class change or Deletion. Operations count what people did, not what survives: an undone creation is still a creation, and redoing it is not a second one.
 _Avoid_: Action (an action is any single recorded step), edit
 
 **Creation**:
-A person making a new object by drawing, pasting or propagating it. Model boxes are not creations.
+A person making a new object by drawing, pasting or propagating it. Model boxes are not creations. Tags and objects made with the interactive AI or OpenCV tools are not counted.
 
 **Alignment**:
 Bringing one existing object into place: an uninterrupted run of drags and resizes of the same object, however many it takes. Touching another object or leaving the frame ends it, so returning to the same object later is a new alignment.
@@ -141,7 +141,7 @@ _Avoid_: Modal, popup, details, expanded view
 The part of the past for which figures have been computed. A period is offered only when all of it is processed.
 
 **Cutover**:
-The moment of the first shape-tagged event on the instance, when the new activity logging began. Before it there is none. Once known it is stored and never moves.
+The moment of the first shape-tagged event on the instance, when the new activity logging began. Before it there is none. Once known it is stored and can only move earlier, when an earlier shape-tagged event turns up.
 _Avoid_: Deployment date, rollout day
 
 **Legacy period**:
