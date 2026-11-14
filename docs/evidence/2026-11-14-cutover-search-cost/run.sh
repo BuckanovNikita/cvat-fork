@@ -89,11 +89,13 @@ search() {  # search <label> <statement file> <until> [keep]: one run of the sta
     [ "${4:-}" = keep ] || ch -q "TRUNCATE TABLE ta_totals.cutover"
     local seconds
     if ! seconds="$(ch "${SERVICE_SETTINGS[@]}" --log_comment="t17|$RUN_ID|$1" --param_until="$3" --time < "$2" 2>&1)"; then
-        say "$1: FAILED: $seconds"
+        note "$1: FAILED: $seconds"
         return 1
     fi
-    say "$1: ${seconds}s, stored $(ch -q "SELECT groupArray(toString(at)) FROM ta_totals.cutover")"
+    note "$1: ${seconds}s, stored $(ch -q "SELECT groupArray(toString(at)) FROM ta_totals.cutover")"
 }
+
+note() { say "$*" | tee -a "$D/runs.txt"; }  # a progress line that is kept with the results
 
 measure() {
     local statement="$D/search.sql" absent
@@ -108,7 +110,7 @@ measure() {
     {
         echo "image: $IMAGE"
         echo "server: $(ch -q "SELECT version()")"
-        echo "limits: --cpus 2 --memory 10g; max_threads = $(ch -q "SELECT value FROM system.settings WHERE name = 'max_threads'")"
+        echo "limits: --cpus 2 --memory 10g; max_threads = $(ch --format TSVRaw -q "SELECT value FROM system.settings WHERE name = 'max_threads'")"
         echo "base_n: $(docker exec "$NAME" cat /tmp/base_n)"
         echo "events: $(ch -q "SELECT count(), min(timestamp), max(timestamp) FROM events" | tr '\t' ' ')"
         echo "parts, on disk, uncompressed: $(ch -q "SELECT count(), formatReadableSize(sum(bytes_on_disk)), formatReadableSize(sum(data_uncompressed_bytes)) FROM system.parts WHERE active AND database = 'default' AND table = 'events'" | tr '\t' ' ')"
@@ -117,11 +119,12 @@ measure() {
         echo "host load average before the runs: $(cut -d' ' -f1-3 /proc/loadavg)"
     } | tee "$D/setup.txt"
 
+    : > "$D/runs.txt"
     local run
     for run in 1 2 3; do
-        say "page cache of the container before eviction: $(file_cache) bytes"
+        note "page cache of the container before eviction: $(file_cache) bytes"
         evict
-        say "page cache of the container after eviction: $(file_cache) bytes"
+        note "page cache of the container after eviction: $(file_cache) bytes"
         search "full range, cold, run $run" "$statement" "$UNTIL"
     done
     for run in 1 2 3; do search "full range, warm, run $run" "$statement" "$UNTIL"; done
@@ -139,7 +142,7 @@ measure() {
     echo "host load average after the runs: $(cut -d' ' -f1-3 /proc/loadavg)" | tee -a "$D/setup.txt"
 
     ch -q "SYSTEM FLUSH LOGS"
-    ch --format PrettyCompactMonoBlock -q "
+    ch --format PrettyCompactNoEscapesMonoBlock -q "
         SELECT splitByChar('|', log_comment)[3] AS run,
                round(query_duration_ms / 1000, 2) AS seconds,
                formatReadableSize(memory_usage) AS peak_memory,
@@ -147,12 +150,12 @@ measure() {
                formatReadableSize(read_bytes) AS read_uncompressed,
                formatReadableSize(ProfileEvents['OSReadBytes']) AS read_from_disk,
                round(ProfileEvents['OSCPUVirtualTimeMicroseconds'] / 1e6, 2) AS cpu_seconds,
-               round(ProfileEvents['OSIOWaitMicroseconds'] / 1e6, 2) AS io_wait_seconds,
                written_rows AS stored_rows
         FROM system.query_log
         WHERE log_comment LIKE 't17|$RUN_ID|%' AND type = 'QueryFinish'
         ORDER BY event_time_microseconds" | tee "$D/report.txt"
-    ch -q "SELECT count() FROM system.query_log WHERE log_comment LIKE 't17|$RUN_ID|%' AND type LIKE 'Exception%'" \
+    ch -q "SELECT count() FROM system.query_log WHERE log_comment LIKE 't17|$RUN_ID|%'
+               AND type IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing')" \
         | sed 's/^/failed runs: /' | tee -a "$D/report.txt"
 }
 
