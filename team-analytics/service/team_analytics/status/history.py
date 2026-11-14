@@ -4,7 +4,9 @@ A period is offered only when every hour of it is processed; trends need three c
 
 An administrator gets the whole block. Everyone else gets whether history is complete, the percentage, the
 periods that can be offered and the trends' readiness; not the first day with events, the day counts or
-the moment from which history is processed, since those describe the whole instance.
+the moment from which history is processed. What remains still describes the whole instance, and while
+history is processed it lets a caller who polls work out the first day with events (docs/fork-specification.md,
+"Known limit of `status` for a caller outside the admin group").
 """
 
 from __future__ import annotations

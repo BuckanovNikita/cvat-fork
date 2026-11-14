@@ -70,24 +70,164 @@ Each field the maintainer gets, and what it can say about the instance:
 | `refresh.*` | When the last refresh succeeded, the service's clock, the refresh interval and the staleness limit. Nothing about the extent of history. |
 | `cutover.at` | The hour of the first shape-tagged event on the instance; allowed by the spec. |
 
-Nothing in it names the first day with events or a day count, and none of
-it depends on another organization's events once history is complete
-(`complete: true`, `percent: 100`, every period offered).
+Nothing in it names the first day with events or a day count. Every field
+describes the whole instance, not the caller's organization.
 
 While history is still being processed a residual remains, and it cannot be
 removed while the percentage agrees with the day counts: the percentage is
 "days processed / days in the instance", and the periods tell how far back
 processing has reached. Read together at the moment a period, month or week
-count changes, they bound the length of the instance's history. Example: an
-instance whose first event is 731 days before today. When `year` becomes
-offered, about 366 days are processed and `percent` reads 50; the reader can
-then infer that the instance holds between about 718 and 732 days, a first
-day within about two weeks. Polling over the whole processing narrows the
-bound further, and the last state before `complete` turns true says that only
-the oldest day is left. Once history is complete nothing of this remains.
+count changes, they bound the length of the instance's history.
+
+Corrected after the independent review (below): the paragraph first written
+here gave a single sighting as the example (a first day "within about two
+weeks" when Year becomes offered) and ended "Once history is complete nothing
+of this remains". Both undersell it. A caller who polls status while history
+is processed sees `earliest_month` change about once a month and
+`complete_weeks` change once a week up to twelve; at each change the first
+processed day is known exactly (a month's first day, a Monday), so the
+processed day count is known exactly, and the percentage then gives the
+instance's total to within one percent; several such sightings give the exact
+first event day. The reviewer's probe did this. The `processed` flags of the
+overview, the list and the details table for any `month`, and the trends'
+per-bucket flags, locate the processing point the same way, so withholding
+`ready_from` hides little. After history is complete, an event dated before
+the instance's first day makes `complete` false again for a step or two, and
+for that window the same applies to the older history. Making the percentage
+coarser (rounded, or not tied to the instance's day counts) would blunt this;
+that is an open decision for the owner.
 
 ## Not verified here
 
 - The whole seam 1 suite (run on the integration branch after the package's
   tickets merge).
 - The independent review of this access change (after merge).
+  Done after merge; see below.
+
+## Independent review
+
+A fresh agent that had not written the changes reviewed tickets 14, 15 and 16
+together (what the service returns, and to whom), given the owner's documents
+and the three merges (`5fae08e9`, `35f820d0`, `a095b0ba`), not the
+implementers' conclusions. It read and probed the tree at `35f820d0` and
+changed no tracked file.
+
+Verdict: nothing found lets a caller outside the admin group be taken for an
+administrator, crosses between organizations, or puts a technical account into
+a list of people. Five findings, two of them defects in what a read returns.
+
+Findings and what was done (follow-up on branch `fix/reads-review`):
+
+1. Status: a maintainer can recover the instance's exact first day of recorded
+   work while history is processed (run). The reviewer's probe, polling once
+   per history step on an instance whose other organization's work began 197
+   days before "today", inferred exactly 197 days from 17 moments at which
+   `earliest_month` or `complete_weeks` changed. The `processed` flags of the
+   other endpoints locate the processing point to the month or week the same
+   way. After history is complete, an event dated before the first day reopens
+   the window for a step or two. Behaviour not changed: the owner decided what
+   such a caller gets. Recorded without softening in
+   `docs/fork-specification.md` ("Known limit of `status` for a caller outside
+   the admin group"), in ticket 15's comments, and above, where the earlier
+   "about two weeks" and "nothing of this remains" are corrected. Making the
+   percentage coarser is an open decision for the owner.
+2. Trends: `candidates[].working_time_ms` carried figures from unprocessed
+   weeks, and the ranking followed them (run). Fixed: a candidate's working
+   time sums only the fully processed buckets and is null while none is;
+   candidates are ranked by it, then by id. Summing the processed buckets was
+   chosen over giving no figure while any bucket is unprocessed: buckets are
+   processed newest first, so the current week is processed early in a long
+   history fill, and the page offers the first candidates of the list; with no
+   figure until all twelve buckets are processed, the order would be by id
+   for the whole fill. A sum over processed buckets is the sum of that line's
+   non-null points, which keeps it consistent with "a trend bucket that is not
+   fully processed has a null value". Who is a candidate still comes from
+   every computed hour of the twelve buckets, so that a comparison can be
+   offered while history is processed. Test first:
+   `tests.test_trends.ProcessedTest.test_a_candidate_has_working_time_only_from_processed_buckets`
+   failed before the fix on `[(12, 7200000), (11, 3600000)]` (Bob ranked first
+   on two unprocessed hours) where `[(11, None), (12, None)]` was expected, and
+   passes after it. The withholding tests of all four endpoints now assert that
+   every key outside the stated envelope is null (per point for the trends,
+   per candidate while no bucket is processed), with the envelopes written as
+   literals in the tests.
+3. The legacy flags of an unprocessed answer come from the partial totals and
+   can flip once the period is processed (run for trends, read for the list).
+   Behaviour not changed: the owner settled that the flags stay in the
+   envelope; how they are computed there is the owner's decision. Recorded in
+   `docs/fork-specification.md` ("Known limit of unprocessed periods"), ticket
+   14's comments, and beside the page's shape switch, which is hidden from
+   `operations.legacy`. The two tests that pin today's values
+   (`test_trends.ProcessedTest`, `test_full_view.ProcessedTest`) stay, with a
+   comment that they pin this limit.
+4. A race between reading figures and reading `processed` could send partial
+   figures marked processed (read). Fixed: every endpoint reads the history
+   state once per request (`Request.history()`), before its first figure read;
+   the overview takes it before its sections. No public boundary lets a step
+   land between two reads of one request (the clock and the stand-in CVAT are
+   both consulted before the endpoint runs), so this is shown with a probe that
+   wraps the service's SQL reads and runs one service step right after the
+   request's first figure read, in a state where that step completes history
+   and adds an hour to November. Before the fix, at `a423f824`, all four
+   endpoints answered `processed: true` with the figures read before the step
+   (one hour where two were stored; the trends' week of the 2nd at zero).
+   After it, all four answer `processed: false` with no figures. The probe is
+   kept outside the repository, beside the run logs. The history step writes
+   the totals, then marks the hours (`hour_versions`), then records the day
+   (`history_days`), so a state read first never covers hours whose figures
+   are not yet visible.
+5. Documents did not say what the code does (read). `docs/fork-specification.md`
+   now says that status depends on who asks and what each group gets, the
+   technical-account row of the details table by project, and each endpoint's
+   envelope as it is (the details table returns neither period nor filter
+   echo, and returns `technical_accounts`). The docstring of `withheld.py`,
+   which claimed a period and filter echo for every endpoint, is corrected.
+   Ticket 15's title is not edited; a dated comment says that every field a
+   caller outside the admin group still gets describes the whole instance.
+
+`technical_accounts`, the number of configured technical accounts, stays in
+the details table and in the overview's creation methods: the page shows it to
+every reader of the table ("N technical accounts are left out of annotator
+lists", `details-table-card.tsx`) and beside Model
+(`creation-methods-card.tsx`). It describes the instance's configuration, not
+any organization's work.
+
+What held, as the reviewer read or ran it: administrator recognition only
+from CVAT's own `/api/users/self` answer, with and without an organization,
+with the caller's own credentials and per-credential cache entries; the
+maintainer's status block built field by field; withholding in the overview,
+list and details table, including the remainder row, operation parts, details
+rows and `project_ids`; ticket 16's rows limited to the caller's organization,
+a technical account excluded from every list of people checked, row order
+matching `project_ids`; the callers of `keep_refreshing_since` away from window
+edges, apart from one the implementer had repaired; the page with
+`processed: false` gating every card.
+
+Not checked by the reviewer: the whole service suite (run separately on both
+ClickHouse images at `35f820d0`), timing side channels, anything on a stack.
+
+## Observed in the review follow-up
+
+Seam 1, `verify/team_analytics_service.sh`, in Docker, on the default image
+`cvat/clickhouse:23.12.2-debian-11-r0`.
+
+- Finding 2: `tests.test_trends.ProcessedTest` before the fix, the new case
+  failing as described above; after it, all of `tests.test_trends` passes.
+- The new "every key outside the envelope is null" assertions of the
+  overview, list and details tests were checked against a temporary change
+  that added one field to each withheld answer outside `withhold`: all three
+  failed on it, naming the field; the change was not kept. The trends'
+  per-candidate assertion is the one that failed first in finding 2.
+- Finding 4: the probe (four cases, one per endpoint) failed in all four
+  against a copy of the tree at `a423f824` and passed after the fix, run
+  together with `tests.test_history`, `tests.test_full_view` and
+  `tests.test_details_table`, all of which pass.
+- `status` was not reordered: it reads the history state once and no figure.
+
+Seam 3, `node --test verify/team_analytics_page.cjs`: 217 pass, 0 skipped
+(the page changed only in a type and a comment). ESLint and the type check
+pass on the two UI files touched (`service.ts`, `team-analytics-view.tsx`).
+
+Not verified in the follow-up: the whole seam 1 suite, and the second
+ClickHouse image (left to the merger's run); the race through a public
+boundary (none allows it); a second independent review of the follow-up.
