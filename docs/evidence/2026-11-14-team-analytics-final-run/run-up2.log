@@ -3,7 +3,7 @@ namespace/cvat-ta-it-nkt unchanged
 resourcequota/team-analytics-stack unchanged
 limitrange/team-analytics-stack unchanged
 [ta-stack] installing chart release cvat
-walk.go:75: found symbolic link in path: /mnt/wsl/data/nkt/.cache/cvat-fork/team-analytics/build-02bd74fde78e00f770b7dfc3c33761ad9ab00095-8c741f0484e5/helm-chart/analytics resolves to /mnt/wsl/data/nkt/.cache/cvat-fork/team-analytics/build-02bd74fde78e00f770b7dfc3c33761ad9ab00095-8c741f0484e5/components/analytics. Contents of linked file included and used
+walk.go:75: found symbolic link in path: <home>/.cache/cvat-fork/team-analytics/build-02bd74fde78e00f770b7dfc3c33761ad9ab00095-8c741f0484e5/helm-chart/analytics resolves to <home>/.cache/cvat-fork/team-analytics/build-02bd74fde78e00f770b7dfc3c33761ad9ab00095-8c741f0484e5/components/analytics. Contents of linked file included and used
 Release "cvat" has been upgraded. Happy Helming!
 NAME: cvat
 LAST DEPLOYED: Sat Nov 14 07:44:07 2026
