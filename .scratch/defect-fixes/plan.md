@@ -92,7 +92,9 @@ Constraints the order encodes:
 - The group drag spans the UI and the SQL; the event's shape is fixed in the
   contract first, then both halves are built.
 - P9's service half follows S13 in the same package; its page half follows it.
-- Nothing is pushed before 0.1 and the security review.
+- Nothing was to be pushed before 0.1 and the security review. The owner then
+  had `main` landed and pushed on 2026-11-14 as it was; see the comments of
+  `spec.md`. The work itself is now ticketed under `issues/`.
 
 ## 4. The work
 

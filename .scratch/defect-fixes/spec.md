@@ -536,3 +536,9 @@ integration and verification. The access rules and the policies get their own.
   public when pushed.
 
 ## Comments
+
+2026-11-14: Broken into tickets 01 to 28 under `issues/`; the owner approved the breakdown as proposed.
+
+2026-11-14: On the owner's instruction, `main` was fast-forwarded to this branch and pushed before any ticket started. The local path in four run logs, and in compiled files in history, is therefore public, and the security review was still outstanding. Story 85 and the out-of-scope line on pushing now mean further pushes. Ticket 01 cleans the current files only; ticket 28 reviews what is already public as well.
+
+2026-11-14: The re-import of ticket 04 drops the Compose file from the import, so the two Compose launchers stop working there, before their files are removed in ticket 12. Between ticket 04 and tickets 09 and 10 neither the issue-permission check nor the task-progress check can run anywhere. The owner accepted the breakdown with this stated.
