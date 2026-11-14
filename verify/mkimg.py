@@ -1,4 +1,7 @@
-import struct, zlib, sys, os
+import struct
+import zlib
+import sys
+import os
 
 
 def png(path, w, h, rgb):
