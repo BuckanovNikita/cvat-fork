@@ -12,16 +12,19 @@ to the repository root.
 | --- | --- | --- |
 | Upstream import | `mirror-cvat.sh`, `cvat/` | Filtered Git subtree containing frontend build inputs and deployment components |
 | Task progress | Eight UI files listed below | Per-stage/state job counts, legend and progress segments |
-| Organization issues/comments | `opa/rules/issues.rego`, `opa/rules/comments.rego` | Broader actions and listing for members of the resource organization |
+| Organization issues/comments | `cvat/cvat/apps/engine/rules/issues.rego`, `cvat/cvat/apps/engine/rules/comments.rego` (patched in place inside the import) | Broader actions and listing for members of the resource organization who hold at least the `worker` global role |
 | Build and deployment | `build-ui.sh`, `docker-compose.override.yml` | Custom UI image and server-side OPA mounts |
 | Verification | `verify/` | Frontend regression tests, policy tests and legacy live verification harnesses |
-| Mechanical formatting | `ruff.toml`, `cvat/components/analytics/clickhouse/init.py` | Formatting convention; no intended ClickHouse behavior change |
+| Mechanical formatting | `ruff.toml` | Formatting convention for the fork's own Python. It is not applied inside the import: `cvat/components/analytics/clickhouse/init.py` equals upstream's file |
 | Team Analytics | `team-analytics/`, `build-team-analytics-service.sh`, the page and logging directories under `cvat/cvat-ui/src/`, wiring in eleven UI files (TA-1) | Work figures per annotator and project from CVAT's own events, read by a separate service |
 
 The authoritative import path selection is `PATHS` in `mirror-cvat.sh`.
 `tools/git-filter-repo` is vendored tooling, not a place for fork policy.
-The filtered tree omits the Python backend and its OPA rules. Those rules must
-be obtained separately from the matching full upstream revision during upgrades.
+The filtered tree omits the Python backend. It carries four of its OPA policies:
+the issue and comment policies, which the fork patches in place, and their
+helpers `cvat/cvat/apps/iam/rules/utils.rego` and
+`cvat/cvat/apps/organizations/rules/organizations.rego`, kept stock. The policy
+test, `verify/policy_test.sh`, reads them from the import.
 
 ## UI-1: Task job summaries
 
@@ -95,26 +98,38 @@ introduced enum value needs explicit handling in counters and colors.
 
 ## IAM-1: Organization issue and comment permissions
 
-Each copied policy has two intentional additions to the matching upstream rule:
+Each of the two policies in the import carries the same two additions to the
+stock file, marked with a `# Local patch (role floor):` comment, and nothing else:
 
 1. Allow actions when the authenticated organization ID equals the resource's
-   organization ID and `organizations.is_member` is true. This added rule has
-   no scope whitelist. Current supported actions include issue creation on a
-   job, comment creation on an issue, viewing, updating and deleting.
-2. For a member, return an unrestricted base filter (`{}`), then pass it through
-   upstream `utils.add_organization_filter`. Listing must remain constrained to
-   the selected organization, rather than to job/task/project staff assignments.
+   organization ID, `organizations.is_member` is true and the caller has at
+   least the `worker` global role (`utils.has_perm(utils.WORKER)`). This added
+   rule has no scope whitelist. Current supported actions include issue
+   creation on a job, comment creation on an issue, viewing, updating and
+   deleting.
+2. For a member with at least the `worker` global role, return an unrestricted
+   base filter (`{}`), then pass it through upstream
+   `utils.add_organization_filter`. Listing must remain constrained to the
+   selected organization, rather than to job/task/project staff assignments.
+   The stock member branch of the filter follows the added one unchanged, so a
+   member below the floor gets the stock staff filter.
 
 This applies to organization workers and supervisors as well as maintainers
 and owners, including members who are neither assigned to the job nor owners
 of the issue/comment. Both resource policies are necessary for issue discussions.
 
+The floor is the `worker` global role; `user` and `admin` are above it. The
+invariant: for a caller below the floor, which in practice is an account with
+no global role, the patched policies decide exactly as the stock ones for every
+action and for the list filter. That is not a refusal of everything: stock lets
+such a caller view an issue or comment it is staff of and list its own items.
+
 Preserve upstream context checks and existing privileges. The local extension
 must not grant an ordinary nonmember access, grant a removed member access
 through a stale assignment, cross organization boundaries, or expose an
 organization resource in sandbox context. Sandbox behavior and upstream admin
-exceptions remain upstream responsibilities. Check both global `user` and
-`worker` privileges where covered by the policy tests.
+exceptions remain upstream responsibilities. Check the global `user` and
+`worker` privileges and no global role where covered by the policy tests.
 
 Preserve the prefix Q-expression filter contract, the `org_filter_proof` marker,
 and the distinction between explicitly selected sandbox and unspecified
@@ -241,6 +256,16 @@ Behavior to preserve:
   are fixed in `utils/team-analytics-logging/contract.ts` and in the service
   SQL. Change them together. A batch with a scope the server does not accept is
   rejected whole, so no new scope may be introduced.
+- A redo is no operation. Redoing created objects adds no creation and no
+  creation method, and its time is Other; inside a job it still ends an
+  alignment run. Known limit of the stored totals: a changed counting rule
+  does not recompute hours already stored. The trailing refresh window
+  follows the new rule from the next refresh. An older day keeps the figures
+  it was stored with until it is computed again, which happens only when its
+  raw event count, or that of the day before or after it, changes. In hours
+  stored before this rule a redo of created objects is a creation with its
+  time, under the method of the creation it restored or as Drawn; a stored
+  `redone` row is read as Drawn.
 - The logging module never throws into the annotation view. After three
   failures it switches itself off for the page's life. It records nothing
   outside an open 2D job.
@@ -338,7 +363,7 @@ rules is recorded with the dated evidence.
 | UI-C | Empty page makes no jobs request; zero total and zero fetched jobs render no segments | Same regression suite |
 | UI-D | Paginated job collection covers the page, and stale success/failure cannot overwrite a new query | Mocked thunk/reducer tests; live API for actual pagination |
 | UI-E | Failed summary fetch preserves task display and the upstream progress fallback | Mocked failure tests; browser for complete task-item fallback |
-| IAM-A | Unassigned organization members can act on issues/comments and list the organization's resources | `verify/opa_issues_test.rego`; live API matrix |
+| IAM-A | Unassigned organization members with at least the `worker` global role can act on issues/comments and list the organization's resources; below the floor the result is stock's | `verify/opa_issues_test.rego` through `verify/policy_test.sh`; live API matrix |
 | IAM-B | Nonmembers, removed members, other organizations and sandbox/context mismatches do not gain access from the patch | Same policy suite; live negative cases |
 | IAM-C | Sandbox behavior and upstream filter shape remain compatible with the target release | Stock-versus-patched policy suite with target helpers |
 | BUILD-A | Built image serves the changed UI without stale bundles/source maps; backend uses stock release | Image inspection and browser verification |

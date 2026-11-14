@@ -160,6 +160,18 @@ class AlignmentTest(OperationsCase):
 
         self.assertEqual(self.alignments()[0], 2)
 
+    def test_a_redo_of_a_creation_ends_an_alignment(self):
+        t = self.t
+        self.stack.add_events([
+            client("load:job", seconds(t, 0)),
+            drag(seconds(t, 5), 1),
+            client("action:redo", seconds(t, 8), count=1, name="Created objects", frame=0),
+            drag(seconds(t, 10), 1),
+        ])
+
+        # 5 s to the first drag and 2 s from the redo to the second; the 3 s before the redo are no alignment's
+        self.assertEqual(self.alignments(), (2, 2, 7_000))
+
     def test_zooming_between_drags_of_the_same_box_does_not_end_the_alignment(self):
         t = self.t
         self.stack.add_events([
