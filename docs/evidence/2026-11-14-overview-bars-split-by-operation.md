@@ -177,9 +177,16 @@ What held, as the reviewer ran or read it:
   class change is dropped from the legend and the bars.
 - The definitions: worded from the glossary (seven sentences verbatim, two
   composed from Session gap and Idle pause), no figures, only in the overview.
-- The reads and refresh follow-ups, as recorded in their own evidence; a
-  stopped cutover search is caught at start and in the daily check, and a lost
-  lease still propagates.
+- The reads follow-up: the candidate figure leak is fixed apart from finding
+  1; one early read of the history state per request on all four endpoints
+  can only make an answer more cautious; the envelope literals in the tests
+  match the code and the specification.
+- The refresh follow-up: the limits use a thrown timeout, not a partial result
+  (which would store a later cutover); a stopped search is caught at start and
+  in the daily check, and a lost lease still propagates; the cheaper statement
+  is equivalent to the old one for ties, same-timestamp records, the bound at
+  the end of the current hour, an empty table and a missing table, and stays
+  "never later"; the explicit marker wraps all three lease statements.
 
 Not checked by the reviewer: anything in a real browser; the cost of the
 doubled row read and of the in-order cutover search at the benchmark's scale;
@@ -199,7 +206,7 @@ either legend shows is unchanged; the two seam 3 selectors that named the old
 classes follow the rename.
 
 Stated check, not a kept test, since nothing a test can see changed: a
-one-off script, kept outside the repository, compiled every stylesheet of the
+one-off script, not committed, compiled every stylesheet of the
 page directory with the UI's Sass (load path `cvat/cvat-ui/src`), rendered
 the overview with supplied answers in jsdom, and listed every compiled rule
 that matches an element of each legend.
@@ -211,7 +218,8 @@ that matches an element of each legend.
 | `projects-filters.scss` legend item (`inline-flex`, 6 px gap) | yes | yes | yes, renamed | no |
 | `styles.scss` legend item (flex, 10 px gap, 7 px padding, 1 px top line) | yes | yes | no | yes, renamed |
 | `projects-filters.scss` items, swatch | yes | no | yes, renamed | no |
-| `styles.scss` swatch, name, share, value | no | yes | no | yes, renamed |
+| `styles.scss` legend name and share | no | yes | no | yes, renamed |
+| `styles.scss` swatch and value (shared page classes, not renamed) | no | yes | no | yes |
 
 Before: four rules reached both legends. After: none. Both directions of the
 collision were real: the bars' legend items carried the split list's 7 px
@@ -231,16 +239,20 @@ the light grey `#c9c8c2`), and its hover reads "alice: 2.0 h, not split by
 operation". The legend stays in every case. Seam 3, three tests added to
 `verify/team-analytics-page/split-bars.test.cjs` and seen to fail first, each
 on "rgb(42, 120, 214) is a colour of the legend": no row carries parts (both
-cards), only some rows do, and a legacy period. After the fix all pass.
+cards), only some rows do, and a legacy period. After the fix all pass. The
+tests and the fix are in one commit; the red run was on the tests alone.
 
 **Findings 1 and 3.** Documentation only (`21ce496a`), as above. No service,
 glossary or definitions change.
 
-Checks on the follow-up, before the merge of `feat/team-analytics-page`:
-seam 3 passed with none skipped; ESLint on the two changed cards, stylelint on
+Checks on the follow-up. The branch started from the tip of
+`feat/team-analytics-page` (`e62e1db8`), which had not moved when the work
+was done, so there was nothing to merge. Seam 3 passed with none skipped;
+ESLint on the two changed cards, stylelint on
 `styles.scss` and `projects-filters.scss`, and the UI type check (section 4 of
 `docs/upstream-upgrade.md`) found nothing; the type check ran in a worktree
-and read the workspace packages from the main checkout.
+and read the workspace packages from the main checkout. `prek run --all-files`
+passed on the branch's final commit, every hook run and none skipped.
 
 Not verified: the rendered look of either legend and of the neutral bar, at
 1400 px and at 400 px, which needs a browser (ticket 27). The live stack
