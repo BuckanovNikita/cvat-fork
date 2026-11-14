@@ -363,3 +363,72 @@ export async function loadTrends(query: TrendsQuery, fetch: FetchService = fetch
         return null;
     }
 }
+
+// --- details (GET details): the paged, searchable table by annotator or by project ------------------------------
+
+export type DetailsKind = 'annotators' | 'projects';
+
+// Every figure of one annotator or one project in the period. `projects` (annotator rows) / `annotators`
+// (project rows) count the other dimension. Model per annotator is the built-in detector only; saved boxes
+// replace it in a legacy period.
+export interface DetailsRow {
+    id: number; // user id, or project id (0 = No project)
+    user_name: string | null;
+    projects?: number;
+    annotators?: number;
+    sessions: number;
+    working_time_ms: number;
+    drawn: number;
+    pasted: number;
+    propagated: number;
+    model: number;
+    saved_boxes: number;
+    alignments: number;
+    class_changes: number;
+    deletions: number;
+    average_create_ms: number | null;
+    hotkey_share: number | null;
+}
+
+export interface Details {
+    by: DetailsKind;
+    page: number; // 1-based, the page actually shown
+    page_size: number;
+    total: number; // rows matching the search
+    legacy: boolean;
+    shapes: 'bounding_boxes' | 'all';
+    processed?: boolean;
+    technical_accounts?: number;
+    rows: DetailsRow[];
+    // projects only: every project in the table before the search, for finding projects by name
+    project_ids?: number[];
+}
+
+export interface DetailsQuery extends OverviewQuery {
+    by: DetailsKind;
+    page: number;
+    // annotators: text the name contains
+    search?: string;
+    // projects: the ids whose shown name matches (an empty list matches none); null = no search
+    ids?: number[] | null;
+}
+
+// The details table, or null when it cannot be read (the table then says so).
+export async function loadDetails(query: DetailsQuery, fetch: FetchService = fetchService): Promise<Details | null> {
+    const params = serviceParams(query);
+    params.set('by', query.by);
+    params.set('page', String(query.page));
+    if (query.search) params.set('search', query.search);
+    if (query.ids) params.set('ids', query.ids.join(','));
+    try {
+        const response = await fetch(`${SERVICE_PREFIX}details?${params}`, {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' },
+        });
+        const data = await body(response);
+        const readable = response.ok && !!data && Array.isArray(data.rows) && typeof data.total === 'number';
+        return readable ? data as Details : null;
+    } catch {
+        return null;
+    }
+}
