@@ -212,6 +212,13 @@ Behavior to preserve:
   buckets follow the same rule; the bucket that holds the cutover is not
   legacy. An empty period (no job work in the scope) shows only the empty
   state: no legacy notice and no partly-legacy notice.
+- Known limits of the stored cutover: it is found only once a shape-tagged
+  hour reaches the stored totals, so a processed period can read as legacy
+  until then (for example right after an upgrade that adds the `cutover`
+  table, or while recent work is all in 3D jobs, which are never tagged). An
+  event that arrives after the cutover was stored cannot move it. To correct a
+  wrong value, delete the row from the `cutover` table in the totals database;
+  the next refresh finds it again.
 - New measurements travel inside existing client event types (ADR 0002):
   payload fields on draw, paste, propagate, drag, resize and delete, plus three
   `debug:info` records (`team_analytics:class_change`,

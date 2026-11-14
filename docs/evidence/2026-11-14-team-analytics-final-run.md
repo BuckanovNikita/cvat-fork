@@ -324,6 +324,23 @@ Not verified live: lease loss and a hanging renewal (seam 1 only, with injected 
 the cutover being found while history is still incomplete (the stack's history was already
 complete, so the live value only shows that the stored value matches the earlier one).
 
+## Review of the second round, 2026-11-14
+
+An independent reviewer read `dca82a3..4ee92c0` (merged as `6acd883`). It ran the lease's
+deadline logic against a fake clock and read the rest; no ClickHouse was available to it, so
+the SQL was not executed in this review. No medium or high defect was found. Three low
+findings about the stored cutover are recorded, not fixed:
+
+| Finding | Outcome |
+| --- | --- |
+| The cutover is found only once a shape-tagged hour reaches the stored totals, so a processed period can read as legacy until then (recent work all in 3D jobs, which are never tagged) | Recorded as a known limit in `docs/fork-specification.md`. The trigger was the brief's choice; the earlier read had the same gap. |
+| After an upgrade that adds the `cutover` table, every period reads as legacy until the first refresh by a new replica | Recorded as a known limit. On the stack the row was stored during the upgrade itself. |
+| A tagged event that arrives after the cutover was stored, or one with a wrong date, can leave a wrong value for good | Recorded with the correction: delete the row from the `cutover` table and the next refresh finds it again. This correction was not exercised. |
+
+Found sound by reading: two replicas cannot write at once, the placement of the lease
+checks, the lease holder rule, the renewal thread and SIGTERM, the empty-period rule across
+overview, details and list, and the finder's definition of a shape-tagged event.
+
 ## What remains unverified
 
 - Detector use from the real UI with a deployed model function: only its record was sent,
