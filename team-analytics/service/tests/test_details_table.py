@@ -314,6 +314,10 @@ class ProcessedTest(DetailsCase):
                              {"by": kind, "page_size": 10, "legacy": True, "partly_legacy": False, "cutover": None,
                               "shapes": "all"})
             self.assertEqual((body["page"], body["total"], body["rows"]), (None, None, None))
+            # every key outside the envelope is null, so a field added later is withheld too
+            self.assertLessEqual({key for key, value in body.items() if value is not None},
+                                 {"by", "page_size", "processed", "technical_accounts", "legacy", "partly_legacy",
+                                  "cutover", "shapes"})
         self.assertIsNone(answer(by="projects")["project_ids"])
 
         for _ in range(20):  # history: one day per step
