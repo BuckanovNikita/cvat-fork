@@ -2,7 +2,8 @@
 
 Sections are the modules of `team_analytics.overview`; each defines `KEY` and `build(request)`.
 A period that is not fully processed keeps its period, filters, `processed` and the legacy flags in
-`operations`; every other section, and every figure in `operations`, is null (withheld.py).
+`operations`; every other section, and every figure in `operations`, is null (withheld.py). The sections
+outside that envelope are then not read; `operations` is, since its legacy flags come from its own read.
 """
 
 from __future__ import annotations
@@ -20,12 +21,13 @@ ENVELOPE = frozenset({"period", filters.KEY, processed.KEY, operations.KEY})
 def handle(request: Request) -> dict:
     span = request.span()
     # the history state is read before any section reads figures (service.Request.history)
-    request.history()
+    whole = processed.build(request)
     body: dict = {"period": span.describe()}
     for section in discover(overview):
-        body[section.KEY] = section.build(request)
-    if not body[processed.KEY]:
-        # no figures for a period not fully processed: whole sections go null, rows and all
+        # no figures for a period not fully processed: a section outside the envelope is not read at all
+        body[section.KEY] = section.build(request) if whole or section.KEY in ENVELOPE else None
+    if not whole:
+        # whole sections are null, rows and all; `operations` keeps only its legacy flags
         body = withhold(body, ENVELOPE)
         body[operations.KEY] = withhold(body[operations.KEY], LEGACY_FLAGS)
     return body
