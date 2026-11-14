@@ -15,6 +15,10 @@
 #                         the page, then the page and annotation with the service stopped
 #   run.sh check-final-ui only the real UI's part of check-final and its figures (a new
 #                         project each run; no volume, no service stop)
+#   run.sh load-volume [N] only the volume part of check-final: the annotators' accounts, then
+#                         what is missing of the load (with N only the current week of the first N
+#                         annotators); TA_VOLUME_ORG loads into another organization than ta-org-v
+#   run.sh check-volume   only the volume's figures of check-final
 #   run.sh check-task-progress  tasks with a job in every stage and state, then the tasks list
 #                         in a browser with the stack's UI image: legend, segments, colours, total
 #   run.sh check-policies fetch the policy bundle the running server serves and check both
@@ -493,11 +497,27 @@ service_replicas() {
     fi
 }
 
+# The volume (ticket 26): the annotators' accounts and their memberships through seed_users.py (and the
+# organization, owned by ta-owner-v, when it is missing), then final_run.py lays out their jobs, inserts
+# the older weeks and has every annotator send the current week through the events API in its own
+# session. A later run loads only what is missing.
+load_volume() {
+    local accounts started=$SECONDS
+    log "volume: the annotators' accounts in ${TA_VOLUME_ORG:-ta-org-v}"
+    accounts="$(final_py volume-accounts)"
+    "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- \
+        env TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_ACCOUNTS="$accounts" \
+        python manage.py shell <"$HERE/seed_users.py" >/dev/null
+    log "volume: accounts ready after $((SECONDS - started)) s"
+    final_py load-volume ${1:+"$1"}
+    log "volume: done after $((SECONDS - started)) s"
+}
+
 check_final() {
     local state="$STATE_DIR/final-ui.json" page="$STATE_DIR/final-page.json"
     mkdir -p "$STATE_DIR"
-    log "final run: synthetic volume in ta-org-v (history fills while the browser works)"
-    final_py load-volume
+    log "final run: synthetic volume in ${TA_VOLUME_ORG:-ta-org-v} (history fills while the browser works)"
+    load_volume
     final_ui "$state"
     log "final run: figures, access, page"
     final_py check-ui-figures "$state" $((TA_REFRESH_INTERVAL_S * 5 + 120))
@@ -768,6 +788,8 @@ case "${1:-}" in
     check-tracer) check_tracer ;;
     check-final) check_final ;;
     check-final-ui) check_final_ui ;;
+    load-volume) load_volume "${2:-}" ;;
+    check-volume) final_py check-volume 1200 ;;
     check-task-progress) check_task_progress ;;
     check-policies) check_policies ;;
     check-bundle) check_bundle ;;
