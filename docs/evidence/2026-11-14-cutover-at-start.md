@@ -33,12 +33,20 @@ move.
 
 ## After the change
 
-The tree that ran is the one committed as `a202616`.
+The eleven modules are `tests.test_cutover`, `test_history`, `test_lease`, `test_refresh`,
+`test_status`, `test_entry_point`, `test_shutdown`, `test_concurrency`, `test_trends`,
+`test_details_table` and `test_full_view`: the cutover and the legacy labels, history and
+the daily check, and the start of the service.
 
-| Run | Image | Result |
-| --- | --- | --- |
-| `tests.test_cutover`, `test_history`, `test_lease`, `test_refresh`, `test_status`, `test_entry_point`, `test_shutdown`, `test_concurrency`, `test_trends`, `test_details_table`, `test_full_view` | `cvat/clickhouse:23.12.2-debian-11-r0` | 103 tests, OK |
-| `tests.test_cutover` | `clickhouse/clickhouse-server:23.11-alpine` | 19 tests, OK |
+| Tree | Run | Image | Result |
+| --- | --- | --- | --- |
+| `a202616`, the change on `e1d92b8` | the eleven modules | `cvat/clickhouse:23.12.2-debian-11-r0` | 103 tests, OK |
+| `a202616` | `tests.test_cutover` | `clickhouse/clickhouse-server:23.11-alpine` | 19 tests, OK |
+| `5ff847f`, after merging `feat/team-analytics-page` at `34ed347` (tickets 16 and 19 among others) and adding one test | the eleven modules | `cvat/clickhouse:23.12.2-debian-11-r0` | 111 tests, OK |
+
+The branch was merged once more with `feat/team-analytics-page` at `789a1e8` (tickets 21
+and 24). That merge changed nothing under `team-analytics/`, in the seam's runner or in
+CVAT's ClickHouse setup script, so the last row stands for the head.
 
 What the cutover tests show, each through status and the answers of the read interface:
 
@@ -60,26 +68,35 @@ What the cutover tests show, each through status and the answers of the read int
   and a week and a month with job work are legacy.
 - With CVAT's `events` table absent the service still starts and answers status with no
   cutover; once the table and a tagged event exist, the cutover is found.
+- A tagged event dated a week ahead is not taken as the cutover at start, and the refresh
+  that then stores tagged work of today finds today's hour.
 - The correction the fork specification now describes was exercised: deleting the rows of
   the `cutover` table alone brought the wrongly early hour back at the next start;
   deleting the event and then the rows gave the right cutover again at the next start,
   and after the next daily check the labels of October were as before the wrong event.
 
-## The pin of a table's legacy content
+## Two tests that were not seen to fail first
 
-`test_a_table_keeps_the_legacy_content_of_the_rows_it_lists_while_its_own_filter_is_set`
-passes before and after the change, so it was not seen to fail first. To see that it can
-fail, it ran once against a throwaway copy of the service in which the details table and
-the full-view list apply their own dimension's filter: 4 failures, one per table and
-dimension, each with an empty row list where the project or the annotator was expected.
-The copy was never part of the tree.
+Each ran once against a throwaway copy of the service with one line changed, to see that
+it can fail. The copies were never part of the tree.
+
+- `test_a_table_keeps_the_legacy_content_of_the_rows_it_lists_while_its_own_filter_is_set`
+  pins existing behaviour and passes before and after the change. Against a copy in which
+  the details table and the full-view list apply their own dimension's filter: 4
+  failures, one per table and dimension, each with an empty row list where the project
+  or the annotator was expected.
+- `test_an_event_dated_in_the_future_is_not_the_cutover` was written after the change.
+  Against a copy in which the search does not stop at the end of the current hour: it
+  failed, with the event's hour a week ahead reported as the cutover.
 
 ## Not verified
 
 - The whole seam 1 suite. Only the eleven modules above ran, by the ticket's
   instructions; the suite is run on the integration branch after the tickets of this
   package are merged.
-- Every module but `test_cutover` on the second image.
+- The second image at the head. `test_cutover` ran on it at `a202616` only, before the
+  merge and before the test of the event dated in the future; the other modules did not
+  run on it at all.
 - Anything on the Kubernetes stack or against a real CVAT: the start of a pod on a loaded
   volume, the liveness probe during the search, an in-place upgrade read at once for the
   cutover. The upgrade read is on the list of the final run.
