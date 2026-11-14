@@ -6,7 +6,8 @@ with this refresh's `version`. The hours are then marked with that version (`hou
 is what makes readers switch to them, and rows of older versions are removed.
 
 Only one refresh runs at a time: a lease in ClickHouse covers several replicas, a lock covers
-threads of one process.
+threads of one process. The lease (`Config.refresh_lease_s`) is renewed while a step runs and is
+released whatever fails; see `Refresher.leased`.
 """
 
 from __future__ import annotations
@@ -27,7 +28,8 @@ log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-LEASE_S = 1800
+# Pauses before a failed release of the lease is tried again (then it is kept for the next step).
+RELEASE_RETRY_S = (0.2, 1.0)
 # Time for a concurrent claim to land before the earliest claim is read back.
 SETTLE_S = 0.5
 
@@ -51,6 +53,8 @@ class Refresher:
         self._clock = clock
         self._local = threading.Lock()
         self._holder = f"{uuid.uuid4().hex[:8]}"
+        # claims whose release failed: released before the next claim
+        self._unreleased: set[str] = set()
 
     def run(self) -> RefreshResult:
         """The ten-minute refresh: recompute the trailing window and record it as the latest refresh."""
@@ -58,28 +62,73 @@ class Refresher:
         return result if ran else RefreshResult(ran=False)
 
     def leased(self, work: Callable[[], T]) -> tuple[bool, T | None]:
-        """Runs `work` holding the refresh lease; (False, None) when a refresh or history step holds it."""
+        """Runs `work` holding the refresh lease; (False, None) when a refresh or history step holds it.
+
+        The lease is renewed while `work` runs, so a step longer than the lease keeps it. Whatever fails, a
+        claim written here is released before this returns or raises; a release that fails even when tried
+        again is tried once more before the next claim."""
         if not self._local.acquire(blocking=False):
             return False, None
         try:
+            self._release_pending()
             token = uuid.uuid4().hex
             if not self._claim(token):
                 return False, None
+            stop = threading.Event()
+            renewer = threading.Thread(target=self._renew, args=(token, stop), daemon=True,
+                                       name=f"lease-renewal-{token[:8]}")
+            renewer.start()
             try:
                 return True, work()
             finally:
-                self._sql.statements("control/lock_release.sql", {"token": token, "holder": self._holder})
+                stop.set()
+                renewer.join()
+                self._release(token)
         finally:
             self._local.release()
 
     def _claim(self, token: str) -> bool:
-        self._sql.statements("control/lock_claim.sql", {"token": token, "holder": self._holder, "ttl_s": LEASE_S})
-        time.sleep(SETTLE_S)
-        holder = self._sql.rows("control/lock_holder.sql")
+        try:
+            self._write_claim(token)
+            time.sleep(SETTLE_S)
+            holder = self._sql.rows("control/lock_holder.sql")
+        except BaseException:
+            self._release(token)  # the claim may have been written
+            raise
         if holder and holder[0]["token"] == token:
             return True
-        self._sql.statements("control/lock_release.sql", {"token": token, "holder": self._holder})
+        self._release(token)
         return False
+
+    def _write_claim(self, token: str) -> None:
+        self._sql.statements("control/lock_claim.sql",
+                             {"token": token, "holder": self._holder, "ttl_s": self._config.refresh_lease_s})
+
+    def _renew(self, token: str, stop: threading.Event) -> None:
+        """Extends the claim every third of the lease until `stop` is set (the work is over)."""
+        while not stop.wait(self._config.refresh_lease_s / 3):
+            try:
+                self._write_claim(token)
+            except Exception:  # retried at the next third; a lease outlives two failed renewals
+                log.exception("could not renew the refresh lease")
+
+    def _release(self, token: str) -> None:
+        """Releases a claim, trying again on failure; a release that still fails is kept for the next step."""
+        for attempt, pause in enumerate(RELEASE_RETRY_S + (None,)):
+            try:
+                self._sql.statements("control/lock_release.sql", {"token": token, "holder": self._holder})
+                return
+            except Exception:
+                if pause is None:
+                    log.exception("could not release the refresh lease after %s attempts", attempt + 1)
+                    self._unreleased.add(token)
+                    return
+                time.sleep(pause)
+
+    def _release_pending(self) -> None:
+        for token in list(self._unreleased):
+            self._unreleased.discard(token)
+            self._release(token)
 
     def _recompute(self) -> RefreshResult:
         now = self._clock()
