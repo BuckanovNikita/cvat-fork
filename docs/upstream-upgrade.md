@@ -383,15 +383,15 @@ brings up a disposable CVAT from the import's chart, on the fork server image,
 and the service in their own namespace. It first checks the policy bundle the
 running server serves, each patched policy by itself. It sends
 events, waits for the service's own scheduled refresh, and checks figures and
-refusals for every role. It checks task progress on the tasks list in a
-browser, runs the issue and comment matrix through the real API (an account
-with no global role among the accounts), sends one request through the
-service's Ingress, and runs the access cases. Its final run has the real UI annotate in headless
-Chrome and finds each new record in ClickHouse. It checks the figures for that
-work and for a synthetic hundred annotators and forty long-named projects. It
-drives the page (period, filters, full view, trend comparison, narrow window)
-and stops the service to check the error panel and annotation. Then the stack
-is torn down. Inspect the screenshots as well as the exit status. The
+refusals for every role, and sends one request through the service's Ingress.
+It checks task progress on the tasks list in a browser. Its final run has the
+real UI annotate in headless Chrome and finds each new record in ClickHouse.
+It checks the figures for that work and for a synthetic hundred annotators and
+forty long-named projects. It drives the page (period, filters, full view,
+trend comparison, narrow window) and stops the service to check the error
+panel and annotation. Then it runs the issue and comment matrix through the
+real API (an account with no global role among the accounts) and the access
+cases. With `cycle` the stack is then torn down. Inspect the screenshots as well as the exit status. The
 detector record is sent through the API, because the stack runs no model
 function. Record what ran and what stayed unverified in dated evidence.
 

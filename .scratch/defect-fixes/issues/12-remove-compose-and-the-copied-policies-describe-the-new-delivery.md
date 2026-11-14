@@ -17,6 +17,6 @@
 
 ## Comments
 
-2026-11-15: Criteria 1 to 6 done on `ticket/12-remove-compose`: removal `2ad619ca`, documents `d05adde1`, merge of the integration branch `130c3696`. What went, what stayed and why, the name search and its hits, and the check pipeline's result are in `docs/evidence/2026-11-15-compose-removed.md`. The search finds the removed names only in `INFRA_MIGRATION.md`'s record of the state before (introduced as removed) and in ADR 0004's statement of the removal; both are counted as history.
+2026-11-15: Criteria 1 to 6 done on `ticket/12-remove-compose`: removal `2ad619ca`, documents `d05adde1`, merge of the integration branch `130c3696`. What went, what stayed and why, the name search and its hits, and the check pipeline's result are in `docs/evidence/2026-11-15-compose-removed.md`. Outside history and dated evidence the search finds one removed name: `opa/` in ADR 0004's statement of the removal, a decision record.
 
 Outstanding: a stack `up` after the removal (criterion 7). The stack was in use by ticket 26, and no launcher was run for this ticket; the run waits until the stack is free. The independent review (criterion 8) follows the merge and is not this ticket's work.

@@ -15,21 +15,12 @@ verification setup nevertheless needed the migration described here.
 
 The plan lists no shared-stand dependency for cvat-fork. Inspection of the
 maintained launchers and verification files found Compose stacks rather than
-the retired k8s-infra registry, run tags or storage paths. As found when this
-notice was written (all of these are now removed; see "Outcome, 2026-11-15"):
-
-- `verify/run.sh` starts and tears down a Compose CVAT stack and seeds it through
-  Docker commands; its API is reached on `localhost:8181`.
-- `verify/opa_issues.sh` launches stock and patched Compose stacks, uses Docker
-  commands, and runs the issue/comment permission checks on `localhost:8281`.
-- `verify/docker-compose.verify.yml` and
-  `verify/docker-compose.opa-issues.yml` define fixed container names and expose
-  ports 8181/8191 and 8281/8291 respectively.
-- `verify/docker-compose.opa-patch.yml` mounts the local OPA rule patches into
-  that verification stack. `docker-compose.override.yml` supplies deployment
-  overrides and is another maintained Compose assumption to reconcile.
-- `verify/seed.py`, `verify/opa_issues_seed.py` and
-  `verify/opa_issues_check.py` are the verification consumers of these stacks.
+the retired k8s-infra registry, run tags or storage paths: two Compose
+launchers (task progress, and the stock and patched issue and comment
+permissions) with fixed container names and host ports, their Compose overlays,
+the seed and check scripts they ran, and the deployment overlay that mounted the
+copied policies into the server. All of them are now removed; the list of files
+is in `docs/evidence/2026-11-15-compose-removed.md`, and the outcome below.
 
 ## Platform available after the reset
 

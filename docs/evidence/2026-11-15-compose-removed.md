@@ -42,23 +42,21 @@ The name search runs from the worktree root over every tracked and untracked fil
 `docker-compose.override.yml`, `docker-compose.opa-issues.yml`,
 `docker-compose.opa-patch.yml`, `docker-compose.verify.yml`, `verify/run.sh`,
 `opa_issues.sh`, `verify/seed.py`, `mkimg.py`, `opa_issues_seed.py`, `opa_issues_check.py`,
-`opa/rules`, `opa/README`, `` `opa/` ``, `OPA_RULES`. Run after the merge at `130c3696`, it
-found:
-
-- `INFRA_MIGRATION.md`, the section "What was affected here": the list of the files as found
-  when the notice was written, now introduced as removed. A dated record of the state before;
-  the notice's outcome section says they are deleted.
-- `docs/adr/0004-…md`, line 18: "the copied `opa/` directory and the Compose overlay that
-  mounted it go away". A decision record, which states the removal.
+`opa/rules`, `opa/README`, `` `opa/` ``, `OPA_RULES`. Run at the final commit of the ticket,
+it found one hit: `docs/adr/0004-…md`, line 18, "the copied `opa/` directory and the Compose
+overlay that mounted it go away". An accepted decision record, which states the removal; not
+edited. `INFRA_MIGRATION.md` listed the files by name in "What is affected here"; that list is
+replaced by a summary that points at the table above.
 
 Nothing else: no script, hook, configuration, README or evergreen document names a removed
 file. A case-insensitive search for `compose` over the same files outside `cvat/` and
-`tools/` finds, besides those two, the ADR 0003 text and its amendment, the outcome lines of
+`tools/` finds, besides that one, the ADR 0003 text and its amendment, the outcome lines of
 `INFRA_MIGRATION.md` and of the root README, the fork specification's line that says the
 Compose files are gone, and `docs/design/team-analytics/design.md` line 107 (below).
 `grep -n -i 'compose\|mount' docs/upstream-upgrade.md` finds nothing.
 
-The check pipeline, `nice -n19 prek run --all-files` at `130c3696` with no hook skipped:
+The check pipeline, `nice -n19 prek run --all-files` with no hook skipped, at `130c3696` and
+again at the ticket's final commit:
 all nine hooks passed (ESLint, stylelint, type check, ruff, the policy test on the patched and
 on the stock policies, the three frontend suites). No hook referred to a removed file.
 
