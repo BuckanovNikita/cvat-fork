@@ -96,7 +96,9 @@ class LostLeaseTest(StackTestCase):
 
     def setUp(self) -> None:
         wait_for_clickhouse()
-        self.stack = Stack(refresh_lease_s=3)
+        # the hanging-renewal test lets replica A finish a whole refresh after its renewal stalls: a longer lease
+        longer = self._testMethodName == "test_a_renewal_that_hangs_does_not_hold_up_the_release"
+        self.stack = Stack(refresh_lease_s=8 if longer else 3)
         self.addCleanup(self.stack.close)
         self.inside, self.go_on = threading.Event(), threading.Event()
         self.addCleanup(self.go_on.set)
