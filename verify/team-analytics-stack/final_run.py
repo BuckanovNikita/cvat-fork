@@ -3,9 +3,11 @@
     final_run.py prepare-ui                 a new project, task and job in ta-org-c for the browser
                                             to annotate (prints JSON for ui_actions.cjs)
     final_run.py check-ui-records FILE      after ui_actions.cjs: the records the real UI sent are in
-                                            the events table; the detector record goes through the API;
-                                            the technical account saves boxes; working time behaves
-    final_run.py check-ui-figures FILE      the service's figures for that project
+                                            the events table, the detector record among them (one, for
+                                            the run that created objects); the technical account saves
+                                            boxes; working time behaves
+    final_run.py check-ui-figures FILE      the service's figures for that project, Model equal to the
+                                            detector run's objects and the technical account's boxes
     final_run.py load-volume                synthetic events in ta-org-v: 100 annotators, 40 projects
                                             with long names, ten weeks of history (once per stack)
     final_run.py check-volume SECS          the service's figures for the loaded events
@@ -41,7 +43,6 @@ VOLUME_ORG = "ta-org-v"
 TECHNICAL_ACCOUNT = "ta-bot"  # run.sh sets TEAM_ANALYTICS_TECHNICAL_ACCOUNTS to it
 UI_IMAGES = 4
 BOT_BOXES = 3
-DETECTOR = {"rectangles": 2, "objects": 3}
 
 
 def log(message: str) -> None:
@@ -161,13 +162,13 @@ def prepare_ui() -> None:
             raise SystemExit(f"task {task['id']}: no job within 4 minutes")
         job = jobs[0]
         owner.request("PATCH", f"/api/jobs/{job['id']}?org={UI_ORG}", {"assignee": worker_id})
+        labels = owner.request("GET", f"/api/labels?project_id={project['id']}")["results"]
         made[role] = {
             "project_id": project["id"],
             "task_id": task["id"],
             "job_id": job["id"],
-            "labels": [
-                label["name"] for label in owner.request("GET", f"/api/labels?project_id={project['id']}")["results"]
-            ],
+            "labels": [label["name"] for label in labels],
+            "label_ids": {label["name"]: label["id"] for label in labels},  # for the supplied detector answer
         }
     print(json.dumps({"org": UI_ORG, "worker": "ta-worker-c", "worker_id": worker_id, **made}))
 
@@ -186,11 +187,73 @@ def payload(row: dict) -> dict:
         return {}
 
 
+def check_detector_record(did: dict, project: int, job: int) -> None:
+    """The real UI ran the detector twice (ticket 25). Only the model list and the model's answers were
+    supplied, in the browser (final_browser.cjs superviseDetector): first nothing, then three objects."""
+    detector = did["detector"]
+    supplied = [(r["method"], r["path"]) for r in detector["supplied"]]
+    # the one other /api/lambda/ request goes to the real server: the tasks page, reached when the
+    # browser leaves the job, lists running automatic-annotation requests (getInferenceStatusAsync)
+    passed = detector["passed"]
+    check(
+        supplied
+        == [("HEAD", "/api/lambda/functions"), ("GET", "/api/lambda/functions")]
+        + [("POST", f"/api/lambda/functions/{detector['model']}")] * 2
+        and all(r == {"method": "GET", "path": "/api/lambda/requests"} for r in passed),
+        f"detector requests: supplied {supplied}, passed to the server {passed}",
+    )
+    calls = detector["calls"]
+    check(
+        [c["answered"] for c in calls] == [0, 3]
+        and all((c["request"] or {}).get("job") == job and (c["request"] or {}).get("frame") == 0 for c in calls),
+        f"detector calls {calls}",
+    )
+    created = detector["created"]
+    check(created == {"objects": 3, "rectangles": 2}, f"detector objects saved in the job: {created}")
+    log(
+        f"detector: supplied {[' '.join(r) for r in supplied]}; passed to the server "
+        f"{[r['method'] + ' ' + r['path'] for r in passed]}; "
+        f"canvas shapes per run {[(r['answered'], r['shapes_before'], r['shapes_after']) for r in detector['runs']]}; "
+        f"saved in the job with source auto {created}"
+    )
+
+    # one record left the browser, for the run that created objects; none for the empty answer
+    unread = [p for p in did["event_posts"] if p["model_records"] is None]
+    check(not unread, f"{len(unread)} event POST bodies could not be read")
+    sent = [record for p in did["event_posts"] for record in p["model_records"]]
+    check(
+        len(sent) == 1
+        and sent[0]["count"] == created["objects"]
+        and sent[0]["payload"].get("rectangle_count") == created["rectangles"]
+        and sent[0]["job_id"] == job,
+        f"detector records in the UI's event POSTs {sent}, objects created {created}",
+    )
+    query = (
+        "SELECT user_name, toString(count) AS count, payload, job_id FROM events WHERE project_id = "
+        + str(int(project))
+        + " AND obj_name = 'team_analytics:model_creation'"
+    )
+    wait_rows(query, bool, "the detector record")
+    time.sleep(10)  # a second record, had one been sent, would be in the table by now
+    found = clickhouse(query)
+    check(
+        len(found) == 1
+        and found[0]["user_name"] == "ta-worker-c"
+        and int(found[0]["job_id"]) == job
+        and int(found[0]["count"]) == created["objects"]
+        and payload(found[0]).get("rectangle_count") == created["rectangles"],
+        f"detector records in the events table {found}, objects created {created}",
+    )
+    log(
+        f"team_analytics:model_creation from the real UI: 1 record (sent 1), count {found[0]['count']}, "
+        f"rectangle_count {payload(found[0]).get('rectangle_count')}; none for the empty answer"
+    )
+
+
 def check_ui_records(state_file: str) -> None:
     state = json.loads(Path(state_file).read_text())
     ui, did = state["ui"], state["did"]
     project, job = ui["project_id"], ui["job_id"]
-    worker = Session("ta-worker-c")
 
     # every POST /api/events the real UI made was accepted
     rejected = [r for r in did["event_posts"] if r["status"] != 201]
@@ -288,42 +351,7 @@ def check_ui_records(state_file: str) -> None:
     check(mouse.get("canvas", 0) > 0, f"no canvas clicks in the summaries: {dict(mouse)}")
     log(f"team_analytics:input_summary x{len(summaries)}: hotkeys {dict(hotkeys)}, mouse {dict(mouse)}")
 
-    # detector use: no model function is deployed (nuclio is off), so the record the UI module
-    # produces is sent through the real API with the class change record's own shape
-    template = changes[0]
-    now = datetime.now(UTC)
-    body = payload(template)
-    for key in ("shape_type", "object_type", "input_method"):
-        body.pop(key, None)
-    body["rectangle_count"] = DETECTOR["rectangles"]
-    event = {
-        "scope": "debug:info",
-        "obj_name": "team_analytics:model_creation",
-        "count": DETECTOR["objects"],
-        "timestamp": now.isoformat(),
-        "payload": json.dumps(body),
-        "project_id": project,
-        "task_id": ui["task_id"],
-        "job_id": job,
-    }
-    worker.request("POST", f"/api/events?org={UI_ORG}", {"events": [event], "timestamp": now.isoformat()})
-    found = wait_rows(
-        "SELECT user_name, toString(count) AS count, payload FROM events WHERE project_id = "
-        + str(int(project))
-        + " AND obj_name = 'team_analytics:model_creation'",
-        bool,
-        "the detector record",
-    )
-    check(
-        found[0]["user_name"] == "ta-worker-c"
-        and int(found[0]["count"]) == DETECTOR["objects"]
-        and payload(found[0]).get("rectangle_count") == DETECTOR["rectangles"],
-        f"detector record {found}",
-    )
-    log(
-        f"team_analytics:model_creation (sent through the API, see evidence): {found[0]['count']} objects, "
-        f"payload {payload(found[0])}"
-    )
+    check_detector_record(did, project, job)
 
     # the technical account uploads boxes the way a script would
     bot = Session(TECHNICAL_ACCOUNT)
@@ -400,6 +428,7 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
         sum((payload(r).get("hotkeys") or {}).values()) for r in rows if r["obj_name"] == "team_analytics:input_summary"
     )
     saved_by_worker = did["boxes_in_job_after_save"]
+    detector = did["detector"]["created"]  # what the real UI's detector run created, read from the job
     query = {"org": UI_ORG, "period": "week", "project": project, "shapes": "all"}
 
     def ready(body: dict) -> bool:
@@ -408,7 +437,7 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
             return False
         ops = by_key(body["operations"]["rows"], "operation")
         return (
-            body["creation_methods"]["model"]["objects"] == BOT_BOXES + DETECTOR["objects"]
+            body["creation_methods"]["model"]["objects"] == BOT_BOXES + detector["objects"]
             and ops["deletion"]["objects"] == did["deleted_objects"]
             and body["saved_boxes"]["boxes"] == saved_by_worker + BOT_BOXES
             and sum(r["working_time_ms"] for r in body["by_annotator"]["rows"]) == working_ms
@@ -468,10 +497,30 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
 
     boxes = ok(owner, "overview", **{**query, "shapes": "bounding_boxes"})
     check(
-        boxes["creation_methods"]["model"]["objects"] == BOT_BOXES + DETECTOR["rectangles"],
+        boxes["creation_methods"]["model"]["objects"] == BOT_BOXES + detector["rectangles"],
         f"Model under bounding boxes {boxes['creation_methods']['model']}",
     )
     log(f"bounding boxes: model {boxes['creation_methods']['model']['objects']}")
+
+    # Model has counts and no time: the overview's Model carries objects and a share only, and
+    # ta-worker-c's Model in the details is the detector run alone (the technical account is no person)
+    for shapes, want in (("all", detector["objects"]), ("bounding_boxes", detector["rectangles"])):
+        overview = body if shapes == "all" else boxes
+        model = overview["creation_methods"]["model"]
+        check(set(model) == {"objects", "share"}, f"Model ({shapes}) carries {sorted(model)}")
+        details = ok(owner, "details", org=UI_ORG, period="week", project=project, by="annotators", shapes=shapes)
+        worker = [r for r in details["rows"] if r["user_name"] == "ta-worker-c"]
+        check(
+            len(worker) == 1 and worker[0]["model"] == want,
+            f"details ({shapes}) of ta-worker-c {worker}, detector made {want}",
+        )
+        check(
+            not any("model" in key and key != "model" for key in worker[0]),
+            f"details ({shapes}) model keys {sorted(worker[0])}",
+        )
+        log(
+            f"Model ({shapes}): overview {model}, ta-worker-c in the details {worker[0]['model']} = the detector's {want}"
+        )
 
     trends = ok(owner, "trends", org=UI_ORG, project=project, step="week")
     last = trends["lines"][0]["points"][-1]
@@ -829,7 +878,7 @@ def page_context(state_file: str) -> None:
                 "ui_org": UI_ORG,
                 "ui": state["ui"],
                 "did": state["did"],
-                "model": BOT_BOXES + DETECTOR["objects"],
+                "model": BOT_BOXES + state["did"]["detector"]["created"]["objects"],
                 "volume_projects": volume_projects(owner),
                 "volume_users": [volume_user(i)[0] for i in (1, 2)],
             }
