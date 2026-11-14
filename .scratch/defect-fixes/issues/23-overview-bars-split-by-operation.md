@@ -26,3 +26,16 @@ What ticket 27's browser run should look at, beside `docs/design/team-analytics/
 - One known difference: the prototype puts the name, the bar and the hours on one line. The page keeps its existing row, with the name and hours on top and the bar under them. This ticket changed the bar, not the row layout.
 
 **2026-11-14:** Merged into `feat/team-analytics-page` in `6a442e9a`. Evidence is in `docs/evidence/2026-11-14-overview-bars-split-by-operation.md`. The ticket stays open: its last criterion, the look beside the prototype in a browser, is outstanding and belongs to ticket 27's run.
+
+**2026-11-15:** Follow-up to the independent review of tickets 23 and 24 (branch `fix/page-review`; the review, its six findings and what was done about each are in `docs/evidence/2026-11-14-overview-bars-split-by-operation.md`, "Independent review, 2026-11-15"). Two findings changed this ticket's cards:
+
+- The overview bars' legend and the "where working time goes" list shared class names, so each took the other's spacing, lines and layout. Each now has its own (`b5743f8a`); a compiled-style probe found four rules reaching both before and none after. What either shows is unchanged, but both now render differently from an image built before the change.
+- A row without operation parts was drawn in Creation's colour. It is now one neutral grey bar (`#595959`, in no legend colour) with a hover ending "not split by operation", and the legend stays (`27a62f78`, three seam 3 tests seen failing first).
+
+What ticket 27's browser run should also look at for these, at 1400 px and at 400 px:
+
+- The bars' legend in both cards: the swatches and names on one line, wrapping inside the card on a narrow window, with the "Select a row to filter the whole page" hint beside them. No 1 px line above any item and no extra vertical padding between items.
+- "Where working time goes": the legend is a list under the bar, one operation per line with its swatch, name, hours and share (share right-aligned), each line under a thin 1 px line with 7 px of padding above and below. It is no longer laid out as a wrapping row with space between items, and its type is the card's normal size, not 12 px.
+- A row without parts, if an older service can be put in front of the page: one dark grey bar, clearly unlike Other's light grey, and its hover saying it is not split.
+
+The last criterion stays unticked; it remains ticket 27's.
