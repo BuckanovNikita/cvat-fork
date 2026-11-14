@@ -13,6 +13,8 @@
 #   run.sh check-final    the final run: the real UI annotates in a browser and its records arrive,
 #                         figures for that work and for loaded volume, every account and endpoint,
 #                         the page, then the page and annotation with the service stopped
+#   run.sh check-task-progress  tasks with a job in every stage and state, then the tasks list
+#                         in a browser with the stack's UI image: legend, segments, colours, total
 #   run.sh check-policies fetch the policy bundle the running server serves and check both
 #                         patched policies in it, each by itself
 #   run.sh forward        (re)start the port-forward of a running stack
@@ -462,6 +464,24 @@ check_final() {
     log "final run passed"
 }
 
+# ---------------------------------------------------------------- task progress
+
+# The fork's task-progress summary on the tasks list (ticket 10): the seed creates, as ta-admin in
+# its personal workspace, a task with one job in each stage and state the server's schema names and
+# a task with a single annotation/new job; a headless browser then reads both task cards from the
+# UI the stack serves, which must be TA_UI_IMAGE. Every run seeds new tasks.
+check_task_progress() {
+    local state="$STATE_DIR/task-progress.json" ui
+    mkdir -p "$STATE_DIR"
+    ui="$("${K[@]}" -n "$TA_NAMESPACE" get deploy "$TA_RELEASE-frontend" -o jsonpath='{.spec.template.spec.containers[*].image}')"
+    [ "$ui" = "$TA_UI_IMAGE" ] || die "the frontend runs '$ui', not the UI image under test $TA_UI_IMAGE"
+    log "task progress: UI image $TA_UI_IMAGE ($(docker image inspect --format '{{.Id}}' "$TA_UI_IMAGE" 2>/dev/null || echo 'not local'))"
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/task_progress.py" seed >"$state"
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
+        nice -n19 node "$HERE/task_progress_browser.cjs" "$state"
+    log "task progress check passed"
+}
+
 # ---------------------------------------------------------------- policies
 
 # The policies the running server serves to OPA (/api/auth/rules, the bundle the chart's OPA
@@ -559,6 +579,7 @@ up() {
     seed
     check_event
     check_tracer
+    check_task_progress
     check_final
     log "up:$BASE_URL (accounts: see README.md, password \$TA_SEED_PASSWORD)"
 }
@@ -571,6 +592,7 @@ case "${1:-}" in
     check-event) check_event ;;
     check-tracer) check_tracer ;;
     check-final) check_final ;;
+    check-task-progress) check_task_progress ;;
     check-policies) check_policies ;;
     check-bundle) check_bundle ;;
     forward) start_port_forward ;;
