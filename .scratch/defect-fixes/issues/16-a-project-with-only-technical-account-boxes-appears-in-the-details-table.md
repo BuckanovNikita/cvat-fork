@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Test first, through the service's read interface: such a project has a row with no working time, its saved boxes and its Model boxes.
 - [x] A technical account still never appears in the details table by annotator or in any list of people.
@@ -31,3 +31,5 @@ Per criterion:
 Not in the ticket and needed for criterion 2: a test first showed that taking saved boxes as the table counted them listed the technical account's projects under an annotator filter on its id. Under an annotator filter its saved boxes now neither list a project nor count for one.
 
 Left as it is, see "Noticed, not changed" in the evidence file: the legacy flags of a scope that holds nothing but technical-account boxes; a project with only technical-account objects that are not boxes; the full-view list by project, whose rows come from Model objects.
+
+2026-11-14: Merged into `feat/team-analytics-page` in merge `a095b0b`; evidence `docs/evidence/2026-11-14-details-row-technical-account.md`. The merged tree equals the branch head's tree, so the implementer's service runs stand. On the merged tree `node --test verify/team_analytics_page.cjs` passes 207 of 207 and `node --test verify/team_analytics_logging.cjs` 55 of 55, 0 skipped in each.
