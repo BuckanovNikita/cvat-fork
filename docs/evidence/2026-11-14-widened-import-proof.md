@@ -86,9 +86,9 @@ one is the re-import's first step.
 
 ### 1. Lint configuration
 
-ESLint 10.3.0 and stylelint 15.11.0, as installed in the main checkout from
-the import's lock file, were run from the root of the candidate tree on every
-UI file the fork added or edited
+ESLint 10.3.0 and stylelint 15.11.0, the versions installed in the main
+checkout, were run from the root of the candidate tree on every UI file the
+fork added or edited
 (`git diff --name-only --diff-filter=AM cvat-v2.82.0 HEAD:cvat -- cvat-ui`):
 65 TypeScript files and 9 style files.
 
@@ -190,8 +190,9 @@ The old script could not reach its filter on a local repository, because of a
 second fault: a source holding only branches and tags ended the run after the
 clone, with exit 1 and an unfiltered mirror in place (the search for other
 refs found none, and its status ended the script). That is the failure after a
-good clone seen in the middle column. The real upstream has other refs, so the
-fault did not show there. It is fixed in the same commit, and the successful
+good clone seen in the middle column. The script built the current mirror from
+the real upstream, so that source must hold other refs; this is inferred, not
+looked at here. The fault is fixed in the same commit, and the successful
 builds of the right-hand column went through the real filter.
 
 ## Supplied boundaries
@@ -217,6 +218,9 @@ builds of the right-hand column went through the real filter.
   workspace packages resolve inside one checkout (ticket 05).
 - The mirror script against the real upstream, and its behaviour when two runs
   overlap or when the disk fills during the swap.
+- Two branches of the new mirror script never ran: putting back a previous
+  mirror that a killed run left set aside as `.cvat-mirror.git.old`, and giving
+  the previous mirror its name back when the final rename fails.
 - ruff was not run. The file reverted here was formatted by a ruff run over
   the whole repository in the past, so a ruff formatting check that covers
   `cvat/` would change it again; the gate (ticket 13) has to leave the import
