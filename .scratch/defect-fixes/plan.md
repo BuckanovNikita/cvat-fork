@@ -240,5 +240,19 @@ the remaining questions are settled.
 The answers to G1 and G3 to G10 were given as "all between true" for the
 questions between the first two and the last; read here as yes to each.
 
-Still open: the group-drag rule, the legacy flag in tables, the 3D definition,
-and what the two reversals above change (round 2 of the interview).
+Second round, same day:
+
+| Question | Answer |
+| --- | --- |
+| `.scratch/standard-fork/plan.md` | **Delete** the plan file; the ledger stays |
+| Compose artefacts | Yes: delete the override, the three Compose files under `verify/`, `opa_issues.sh` and `run.sh` with their seed and check scripts; both live checks move to the Kubernetes stack |
+| Policies on Kubernetes | **A fork server image**, not a ConfigMap mount |
+| Lint gate | **Widen the import filter** to bring upstream's root lint configuration in, accepting new identifiers for the mirrored history |
+| L6, counts lost on tab close | Yes: a stated limit; cvat-core stays untouched |
+| The never-applied Ingress | Yes: applied beside the proxy and checked with one request per stack run |
+| G7a, group drag | Yes: one alignment per object moved, time shared equally; the selection box follows the same rule (glossary updated) |
+| Q10, legacy flag in tables | Yes: not a defect; kept, with the missing test added |
+| Q9c, 3D work | Yes: the definition, not a defect (glossary updated) |
+
+Still open: what the fork server image holds and what else the widened import
+brings in (round 3 of the interview).

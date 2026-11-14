@@ -23,7 +23,7 @@ A user account that stands for an automated process rather than a person. It is 
 _Avoid_: Service user, bot, script user
 
 **Job work**:
-Activity performed inside an opened job. Only job work is measured; browsing lists, settings and other pages is not.
+Activity performed inside an opened job. Only job work is measured; browsing lists, settings and other pages is not. In 3D jobs only sessions and working time are measured.
 _Avoid_: Activity, usage
 
 **Organization scope**:
@@ -73,7 +73,7 @@ _Avoid_: Action (an action is any single recorded step), edit
 A person making a new object by drawing, pasting or propagating it. Model boxes are not creations. Tags and objects made with the interactive AI or OpenCV tools are not counted.
 
 **Alignment**:
-Bringing one existing object into place: an uninterrupted run of drags and resizes of the same object, however many it takes. Touching another object or leaving the frame ends it, so returning to the same object later is a new alignment.
+Bringing one existing object into place: an uninterrupted run of drags and resizes of the same object, however many it takes. Touching another object or leaving the frame ends it, so returning to the same object later is a new alignment. Several objects moved together are one alignment each and share the time equally.
 _Avoid_: Adjustment, correction, edit, resize
 
 **Class change**:
