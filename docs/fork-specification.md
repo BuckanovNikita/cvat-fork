@@ -262,14 +262,29 @@ Behavior to preserve:
   rejected whole, so no new scope may be introduced.
 - A redo is no operation. Redoing created objects adds no creation and no
   creation method, and its time is Other; inside a job it still ends an
-  alignment run. Known limit of the stored totals: a changed counting rule
-  does not recompute hours already stored. The trailing refresh window
-  follows the new rule from the next refresh. An older day keeps the figures
-  it was stored with until it is computed again, which happens only when its
-  raw event count, or that of the day before or after it, changes. In hours
-  stored before this rule a redo of created objects is a creation with its
-  time, under the method of the creation it restored or as Drawn; a stored
-  `redone` row is read as Drawn.
+  alignment run.
+- A group move (several selected objects dragged together, or the selection
+  box moved) is one alignment for each object moved, sharing the gesture's
+  time equally; a group of boxes and other shapes counts only its boxes under
+  Bounding boxes, with the time split as for any mixed selection. It ends the
+  alignment runs before it, and no later drag continues it. The UI logs it as
+  one `drag:object` with `group` = `move` and the objects moved in its count;
+  CVAT's own drag of the grabbed object is still logged, carries `group` =
+  `grabbed` and is no operation.
+- Known limit of the stored totals: a changed counting rule (the redo rule,
+  the group-move rule) does not recompute hours already stored. The trailing
+  refresh window follows the new rule from the next refresh. An older day
+  keeps the figures it was stored with until it is computed again, which
+  happens only when its raw event count, or that of the day before or after
+  it, changes. In hours stored before the redo rule a redo of created objects
+  is a creation with its time, under the method of the creation it restored
+  or as Drawn; a stored `redone` row is read as Drawn. Hours whose events came
+  from a UI without the group event hold a group drag as one alignment of the
+  grabbed object and a selection-box move as none; computing them again gives
+  the same, since the events carry no group. Hours whose events came from a UI
+  with the group event but were stored by a service without the group-move
+  rule hold a group drag as two alignments and a selection-box move as one;
+  computing them again gives one per object moved.
 - The logging module never throws into the annotation view. After three
   failures it switches itself off for the page's life. It records nothing
   outside an open 2D job.
@@ -305,7 +320,7 @@ table are under `cvat/cvat-ui/src/`.
 | `components/header/header.tsx` | Former "Analytics" link renamed "Grafana"; "Team Analytics" link shown by `canOpenTeamAnalytics` from the analytics plugin flag, `user.groups` and the current organization role |
 | `components/annotation-page/annotation-page.tsx` | `trackInputJob(job)` where the job logger is set; on unmount `untrackInputJob().then(saveLogs)` |
 | `utils/mousetrap-react.tsx` | `hotkeyUsed(action, event)` before every shortcut handler |
-| `components/annotation-page/canvas/views/canvas2d/canvas-wrapper.tsx` | Shape fields on draw, canvas paste, drag and resize; `drawingStarted`/`drawingEnded` for the input method |
+| `components/annotation-page/canvas/views/canvas2d/canvas-wrapper.tsx` | Shape fields on draw, canvas paste, drag and resize; `drawingStarted`/`drawingEnded` for the input method; `groupMoved` for the group move event |
 | `actions/annotation-actions.ts` | Shape fields on propagate, single and selection delete, and multi paste |
 | `components/annotation-page/standard-workspace/objects-side-bar/labels-list.tsx` | Class change record for label hotkeys |
 | `containers/annotation-page/standard-workspace/objects-side-bar/object-item.tsx` | Class change record for the sidebar label select |
