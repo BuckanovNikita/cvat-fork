@@ -249,6 +249,19 @@ Behavior to preserve:
     computed hour of the twelve buckets, processed or not, so that the
     comparison can be offered while history is processed.
 
+    Known limit of the candidates: the list tells who has work in buckets
+    that are not processed yet, which every other read withholds. While no
+    bucket is processed it names everyone with work in the twelve buckets;
+    once one is, a `working_time_ms` of 0 (not null) marks exactly the
+    candidates whose only work lies in buckets not yet processed. Both stay
+    inside the caller's scope (the selected organization, or the whole
+    instance for an admin with none selected), project and annotator filters
+    applied, technical accounts left out. Listing candidates from every
+    computed hour was the implementer's choice, not the owner's. Whether to
+    keep it as it is, to send null in place of a counted 0, or to list only
+    candidates with work in processed buckets is an open decision for the
+    owner.
+
   Each endpoint reads how far history is processed once per request, before it
   reads any figure, so a history step that finishes during a request can only
   make the answer say `processed: false` where it could have said true, never
@@ -396,6 +409,17 @@ Behavior to preserve:
   events on tab close too. A summary is never written on a timer alone.
 - The model creation record is written only once the create thunk reports
   created objects (it resolves to `[]` on failure).
+- Known limit of the split by operation: Other is working time minus the time
+  of the four operations, and is never below zero. A row whose operation time
+  exceeds its working time therefore has Other at zero, and its bar is drawn
+  at the row's working time with the operation parts stretched to fill it,
+  in the full view and in the overview's bars by annotator and by project.
+  Each part's hover gives its own hours. The overview's "where working time
+  goes" reads Other with the same floor over its whole scope. For such a row the parts shown add up to more than its working
+  time, while the page's definitions say of working time that every breakdown
+  of time adds up to it. The rule is the service's; the owner has not been
+  asked about the wording beside it. Whether to change the definition's
+  wording or how such a row is shown is an open decision for the owner.
 - The page fits a narrow window inside CVAT's 1024 px minimum app width: cards
   stack, and wide tables scroll inside their cards.
 - With the service unreachable, the page shows its error panel. Nothing else
