@@ -202,13 +202,79 @@ All four were fixed test-first. Each red was observed before its fix.
 
 ## Independent access review
 
-**Deferred to the orchestrator.** The ticket requires an independent review of the access
-rules after this run, by someone who did not write them. The orchestrator runs it after this
-ticket and records its findings and their resolution here.
+Three reviewers who did not write the code read the access rules at `e7da2e4` (lenses:
+identity, scope, edge), and a separate skeptic checked each finding. The fixes are on
+branch `ta/review-fixes`; each was reproduced by a failing test first unless noted.
 
 | Finding | Severity | Resolution |
 | --- | --- | --- |
-| _(to be filled by the review)_ | | |
+| A1 = A6: request bodies never read, so a body on a kept-alive connection was answered as a second request | medium (server-side desync confirmed; a figure leak depends on the proxy and was not shown) | Resolved in `5cb3705`: bodies up to 64 KiB are read and dropped, anything else closes the connection after the one answer. `tests/test_http.py` failed first (two answers on one socket). |
+| A2: with no organization, only CVAT's first page of 100 memberships was read | low | Resolved in `d2e4463`: asked once per reading role with CVAT's `role` filter. The stand-in CVAT now pages like CVAT. The test with 101 newer worker memberships failed first (`forbidden`). |
+| A3: a malformed 200 from CVAT gave 500 | low (hardening) | Resolved in `d2e4463`: answer shapes are checked before caching; a bad one is 503 `cvat_unavailable`. Ten malformed answers failed first (500, or 200 for `groups: "administrators"`). |
+| A4: status `history` shows the instance-wide first day and day counts to an organization maintainer | low | **Accepted, not fixed.** The spec does not scope processing state by organization, and no names, identifiers or figures of another organization are shown. |
+| A5: no committed isolation tests for details, list, trends and the filter echo, or for instance scope beyond the overview | low (test gap) | Resolved in `26d9d0d` (`tests/test_isolation.py`). The tests pass on the code. Every test except the refusal matrix failed with the organization clause removed from the read files. |
+| A7: after a refusal from trends, details, list or status the page kept its figures | low | Resolved in `90eceae`: a 401 or 403 from any endpoint puts the page into the matching refusal state. The seam 3 cases failed first. |
+
+## Code review findings
+
+A static code review of `e7da2e4` found ten findings (C1-C10). Outcomes on `ta/review-fixes`:
+
+| Finding | Resolution |
+| --- | --- |
+| C1 request bodies on keep-alive (= A1) | Fixed, `5cb3705` |
+| C2 refresh lease left live after a failure, never renewed | Fixed, `ec8512e`: released on every failure path, failed release retried, lease renewed while a step runs. `tests/test_lease.py` failed first (all three cases). |
+| C3 legacy decided by "any shape-tagged row in scope" | Fixed with a recorded cutover (see the fork specification), `08b3803`. `tests/test_cutover.py` and `verify/team-analytics-page/cutover.test.cjs` failed first. |
+| C4 unbounded project-name and details-search URLs | Fixed, `02b845e`: names in requests of 100 ids, the project search sends one table page of ids. Seam 3 and seam 1 tests failed first. |
+| C5 model creation recorded before creation succeeded | Fixed, `936bf9a`: recorded only when the create thunk returns created ids. Seam 2 test failed first. |
+| C6 page filters survived an organization switch | Fixed, `25a201c`: the address names the filters' organization. Seam 3 tests failed first. |
+| C7 input counts lost when the tab closes | **Recorded as a limitation** in the fork specification. cvat-core's only page-exit path sends a fixed bandwidth record; the regular log and save are asynchronous and not `keepalive`, so delivery on `pagehide` needs a cvat-core change. Not reproduced live. |
+| C8 class change consumed a pending drawing's input method | Fixed, `ee901c2`. Seam 2 test failed first. |
+| C9 `str.isdigit()` accepted Unicode digits (500) | Fixed, `2868e00`: every identifier, page, id list and month takes ASCII digits only. `tests/test_query_values.py` failed first. |
+| C10 a ClickHouse client per query, files re-read, discovery per request | Fixed, `e7da85e`. Behaviour is unchanged and seam 1 passes. Measured on the seam 1 ClickHouse, the median overview latency went from 2130 ms to 2027 ms: the client setup cost was small there. `tests/test_concurrency.py` (parallel requests during a refresh) passes with old and new code. |
+| Housekeeping: Python bytecode not ignored | Fixed, `101b03f` |
+
+## Rerun after the review fixes, 2026-11-14
+
+Everything above this section was observed in the first run (04:36-04:51 UTC, images built at
+`5b38488`/`bfffb23`). This section is the rerun with the fixes of `ta/review-fixes`.
+
+| Item | Value |
+| --- | --- |
+| Code tree | `08b3803` (all fix commits; later commits are documentation only) |
+| UI image | `cvat/ui:v2.82.0-team-analytics-review-fixes-08b3803`, `./build-ui.sh` at `08b3803` |
+| Service image | `cvat/team-analytics:v2.82.0-review-fixes-08b3803`, `./build-team-analytics-service.sh` at `08b3803` |
+| Run | `run.sh up` with both images set, 07:33:12-07:38:52 UTC, exit 0, "final run passed" ([`run-up-review-fixes.log`](2026-11-14-team-analytics-final-run/run-up-review-fixes.log)) |
+
+This was an **in-place upgrade**, not a fresh stack. The orchestrator had just brought the
+stack up from the main checkout with the first run's images, and `up` from the fix branch
+rolled the UI and service Deployments to the new images on that namespace. The volume and
+tracer data were already loaded, so they were not loaded again; a new project was annotated
+through the real UI. **The stack was left running at the user's request** (namespace
+`cvat-ta-it-nkt`, `http://localhost:8490`), so no `down` followed.
+
+Checks made by hand on the upgraded stack, as `ta-admin`:
+
+- `status` reported `cutover: {at: 2026-09-11T08:00:00+00:00}`, the first shape-tagged hour of
+  the loaded volume.
+- The current week of `ta-org-a` reported `legacy: false`, `partly_legacy: false` and
+  `shapes: bounding_boxes`. Its work is only the tracer's untagged events. Under the old rule
+  this scope read as legacy (finding C3).
+- A `POST` to the overview with a body was answered 405 once through the proxy.
+
+Tests at `08b3803` (supplied boundaries):
+
+| Check | Result |
+| --- | --- |
+| Seam 1, `verify/team_analytics_service.sh` | 259 tests, OK (1343 s) |
+| Seam 2, `node --test verify/team_analytics_logging.cjs` | 55 tests, all pass |
+| Seam 3, `node --test verify/team_analytics_page.cjs` | 205 tests, all pass |
+| `node --test verify/task_progress.cjs` with `BROWSER_BIN` set to Chrome | 21 tests, all pass |
+| Type check, `tsc -p cvat-ui/tsconfig.json` | exit 0 |
+
+Not verified after the fixes: input counts lost on tab close (C7) are a recorded limitation
+and were not reproduced live; request desync behind a keep-alive production ingress was
+not tested live (seam 1 shows one answer per request on the service itself); the C10
+latency gain was measured on the seam 1 ClickHouse only.
 
 ## What remains unverified
 
