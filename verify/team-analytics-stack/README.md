@@ -17,7 +17,8 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
 образы должны быть собраны из проверяемой версии, иначе проверки политик и страницы не
 пройдут. Остальные подкоманды (`seed`, `check-event`, `check-tracer`, `check-final`,
 `check-policies`, `forward`, `status`, `preflight`, `build-chart`, `render`, `check-render`,
-`check-bundle`) описаны в шапке `run.sh`; `preflight` выполняет всё, что `up` делает до
+`check-bundle`, `render-ingress`, `check-ingress`, `seed-access`, `check-access`,
+`check-ingress-gone`) описаны в шапке `run.sh`; `preflight` выполняет всё, что `up` делает до
 первого изменения в кластере, и ничего не создаёт и не скачивает. Ручных шагов нет.
 
 ## Что нужно от машины
@@ -72,9 +73,18 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
   `/profiler` — бэкенд CVAT; `/analytics` — Grafana за проверкой доступа CVAT;
   `/team-analytics-api` — сервис Team Analytics; всё остальное — UI. Адрес:
   `http://localhost:8490` через `kubectl port-forward`.
-- Сервис Team Analytics из манифестов `team-analytics/k8s/` (кроме Ingress — маршрут здесь
-  даёт прокси) с образом `TA_SERVICE_IMAGE` и обновлением раз в `TA_REFRESH_INTERVAL_S`
-  (60 с).
+- Сервис Team Analytics из манифестов `team-analytics/k8s/` с образом `TA_SERVICE_IMAGE` и
+  обновлением раз в `TA_REFRESH_INTERVAL_S` (60 с). Адрес стенда по-прежнему даёт прокси.
+- Ingress сервиса (`team-analytics/k8s/ingress.yaml`, `run.sh render-ingress`) рядом с
+  прокси: класс кластера `TA_INGRESS_CLASS` (`nginx`, ingress-nginx из k8s-infra), хост
+  `TA_INGRESS_HOST` (`<пространство имён>.k8s.docker.internal`, его покрывает сертификат
+  платформы по умолчанию). Объект в пространстве имён стенда и удаляется вместе с ним. Имя
+  на машине не разрешается: `run.sh check-ingress` (часть `up` после загрузки учётных
+  записей) обращается к контроллеру на `127.0.0.1:443` под этим именем, с проверкой
+  сертификата. Свой порт не нужен — 80 и 443 общие, по таблице портов k8s-infra. Запрос
+  `status` с сессией `ta-maintainer` — 200, без сессии — 401 `not_authenticated`.
+  `run.sh check-ingress-gone` после `down`: ни один Ingress не называет этот хост, контроллер
+  отвечает 404.
 - Учётные записи (`accounts.json`, пароль `TA_SEED_PASSWORD`): администратор `ta-admin`;
   организация `ta-org-a` с владельцем `ta-owner`, `ta-maintainer`, `ta-supervisor`,
   `ta-worker`; `ta-outsider` не состоит нигде; организация `ta-org-b` с владельцем
@@ -103,6 +113,21 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
   обращается к каждому адресу сервиса. Наконец сервис останавливается, и стенд проверяет
   панель ошибки и то, что разметка рисуется и сохраняется; после этого сервис
   запускается снова.
+- Случаи доступа (`run.sh check-access [CASE]`, последняя часть `up`; `access_cases.py`,
+  учётные записи — `access_accounts.json`, загружает `seed_access.py`). Каждый случай сам
+  решает, пройден ли он, и печатает `[access] PASS` или `[access] FAIL`.
+  `removed-member`: `ta-leaver`, мейнтейнер `ta-org-r`, читает организацию, владелец
+  `ta-owner-r` удаляет его через API CVAT, и после срока кэша ответов CVAT в сервисе
+  (`ANSWER_TTL` в `access.py`, минута, не настраивается — случай ждёт его с запасом) тот же
+  сеанс получает 403 `forbidden` с организацией и без неё; каждый запуск возвращает
+  членство. `group-admin`: `ta-group-admin` в группе `admin` без флагов суперпользователя
+  читает весь экземпляр (как `ta-admin`) и `ta-org-a` (как её владелец), `status` с полями
+  администратора. `personal-workspace`: `ta-solo` (не состоит нигде) работает 20 мин в
+  задании личного пространства (один раз на стенд); у администратора без организации строка
+  с этим временем и проект есть, ни в одной организации их нет. `header-credentials`: для
+  пяти пар учётная запись — организация `status` и `overview` с заголовком `Authorization`
+  (`Basic` и персональный токен `Bearer`, удаляется после случая) дают те же решения, что
+  cookie сеанса; неверный пароль и неизвестный токен — 401.
 
 Ничего кластерного не создаётся (рендер проверяется на каждом запуске: кластерные объекты,
 образы вне одобренного списка, принудительное скачивание и серверный образ, отличный от
