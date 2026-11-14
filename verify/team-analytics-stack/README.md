@@ -15,7 +15,7 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
 
 Это теги по умолчанию (`TA_SERVER_IMAGE`, `TA_UI_IMAGE`, `TA_SERVICE_IMAGE` в `stack.env`);
 образы должны быть собраны из проверяемой версии, иначе проверки политик и страницы не
-пройдут. Остальные подкоманды (`seed`, `check-event`, `check-tracer`, `check-final`,
+пройдут. Остальные подкоманды (`seed`, `check-event`, `check-tracer`, `check-task-progress`, `check-final`,
 `check-policies`, `forward`, `status`, `preflight`, `build-chart`, `render`, `check-render`,
 `check-bundle`) описаны в шапке `run.sh`; `preflight` выполняет всё, что `up` делает до
 первого изменения в кластере, и ничего не создаёт и не скачивает. Ручных шагов нет.
@@ -89,6 +89,17 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
   каждой роли, затем `browser_check.cjs` в headless Chrome входит как `ta-maintainer`
   (ссылка в шапке, цифры на странице) и как `ta-worker` (ссылки нет, прямой переход —
   «not available», запрос к сервису — 403). `TA_SCREENSHOT_DIR` сохраняет снимки экрана.
+- Проверка прогресса задач (`run.sh check-task-progress`, часть `up` после проверки рабочего
+  времени; `task_progress.py`, `task_progress_browser.cjs`). Сначала стенд убеждается, что UI
+  работает на образе `TA_UI_IMAGE`. Затем `ta-admin` в личном пространстве создаёт через API
+  две новые задачи: в первой по одному заданию на каждую пару этапа и состояния (этапы и
+  состояния сверяются со схемой API сервера), во второй одно задание annotation / new.
+  Каждое задание читается обратно. Headless Chrome входит как `ta-admin` и открывает список
+  задач с фильтром по этим задачам. На карточке каждой задачи проверяются подписи легенды
+  со счётчиками, цвет, вес и подсказка каждого сегмента (таблица UI-2 в
+  `docs/fork-specification.md`) и общее число заданий. Проверяется, что нет корзины
+  «not available» и стоковых подписей. Текст легенды должен читаться на карточке
+  (контраст не ниже 4.5:1).
 - Итоговый прогон (`run.sh check-final`, последняя часть `up`; `final_run.py`,
   `final_browser.cjs`). Организация `ta-org-c` (`ta-owner-c`, `ta-worker-c` и
   техническая учётная запись `ta-bot`, `TA_TECHNICAL_ACCOUNTS`). На каждом запуске
