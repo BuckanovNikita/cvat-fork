@@ -354,8 +354,9 @@ export interface Trends {
     // first day of each week (Monday) or month; a bucket not wholly processed has no figures
     buckets: { start: string; processed: boolean }[];
     lines: TrendLine[];
-    // everyone of the compared kind with work in the twelve buckets (most working time first)
-    candidates: { id: number; user_name: string | null; working_time_ms: number }[];
+    // everyone of the compared kind with work in the twelve buckets, most working time first; the working time
+    // counts only processed buckets and is null while none is (then the order is by id)
+    candidates: { id: number; user_name: string | null; working_time_ms: number | null }[];
 }
 
 export interface TrendsQuery {

@@ -260,7 +260,14 @@ class ProcessedTest(TrendsCase):
         withheld = {"working_time_ms": None, "legacy": False, "boxes": None, "timed_boxes": None,
                     "box_time_ms": None, "average_ms": None, "hotkey_recorded": True, "hotkey_actions": None,
                     "mouse_actions": None, "hotkey_share": None}
+        # `legacy: False, hotkey_recorded: True` pin a recorded limit (docs/fork-specification.md, "Known limit
+        # of unprocessed periods"): the flags of an unprocessed bucket describe only what is processed of it and
+        # can change, even to the opposite, once it is processed
         self.assertEqual(line["points"][:11], [withheld] * 11)
+        # every key outside a point's envelope is null, so a field added to a point later is withheld too
+        for point in line["points"][:11]:
+            self.assertLessEqual({key for key, value in point.items() if value is not None},
+                                 {"legacy", "hotkey_recorded"})
         self.assertEqual(line["points"][11]["working_time_ms"], HOUR)
 
         for _ in range(20):
@@ -269,3 +276,48 @@ class ProcessedTest(TrendsCase):
         self.assertEqual([bucket["processed"] for bucket in body["buckets"]], [True] * 12)
         self.assertEqual([point["working_time_ms"] for point in body["lines"][0]["points"]],
                          [0] * 10 + [HOUR, HOUR])
+
+    def test_a_candidate_has_working_time_only_from_processed_buckets(self):
+        self.stack.add_events([
+            working_time(at("2026-11-03 10:00:00"), 5 * HOUR, user=ALICE, org=ORG),
+            working_time(at("2026-11-12 10:00:00"), HOUR, user=ALICE, org=ORG),
+            working_time(at("2026-11-12 11:00:00"), 2 * HOUR, user=BOB, org=ORG),
+            working_time(at("2026-10-05 10:00:00"), 3 * HOUR, user=CAROL, org=ORG),
+        ])
+        self.stack.refresh()  # the trailing 48 h only: no bucket is processed
+
+        def candidates() -> list:
+            return [(row["id"], row["working_time_ms"]) for row in self.trends()["candidates"]]
+
+        # the trailing hours are computed, but they lie in the current week, which is not processed: whoever
+        # worked in them is offered with no figure and not ranked by that time (it would put Bob first), by id
+        self.assertEqual(candidates(), [(ALICE[0], None), (BOB[0], None)])
+        for row in self.trends()["candidates"]:
+            self.assertLessEqual({key for key, value in row.items() if value is not None}, {"id", "user_name"})
+
+        for _ in range(20):  # history: one day per step, newest first
+            self.stack.service.step()
+            if self.trends()["buckets"][-1]["processed"]:
+                break
+        self.assertEqual([bucket["processed"] for bucket in self.trends()["buckets"]], [False] * 11 + [True])
+        # the processed current week counts: Bob's two hours, Alice's one (her older work and Carol's are
+        # not computed yet)
+        self.assertEqual(candidates(), [(BOB[0], 2 * HOUR), (ALICE[0], HOUR)])
+
+        # history goes on to compute the 3rd: Alice's five hours there are stored, but their week (from the
+        # 2nd) is not processed while the days before the 3rd back to Carol's are not, so they count for nothing
+        self.stack.cvat.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
+        for _ in range(20):
+            self.stack.service.step()
+            status, body = self.stack.get("/team-analytics-api/v1/status", "admin", org="org7")
+            self.assertEqual(status, 200, body)
+            if body["history"]["ready_from_day"] == "2026-11-03":
+                break
+        self.assertEqual(body["history"]["ready_from_day"], "2026-11-03")
+        self.assertEqual([bucket["processed"] for bucket in self.trends()["buckets"]], [False] * 11 + [True])
+        self.assertEqual(candidates(), [(BOB[0], 2 * HOUR), (ALICE[0], HOUR)])
+
+        for _ in range(60):
+            self.stack.service.step()
+        self.assertEqual([bucket["processed"] for bucket in self.trends()["buckets"]], [True] * 12)
+        self.assertEqual(candidates(), [(ALICE[0], 6 * HOUR), (CAROL[0], 3 * HOUR), (BOB[0], 2 * HOUR)])
