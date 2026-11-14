@@ -4,10 +4,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 const View = loadPage('team-analytics-view.tsx').default;
 const HOUR = 3600000;
@@ -151,7 +149,7 @@ test('in a legacy period the split is not recorded, alignment still mouse only',
     assert.deepEqual(cells, ['Not recorded', 'Mouse only', 'Not recorded', 'Not recorded']);
 });
 
-domTest('the mounted page labels hotkeys from the viewer\'s keymap in the store', async () => {
+test('the mounted page labels hotkeys from the viewer\'s keymap in the store', async () => {
     const answer = { body: { by_annotator: { rows: [] }, operations: OPERATIONS, input: INPUT } };
     const { fetch } = suppliedFetch((url) => (url.includes('/status') ? { body: {} } : answer));
     const store = {

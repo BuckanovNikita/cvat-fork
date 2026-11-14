@@ -3,10 +3,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 const HOUR = 3600000;
 
@@ -222,7 +220,7 @@ function button(container, label) {
     return [...container.querySelectorAll('button')].find((b) => b.textContent === label);
 }
 
-domTest('the table asks for the period, filters and shapes, pages with next and narrows by name', async () => {
+test('the table asks for the period, filters and shapes, pages with next and narrows by name', async () => {
     const { fetch, requests } = suppliedFetch(detailsAnswer);
     const page = await mount(section(fetch));
     try {
@@ -249,7 +247,7 @@ domTest('the table asks for the period, filters and shapes, pages with next and 
     }
 });
 
-domTest('projects are found by the name the page shows, No project included', async () => {
+test('projects are found by the name the page shows, No project included', async () => {
     const { fetch, requests } = suppliedFetch(detailsAnswer);
     const page = await mount(section(fetch));
     try {
@@ -277,7 +275,7 @@ domTest('projects are found by the name the page shows, No project included', as
     }
 });
 
-domTest('a project search over thousands of projects asks for one page of ids at a time', async () => {
+test('a project search over thousands of projects asks for one page of ids at a time', async () => {
     // project_ids come in the table's order (most working time first); the page pages the matches itself
     const many = Array.from({ length: 2000 }, (_, index) => 9_000_001 + index);
     const names = Object.fromEntries(many.map((id) => [id, `Shelf ${id}`]));
@@ -316,7 +314,7 @@ domTest('a project search over thousands of projects asks for one page of ids at
     }
 });
 
-domTest('an unreadable answer leaves a short notice', async () => {
+test('an unreadable answer leaves a short notice', async () => {
     const { fetch } = suppliedFetch(() => ({ body: { by_annotator: { rows: [] } } }));
     const page = await mount(section(fetch));
     try {
@@ -327,7 +325,7 @@ domTest('an unreadable answer leaves a short notice', async () => {
     }
 });
 
-domTest('clicking a row sets it as the page filter, kept in the address', async () => {
+test('clicking a row sets it as the page filter, kept in the address', async () => {
     const { createMemoryHistory } = dependency('history');
     const history = createMemoryHistory({ initialEntries: ['/team-analytics?period=year'] });
     const { fetch, requests } = suppliedFetch((url) => {
@@ -367,7 +365,7 @@ domTest('clicking a row sets it as the page filter, kept in the address', async 
     }
 });
 
-domTest('picking a row on a later page keeps that page shown', async () => {
+test('picking a row on a later page keeps that page shown', async () => {
     const { fetch } = suppliedFetch(detailsAnswer);
     const { type: Section, props } = section(fetch);
     let picked = null;
