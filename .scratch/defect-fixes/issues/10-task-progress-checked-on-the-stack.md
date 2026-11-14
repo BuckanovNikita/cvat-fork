@@ -56,12 +56,13 @@ node suite covers it with the API mocked.
 - 2026-11-14, part two, outstanding. It needs a running stack with `TA_UI_IMAGE` built from
   the branch under test.
   1. `run.sh up` (or `cycle`). The log must show, in this order: `task progress: UI image
-     <tag> (sha256:…)`; `server schema: stages ['annotation', 'validation', 'acceptance'],
+     <tag> (local sha256:…; running …)`, where the two IDs agree; `server schema: stages ['annotation', 'validation', 'acceptance'],
      states ['new', 'in progress', 'completed', 'rejected']`; `task N: 12 jobs, one in each
      stage/state, read back`; `task M: 1 job, annotation/new, read back`;
      `task N: 12 buckets as specified, total 12; …` and `task M: 1 buckets as specified,
      total 1; …`, each with a lowest contrast of at least 4.5:1; `task progress check
-     passed`. Then `up` goes on to `check_final`. This shows criteria 1, 2 and 4.
+     passed`. Then `up` must finish with `check_final` passing, which shows that the
+     `ta-admin` session moved no figure the final run pins. This shows criteria 1, 2 and 4.
   2. `run.sh check-task-progress` on the same stack. It must pass with two new task ids.
   3. `TA_UI_IMAGE=<another local tag> run.sh check-task-progress`. It must stop with "the
      frontend runs …" and a non-zero exit (the fail side of criterion 4).

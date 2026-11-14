@@ -475,7 +475,7 @@ check_task_progress() {
     mkdir -p "$STATE_DIR"
     ui="$("${K[@]}" -n "$TA_NAMESPACE" get deploy "$TA_RELEASE-frontend" -o jsonpath='{.spec.template.spec.containers[*].image}')"
     [ "$ui" = "$TA_UI_IMAGE" ] || die "the frontend runs '$ui', not the UI image under test $TA_UI_IMAGE"
-    log "task progress: UI image $TA_UI_IMAGE ($(docker image inspect --format '{{.Id}}' "$TA_UI_IMAGE" 2>/dev/null || echo 'not local'))"
+    log "task progress: UI image $TA_UI_IMAGE (local $(docker image inspect --format '{{.Id}}' "$TA_UI_IMAGE" 2>/dev/null || echo 'none'); running $("${K[@]}" -n "$TA_NAMESPACE" get pods -l "app.kubernetes.io/instance=$TA_RELEASE,tier=frontend" -o jsonpath='{.items[*].status.containerStatuses[*].imageID}'))"
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/task_progress.py" seed >"$state"
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
         nice -n19 node "$HERE/task_progress_browser.cjs" "$state"

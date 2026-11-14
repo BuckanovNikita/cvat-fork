@@ -37,7 +37,8 @@ browser was pointed at a server. Part two, the live run, is listed at the end an
     card. On the single job this is the case from
     `2026-11-13-task-legend-verification.md`.
 - `check_task_progress` in `run.sh`. It refuses to run unless the frontend deployment's image
-  is `TA_UI_IMAGE`, logs that image's local ID, runs the seed into
+  is `TA_UI_IMAGE`. It logs that tag's local image ID and the image ID the frontend pod runs,
+  then runs the seed into
   `$STATE_DIR/task-progress.json`, then runs the browser script. Any mismatch exits non-zero.
   It also has its own subcommand and a usage line in the header of `run.sh`.
 - The README (Russian) gains a bullet for the check and the subcommand in its list.
@@ -61,7 +62,8 @@ events in jobs (`team-analytics/service/sql/refresh/`).
 - The server's schema names the two enums `JobStage` and `OperationStatus`
   (`ENUM_NAME_OVERRIDES` in `cvat/settings/base.py`). `/api/schema/` has no permission
   classes and serves `application/vnd.oai.openapi+json` through `OpenApiJsonRenderer`. The
-  seed compares both enums with its own lists at run time. A stage or state added by a later
+  image's generated `cvat/schema.yml` has `JobStage` (annotation, validation, acceptance) and
+  `OperationStatus` (new, in progress, completed, rejected) in that order. The seed compares both enums with its own lists at run time. A stage or state added by a later
   upstream release fails the seed before the check runs.
 
 ## Checks with supplied boundaries
@@ -78,8 +80,15 @@ events in jobs (`team-analytics/service/sql/refresh/`).
   stylesheet, inline card background, and a stand-in default text colour. That markup was
   accepted. Six altered inputs were each refused with their own message: a missing card, a
   "not available" bucket, a wrong expected job count, the fallback labels, a coloured
-  legend (1.80:1) and a wrong segment palette. The script lives outside the repository and
-  is not a test.
+  legend (1.80:1) and a wrong segment palette. The script was a throwaway outside the
+  repository and was removed afterwards; it is not a test.
+- `seed()` ran against a canned fake of the API, also a throwaway outside the repository.
+  The fake replaced `Session` and the upload, and served the schema through the session's
+  opener. Its first jobs poll returned no jobs. Every request had to name the personal
+  workspace. The seed printed JSON for 12 jobs and for 1 job. It was refused when the schema
+  had an extra state and when one job read back with the wrong state. This run found that
+  the seed waited for `images // segment_size` jobs, which is 0 for the single-job task, so
+  that task would always have failed live. It now waits for the ceiling of that division.
 - The seed's requests were read against v2.82.0 in the fork server image:
   - `POST /api/tasks` with `labels` and `segment_size`;
   - `POST /api/tasks/{id}/data` as multipart `client_files[i]`, with `image_quality` and
@@ -87,8 +96,11 @@ events in jobs (`team-analytics/service/sql/refresh/`).
   - `GET /api/jobs` filtered by `task_id`, and `PATCH /api/jobs/{id}` with
     `stage`/`state` (`JobWriteSerializer`);
   - `organization_id` and `jobs.count` in `TaskReadSerializer`;
-  - task `filter` on `id` (`TaskViewSet.filter_fields`);
-  - for an admin, sandbox tasks are filtered to no organization (`add_organization_filter`).
+  - task `filter` on `id` (`TaskViewSet.filter_fields`), with the `or` and `==` operators
+    that `apps/engine/filters.py` accepts;
+  - an empty `org=` sets `organization_specified` with no organization
+    (`apps/iam/middleware.py`), that is the personal workspace. For an admin, sandbox tasks
+    are then filtered to no organization (`add_organization_filter`).
 - In the UI, `useResourceQuery` reads `filter` from the URL into the tasks query. The task
   card shows `#<id>: ` in `.cvat-item-task-id`. The frontend deployment is
   `<release>-frontend`, with one container whose image is `cvat.frontend.image:tag`.
@@ -110,10 +122,12 @@ None of these has been seen:
 On a stack brought up from an empty namespace, with `TA_UI_IMAGE` built from the branch
 under test:
 
-1. `run.sh up` (or `cycle`). The log must show `task progress: UI image …` with the image ID,
-   then `server schema: stages [...], states [...]`. Then the mixed task with 12 jobs read
-   back and the single task, then one line per task card, then `task progress check passed`.
-   `up` must go on to `check_final`.
+1. `run.sh up` (or `cycle`). The log must show `task progress: UI image …` with the local
+   image ID and the frontend pod's running image ID, which must be the same. Then
+   `server schema: stages [...], states [...]`. Then the mixed task with 12 jobs read back
+   and the single task, then one line per task card, then `task progress check passed`. `up`
+   must then finish with `check_final` passing. That shows the `ta-admin` session moved no
+   figure the final run pins.
 2. `run.sh check-task-progress` again on the same stack. It must pass with two new task ids.
 3. A failure seen once: rerun `check-task-progress` with `TA_UI_IMAGE` set to a tag other
    than the deployed one. It must stop on "the frontend runs …" with a non-zero exit.

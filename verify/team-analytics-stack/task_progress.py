@@ -90,12 +90,13 @@ def make_task(session: Session, name: str, segment_size: int, images: int) -> tu
     )
     check(task.get("organization_id") is None, f"task {task['id']} is in organization {task.get('organization_id')}")
     upload(session, task["id"], images)
+    expected = -(-images // segment_size)  # one job per segment; the last segment may be short
     for _ in range(120):
         jobs = jobs_of(session, task["id"])
-        if len(jobs) == images // segment_size:
+        if len(jobs) == expected:
             return task["id"], jobs
         time.sleep(2)
-    raise SystemExit(f"task {task['id']}: {images // segment_size} jobs were not created within 4 minutes")
+    raise SystemExit(f"task {task['id']}: {expected} jobs were not created within 4 minutes")
 
 
 def seed() -> None:
