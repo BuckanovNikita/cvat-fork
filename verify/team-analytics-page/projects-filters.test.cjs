@@ -78,7 +78,7 @@ test('each chart carries its legend inside the card', () => {
     const html = render(View, ready());
     for (const name of ['working-time-by-project', 'working-time-by-annotator']) {
         // the split's colours (split-bars.test.cjs)
-        assert.match(card(html, name), /cvat-team-analytics-legend[^>]*>.*Creation.*Other/);
+        assert.match(card(html, name), /cvat-team-analytics-breakdown-legend[^>]*>.*Creation.*Other/);
     }
 });
 
