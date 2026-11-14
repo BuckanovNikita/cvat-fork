@@ -217,7 +217,6 @@ export function FullTable({
                         {shown.map((row) => (
                             <tr key={row.key}>
                                 <th scope='row'>{row.name}</th>
-                                { }
                                 {row.cells.map((cell, index) => <td key={index}>{cell}</td>)}
                             </tr>
                         ))}

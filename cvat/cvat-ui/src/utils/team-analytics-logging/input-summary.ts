@@ -71,6 +71,7 @@ function counted(): boolean {
 }
 
 function add(counts: Record<string, number>, name: string): void {
+    // eslint-disable-next-line no-param-reassign
     counts[name] = (counts[name] ?? 0) + 1;
 }
 

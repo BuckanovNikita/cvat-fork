@@ -48,7 +48,8 @@ export function FreshnessStamp({ refresh, timeZone }: Props): JSX.Element {
         <span className='cvat-team-analytics-freshness'>
             <ClockCircleOutlined />
             {refresh.last_success_at ?
-                `Data as of ${refreshTime(refresh.last_success_at, refresh.now, timeZone)} · refreshed every ${minutes} min` :
+                `Data as of ${refreshTime(refresh.last_success_at, refresh.now, timeZone)}` +
+                ` · refreshed every ${minutes} min` :
                 'Not refreshed yet'}
         </span>
     );
@@ -63,7 +64,8 @@ export function StaleWarning({ refresh, timeZone }: Props): JSX.Element | null {
             <WarningOutlined />
             <span>
                 {refresh.last_success_at ?
-                    `The figures were last refreshed at ${refreshTime(refresh.last_success_at, refresh.now, timeZone)}, ` +
+                    'The figures were last refreshed at ' +
+                    `${refreshTime(refresh.last_success_at, refresh.now, timeZone)}, ` +
                     `more than ${limit} minutes ago. Recent work may be missing.` :
                     'The figures have not been refreshed yet. Recent work may be missing.'}
             </span>
