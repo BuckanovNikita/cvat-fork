@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] With the library unavailable, the page suite and the UI logging suite exit non-zero and name what is missing. This is shown once and noted in this ticket.
 - [x] With it available, every test that was gated on it runs; none is skipped for that reason.
@@ -34,3 +34,5 @@ Three things differ from what this ticket assumed:
 Criterion 4 was shown without a browser: the check is skipped and the suite passes, whether or not the harness's dependencies are installed, and `verify/task_progress.cjs` is unchanged. The check was not run with a browser.
 
 For the merge: a branch cut before this one may still add a `domTest(` call, which now fails loudly, or copy the old gate `skip: !domAvailable && ...`, which skips silently because the helper no longer exports `domAvailable`. After merging such a branch, `grep -rn "domAvailable\|domTest\|{ skip }" verify/team-analytics-page verify/team-analytics-logging` must find nothing and both suites must report 0 skipped.
+
+2026-11-14: Resolved on `feat/team-analytics-page` by merge `12b7718`. Evidence: `docs/evidence/2026-11-14-frontend-harness-browser-environment.md`.
