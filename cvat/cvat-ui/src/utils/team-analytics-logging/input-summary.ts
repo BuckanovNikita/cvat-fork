@@ -9,7 +9,8 @@
 //                         written first)
 //   untrackInputJob()     the job is closed: what was counted is written, counting stops
 //   hotkeyUsed(action, event)  the shortcut dispatcher is about to run the handler of `action`
-//   inputEvent(event)     every keydown and click the application's window listener sees
+//   inputEvent(event)     every keydown, click and mousedown the application's window listeners see
+//                         (a mousedown only ends a pending frame-navigation hotkey)
 //   frameRequested()      a frame change starts (annotation-actions.ts changeFrameAsync); returns the
 //                         frame-navigation hotkey that asked for it, or null
 //   frameShown(hotkey, from, to)  that frame change shows frame `to`; `from` is the frame shown when it
@@ -20,7 +21,7 @@
 // frame-navigation hotkey counts when the frame change it asked for shows another frame. A press or a
 // repeat that asks again for the frame already loading, or that cannot move (first or last frame,
 // navigation blocked), counts nothing. A frame-navigation hotkey asks for the next frame change that
-// starts after it, unless a click or another hotkey comes first.
+// starts after it, unless a mouse button press, a click or another hotkey comes first.
 // A mouse action is a click on a control (button, menu item, sidebar control, ...), counted per zone
 // of the page; clicks on the canvas are counted apart, under zone 'canvas'.
 // The summary is written at most once a minute and only at a moment when the person acts (a key press
@@ -177,11 +178,14 @@ export function frameShown(hotkey: string | null, from: number, to: number): voi
 export function inputEvent(event: { type?: string; target?: unknown } | null | undefined): void {
     guarded(undefined, () => {
         if (!tracked() || !event) return;
+        if (event.type === 'mousedown' || event.type === 'click') {
+            // a frame change that starts after the mouse button goes down (the player slider moves
+            // then) is not a hotkey's
+            navigation = null;
+        }
+        if (event.type === 'mousedown') return;
         active();
-        if (event.type !== 'click') return;
-        // a frame change that starts after a click is not a hotkey's
-        navigation = null;
-        if (!isElement(event.target)) return;
+        if (event.type !== 'click' || !isElement(event.target)) return;
         const zone = zoneOf(event.target);
         if (zone === 'canvas') {
             add(mouse, zone);

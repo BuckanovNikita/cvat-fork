@@ -20,6 +20,7 @@ const ANNOTATION_ACTIONS = 'cvat-ui/src/actions/annotation-actions.ts';
 const PAGE = `<!doctype html><html><body>
   <div class="cvat-annotation-header">
     <span id="next-button" class="anticon" role="img"></span><span id="prev-button" class="anticon" role="img"></span>
+    <div id="slider" class="ant-slider"><div id="slider-handle" class="ant-slider-handle" role="slider"></div></div>
   </div>
   <div class="cvat-objects-sidebar"><button id="sidebar-lock" class="ant-btn">Lock</button></div>
 </body></html>`;
@@ -149,9 +150,15 @@ function annotationPage({ frame = 3, job: jobOptions = {} } = {}) {
     const window = domWindow(PAGE);
     window.document.getElementById('next-button').addEventListener('click', () => pending.push(topBar.onNextFrame()));
     window.document.getElementById('prev-button').addEventListener('click', () => pending.push(topBar.onPrevFrame()));
+    // the player slider (antd Slider) changes the frame as soon as the button goes down on it
+    window.document.getElementById('slider').addEventListener('mousedown', () => {
+        pending.push(topBar.onChangePlayerSliderValue(0));
+    });
+    // cvat-app.tsx: capture listeners on the window for key presses, clicks and mouse button presses
     const listener = (event) => { logging.inputEvent(event); };
     window.addEventListener('keydown', listener, { capture: true });
     window.addEventListener('click', listener, { capture: true });
+    window.addEventListener('mousedown', listener, { capture: true });
 
     async function settle() {
         for (let round = 0; round < 50; round++) await new Promise((resolve) => { setImmediate(resolve); });
@@ -171,7 +178,11 @@ function annotationPage({ frame = 3, job: jobOptions = {} } = {}) {
             await settle(); // the frame is asked for; it has not loaded
         },
         async click(id) {
-            window.document.getElementById(id).dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+            const element = window.document.getElementById(id);
+            element.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
+            await settle();
+            element.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true }));
+            element.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
             await settle();
         },
         /** Every frame asked for so far loads, and what follows from it runs. */
@@ -253,6 +264,20 @@ test('a frame-navigation key at the last or first frame, or while navigation is 
     assert.deepEqual(mouse, { header: 1 });
 });
 
+test('a frame change that starts as the mouse button goes down is not a hotkey action', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-14T10:00:00Z') });
+    const page = annotationPage({ frame: 7 });
+    page.logging.trackInputJob(page.job);
+    await page.press('f'); // at the last frame: it moves nothing
+    await page.click('slider-handle'); // the slider goes to the first frame before its click arrives
+    await page.load();
+    assert.equal(page.frame, 0);
+
+    const { hotkeys, mouse } = await page.summary();
+    assert.deepEqual(hotkeys, {});
+    assert.deepEqual(mouse, { header: 1 });
+});
+
 test('a frame change made with the mouse is not a hotkey action, even when a key is pressed while it loads', async (t) => {
     t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-14T10:00:00Z') });
     const page = annotationPage({ frame: 3 });
@@ -309,4 +334,31 @@ test('a failure inside the counting never reaches the frame change or the shortc
     const changes = (await page.core.sent()).filter((event) => event.scope === 'change:frame');
     assert.equal(changes.length, 1);
     assert.deepEqual([changes[0].payload.from, changes[0].payload.to], [3, 4]);
+});
+
+test('a failure in counting the frame shown never reaches the frame change', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-14T10:00:00Z') });
+    const page = annotationPage({ frame: 3 });
+    // the job can be read until its frame has loaded, so the counting fails only at the frame shown
+    let readable = true;
+    const broken = { ...page.job };
+    Object.defineProperty(broken, 'dimension', {
+        get() {
+            if (readable) return '2d';
+            throw new Error('cannot read dimension');
+        },
+    });
+    const { get } = page.job.frames;
+    page.job.frames.get = async (number) => {
+        const data = await get(number);
+        readable = false;
+        return data;
+    };
+    page.logging.trackInputJob(broken);
+    await page.press('f');
+    await page.load();
+    assert.equal(page.frame, 4);
+
+    const changes = (await page.core.sent()).filter((event) => event.scope === 'change:frame');
+    assert.deepEqual(changes.map((event) => [event.payload.from, event.payload.to, event.count]), [[3, 4, 1]]);
 });
