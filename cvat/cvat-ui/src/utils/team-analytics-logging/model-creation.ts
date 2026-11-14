@@ -10,7 +10,7 @@
 
 import { PAYLOAD, RECORD } from './contract';
 import { guarded } from './guard';
-import { LoggedObject, LoggingJob, logRecord } from './index';
+import { LoggedObject, LoggingJob, logRecord } from './record';
 
 export function recordModelCreation(
     job: LoggingJob | null | undefined,

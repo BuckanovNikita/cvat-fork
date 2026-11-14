@@ -22,8 +22,8 @@
 import { RECORD } from './contract';
 import { guarded } from './guard';
 import { markInput, resetInputMethod } from './input-method';
-import type { LoggingJob } from './index';
-import { logRecord } from './index';
+import type { LoggingJob } from './record';
+import { logRecord } from './record';
 
 export const SUMMARY_INTERVAL_MS = 60000;
 
