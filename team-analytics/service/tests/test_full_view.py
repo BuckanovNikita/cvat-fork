@@ -220,7 +220,7 @@ class ProcessedTest(FullViewCase):
         self.assertFalse(body["processed"])
         self.assertEqual(body["processed"], self.overview(period="year")["processed"])
         # no figures, only the envelope: the period, the kind of list and the legacy flags
-        self.assertEqual(body["period"]["first_day"], "2026-01-01")
+        self.assertEqual(body["period"]["first_day"], "2025-11-14")
         self.assertEqual({key: body[key] for key in ("by", "legacy", "partly_legacy", "cutover", "shapes")},
                          {"by": "annotators", "legacy": False, "partly_legacy": False, "cutover": None,
                           "shapes": "all"})

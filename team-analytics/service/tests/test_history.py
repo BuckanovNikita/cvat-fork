@@ -135,7 +135,7 @@ class FillTest(HistoryCase):
         self.step()  # the last 48 hours only: this week is not wholly processed
         body = self.overview(annotator=str(ALICE[0]))
         self.assertFalse(body["processed"])
-        self.assertEqual(body["period"]["first_day"], "2026-11-09")
+        self.assertEqual(body["period"]["first_day"], "2026-11-07")
         self.assertEqual(body["filters"], {"project": None, "annotator": {"user_id": ALICE[0], "user_name": "alice"}})
         for section in ("headline", "sessions", "by_annotator", "by_project", "time_series", "input",
                         "creation_methods", "saved_boxes"):
@@ -145,10 +145,10 @@ class FillTest(HistoryCase):
                                               "shapes": "all", "working_time_ms": None,
                                               "active_time_ms": None, "rows": None})
 
-        self.step(6)  # processed from 2026-11-06: this week now is, with its figures
+        self.step(6)  # processed from 2026-11-06: this week (from the 7th) now is, with its figures
         body = self.overview()
         self.assertTrue(body["processed"])
-        self.assertEqual(self.alice_ms(), 28 * MINUTE)
+        self.assertEqual(self.alice_ms(), 30 * MINUTE)  # the 8th, 10th, 11th and 13th
 
 
     def test_a_new_day_does_not_take_any_period_away(self):
