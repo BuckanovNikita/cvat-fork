@@ -46,6 +46,10 @@ The whole seam 3 suite passes after the change, with nothing skipped.
 
 ## Not verified
 
+- The stylesheet was not compiled. Seam 3 loads stylesheets as empty modules
+  and stylelint only parses them. The variables it uses come from `base`, and
+  the page's other stylesheets use them too.
+
 - The narrow window. The block is the last child of the overview grid. Its
   styles span the grid, set `min-width: 0`, lay the items out with
   `repeat(auto-fit, minmax(min(100%, 280px), 1fr))`, and wrap long words. No
