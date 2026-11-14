@@ -58,7 +58,7 @@ def handle(request: Request) -> dict:
 
     span = request.span()
     # read before any figure (service.Request.history)
-    processed = request.history().covers(span.start)
+    processed = request.history().covers(span.start, span.end)
     scope = request.scope_params()
     # the table's own dimension is listed whole; the selected row is only marked by the page
     if kind == "annotators":

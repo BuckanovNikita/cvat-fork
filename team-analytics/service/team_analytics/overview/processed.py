@@ -10,4 +10,5 @@ KEY = "processed"
 
 
 def build(request: Request) -> bool:
-    return request.history().covers(request.span().start)
+    span = request.span()
+    return request.history().covers(span.start, span.end)

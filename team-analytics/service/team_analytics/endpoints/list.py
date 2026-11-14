@@ -41,7 +41,7 @@ def handle(request: Request) -> dict:
         raise BadRequest(f"by must be one of {', '.join(KINDS)}")
     span = request.span()
     # read before any figure (service.Request.history)
-    processed = request.history().covers(span.start)
+    processed = request.history().covers(span.start, span.end)
     if by == "hotkeys":
         # no legacy flags in this answer: nothing is read for a period not fully processed
         body = _hotkeys(request) if processed else {"hotkey_actions": None, "rows": None}

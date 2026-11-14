@@ -36,7 +36,8 @@ def build(request: Request) -> dict:
     # the request's one reading of the history state (service.Request.history), as every endpoint takes it
     state = request.history()
     current = today(request.now, tz)
-    periods = {key: state.covers(builder(request.now, tz, tz_name, None).start) for key, builder in PERIODS.items()}
+    spans = {key: builder(request.now, tz, tz_name, None) for key, builder in PERIODS.items()}
+    periods = {key: state.covers(span.start, span.end) for key, span in spans.items()}
     ready_from = state.ready_from
     ready_day = None  # the viewer's first whole day that is processed
     earliest_month = None
