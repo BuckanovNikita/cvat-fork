@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from team_analytics.history import load_state
 from team_analytics.periods import PERIODS, midnight, monday, today, zone
 from team_analytics.service import Request
 
@@ -34,7 +33,8 @@ def _first_month(day: date) -> date:
 def build(request: Request) -> dict:
     tz_name = request.query.get("tz", "UTC") or "UTC"
     tz = zone(tz_name)
-    state = load_state(request.sql, request.now)
+    # the request's one reading of the history state (service.Request.history), as every endpoint takes it
+    state = request.history()
     current = today(request.now, tz)
     periods = {key: state.covers(builder(request.now, tz, tz_name, None).start) for key, builder in PERIODS.items()}
     ready_from = state.ready_from
