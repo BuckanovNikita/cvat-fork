@@ -9,26 +9,32 @@ unverified. It separates live outcomes from tests with supplied boundaries. Time
 | Item | Value |
 | --- | --- |
 | Branch | `ta/18-final-run-docs`, from `feat/team-analytics-page` at `c3ee2e3` (tickets 01-17 merged) |
-| Evidence run tree | `3cf28a9` (tooling committed before the run) |
-| UI image | `cvat/ui:v2.82.0-team-analytics-ta18-5b38488`, `./build-ui.sh` at `5b38488`; `cvat/` unchanged between `5b38488` and `3cf28a9` |
-| Service image | `cvat/team-analytics:v2.82.0-ta18-c3ee2e3`, `./build-team-analytics-service.sh`; `team-analytics/` unchanged since `c3ee2e3` |
+| Evidence run tree | `bfffb23` (all product fixes and tooling committed before the run) |
+| UI image | `cvat/ui:v2.82.0-team-analytics-ta18-5b38488`, `./build-ui.sh` at `5b38488`; `cvat/` unchanged between `5b38488` and `bfffb23` |
+| Service image | `cvat/team-analytics:v2.82.0-ta18-bfffb23`, `./build-team-analytics-service.sh` at `bfffb23` |
 | Stack | upstream chart of `02bd74f` (v2.82.0), namespace `cvat-ta-it-nkt`, `http://localhost:8490`, refresh every 60 s, technical account `ta-bot` |
 
 ## Evidence run
 
 ```bash
-TA_UI_IMAGE=cvat/ui:v2.82.0-team-analytics-ta18-5b38488 \
-TA_SERVICE_IMAGE=cvat/team-analytics:v2.82.0-ta18-c3ee2e3 \
-TA_SCREENSHOT_DIR=<dir> verify/team-analytics-stack/run.sh cycle
+export TA_UI_IMAGE=cvat/ui:v2.82.0-team-analytics-ta18-5b38488 \
+       TA_SERVICE_IMAGE=cvat/team-analytics:v2.82.0-ta18-bfffb23
+verify/team-analytics-stack/run.sh down   # start from no namespace
+TA_SCREENSHOT_DIR=<dir> verify/team-analytics-stack/run.sh up   # fresh stack
+verify/team-analytics-stack/run.sh up     # the same stack again
+verify/team-analytics-stack/run.sh down
 ```
 
-The run started at 03:32:36 and ended at 03:41:06 with exit 0 and the message "nothing of
-cvat-ta-it-nkt remains". It began from no namespace. The whole output, without rollout
-progress lines, is in
-[`run-cycle.log`](2026-11-14-team-analytics-final-run/run-cycle.log). Screenshots are in the same
-directory. Earlier runs on a kept stack (02:40-03:30) found the defects listed below. They also
-showed that `up` repeats on a running stack: each run annotates a new project, and the volume
-loads once.
+| Step | Time | Outcome | Log |
+| --- | --- | --- | --- |
+| `up` on a fresh namespace | 04:36:57-04:44:04 | exit 0, "final run passed" | [`run-up1.log`](2026-11-14-team-analytics-final-run/run-up1.log) |
+| `up` again on that stack | 04:44:04-04:50:21 | exit 0, "final run passed"; volume not loaded twice, a new project annotated; the restarted service refreshed within a minute | [`run-up2.log`](2026-11-14-team-analytics-final-run/run-up2.log) |
+| `down` | 04:50:21-04:51:14 | exit 0, "nothing of cvat-ta-it-nkt remains" | [`run-down.log`](2026-11-14-team-analytics-final-run/run-down.log) |
+
+The logs leave out rollout progress lines. The screenshots in the same directory come from the
+first `up`. The figures below come from the first `up`; the second run showed the same counts.
+Earlier runs on kept stacks (02:40-04:30) found the defects listed below. An earlier `up`,
+`up`, `down` sequence, before the shutdown fix, failed on the second `up`.
 
 ### Real UI in a real browser (live)
 
@@ -60,7 +66,7 @@ Outcomes:
   The hotkey counts are exactly the keys the script pressed.
 - Stock logging was unchanged. These client scopes arrived: `load:job`, `load:workspace`,
   `click:element`, `copy:object`, `change:frame`, `save:job` and the operation events. Every
-  client row kept its `client_id`. CVAT wrote 2 `send:working_time` rows (20 039 ms). The save
+  client row kept its `client_id`. CVAT wrote 2 `send:working_time` rows (20 071 ms). The save
   wrote `create:shapes` with 5 rectangles: the 2 drawn and 3 propagated, the pasted box being
   deleted.
 - **Detector use was not driven by the real UI.** The stack has no model function (nuclio is
@@ -82,7 +88,7 @@ They were read with `project=<id>`, `period=week` and All shapes:
 | Model, Bounding boxes (3 + 2 rectangles) | 5 | 5 | - |
 | Saved boxes: total / ta-worker-c (from the job's annotations API) | 8 / 5 | 8 / 5 | - |
 | Sessions | 1 | 1 | 1 |
-| Working time (sum of `send:working_time`) | 20 039 ms | 20 039 ms (by annotator, by project, current trend week) | - |
+| Working time (sum of `send:working_time`) | 20 071 ms | 20 071 ms (by annotator, by project, current trend week) | - |
 | Hotkey actions; every action count (full list) | 12; as pressed | 12; equal | 12 |
 | Started by hotkey / mouse | creation 5/1, alignment mouse only, class change and deletion hotkey | same | - |
 
@@ -155,7 +161,7 @@ no error notice. The service was then scaled back and rolled out.
 
 ## Defects found and fixed in this ticket
 
-All three were fixed test-first. Each red was observed before its fix.
+All four were fixed test-first. Each red was observed before its fix.
 
 1. **Closing input summary waited for the periodic save** (`3b29af0`). The summary written as
    the annotation view closed reached the cvat-core logger after the closing save had read its
@@ -170,6 +176,18 @@ All three were fixed test-first. Each red was observed before its fix.
    browser check.
 3. **Opened trend values stuck out of a narrow card** (`5b38488`). The live browser check at
    400 px failed with the values opened and two annotators compared, and passed after the fix.
+4. **A stopped replica could hold up refreshes for 30 minutes** (`bfffb23`). In a repeated `up`
+   (04:13-04:16), the service had been restarted by the previous run's service-down phase. It
+   then ran no refresh for more than two minutes ("0 scheduled refreshes since the load"), and
+   the tracer check failed. Static reading showed the cause: the process died on SIGTERM
+   without running `finally`, so a step in progress left its lease claim live for
+   `LEASE_S` = 1800 s. That namespace was already deleted, so the leftover claim itself was
+   not observed. A later diagnostic `up`, `up` on a kept stack passed, with no unreleased
+   claim in `refresh_lock`, which fits a race. Red in seam 1: `tests/test_shutdown.py` stops a
+   replica busy with 300 days of history with SIGTERM, and a second replica processed no day
+   in 30 s ("4 not greater than 4"). After the fix the service finishes the step, releases the
+   lease and exits; the test and `tests.test_entry_point` pass, and so did the final `up`,
+   `up`, `down`.
 
 ## Checks with supplied boundaries (tests)
 
@@ -178,7 +196,8 @@ All three were fixed test-first. Each red was observed before its fix.
 | Seam 2, `node --test verify/team_analytics_logging.cjs` | 53 tests, all pass (after `3b29af0`) |
 | Seam 3, `node --test verify/team_analytics_page.cjs` | 191 tests, all pass |
 | Type check, `tsc -p cvat-ui/tsconfig.json` | exit 0 (workspace packages resolve to the main checkout's sources) |
-| Seam 1, `verify/team_analytics_service.sh` (default `cvat/clickhouse:23.12.2-debian-11-r0`, `nice -n19`, alongside the stack run) | 230 tests, OK, exit 0; the service code is unchanged by this ticket |
+| Seam 1, `verify/team_analytics_service.sh` (default `cvat/clickhouse:23.12.2-debian-11-r0`) at `c3ee2e3` (before the shutdown fix) | 230 tests, OK, exit 0 |
+| Seam 1 at `bfffb23` (with `tests/test_shutdown.py`), run alongside the final stack runs | 231 tests, OK, exit 0 (1810 s alongside the stack) |
 | Ruff on `final_run.py`, `stack_api.py` | clean; `seed_users.py` was already unformatted before this ticket and was left as it was |
 
 ## Independent access review
@@ -206,3 +225,12 @@ ticket and records its findings and their resolution here.
 - Mouse zone `header` covers the annotation top bar only, so a click on CVAT's global header
   counts as `other`. This is as built (ticket 13), noted for the review of wording.
 - The 400 px check looks at the page only. CVAT's header keeps its upstream width.
+- Several call sites were not driven live: resize, selection delete, multi paste, class
+  change by mouse (sidebar, context menu, attribute mode), tracks and shapes other than
+  rectangles. Seam 2 covers them with the real cvat-core logger and a recording transport.
+- "Event logging as before" was judged from the stock client scopes, `client_id`, CVAT's
+  `send:working_time` rows and the 201 answers. No side-by-side run of the stock UI image was
+  made.
+- The synthetic volume went straight into ClickHouse, bypassing CVAT's events API and Vector.
+- On the kept exploration stack, the login form timed out once right after a manual swap of
+  the frontend image. A retry passed. The evidence run did not repeat it.

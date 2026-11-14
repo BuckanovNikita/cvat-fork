@@ -171,6 +171,10 @@ Behavior to preserve:
   files; Python binds parameters and shapes rows. It runs from the stock
   `cvat/server` image with no added dependency (`team-analytics/Dockerfile`).
   Its Kubernetes manifests and environment are in `team-analytics/k8s/`.
+  One refresh or history step runs at a time across replicas, under a lease in
+  ClickHouse. On SIGTERM the service finishes the step in progress and releases
+  the lease before exiting. A replica killed mid-step would block the others
+  until the lease expires.
 - Its routes are under `/team-analytics-api/v1/`. Every request is checked
   against CVAT with the caller's own cookie or token: `/api/users/self`,
   `/api/organizations`, `/api/memberships`. Admins (the `admin` group) see any

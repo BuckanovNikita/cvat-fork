@@ -1,0 +1,141 @@
+up2 start 2026-11-14 04:44:04 UTC
+namespace/cvat-ta-it-nkt unchanged
+resourcequota/team-analytics-stack unchanged
+limitrange/team-analytics-stack unchanged
+[ta-stack] installing chart release cvat
+walk.go:75: found symbolic link in path: /mnt/wsl/data/nkt/.cache/cvat-fork/team-analytics/build-02bd74fde78e00f770b7dfc3c33761ad9ab00095-8c741f0484e5/helm-chart/analytics resolves to /mnt/wsl/data/nkt/.cache/cvat-fork/team-analytics/build-02bd74fde78e00f770b7dfc3c33761ad9ab00095-8c741f0484e5/components/analytics. Contents of linked file included and used
+Release "cvat" has been upgraded. Happy Helming!
+NAME: cvat
+LAST DEPLOYED: Sat Nov 14 07:44:07 2026
+NAMESPACE: cvat-ta-it-nkt
+STATUS: deployed
+REVISION: 2
+TEST SUITE: None
+[ta-stack] applying the Team Analytics service (cvat/team-analytics:v2.82.0-ta18-bfffb23, refresh every 60 s)
+configmap/team-analytics unchanged
+deployment.apps/team-analytics unchanged
+service/team-analytics unchanged
+deployment.apps/team-analytics patched (no change)
+configmap/ta-proxy unchanged
+deployment.apps/ta-proxy unchanged
+service/ta-proxy unchanged
+[ta-stack] waiting for the initializer job and core workloads
+job.batch/cvat-backend-initializer-r2 condition met
+deployment "cvat-backend-server" successfully rolled out
+deployment "cvat-backend-worker-utils" successfully rolled out
+deployment "cvat-backend-worker-webhooks" successfully rolled out
+deployment "cvat-frontend" successfully rolled out
+deployment "cvat-opa" successfully rolled out
+deployment "team-analytics" successfully rolled out
+deployment "ta-proxy" successfully rolled out
+[ta-stack] stopping port-forward (pid 3074345)
+[ta-stack] stack reachable at http://localhost:8490
+[ta-stack] loading synthetic accounts
+66 objects imported automatically (use -v 2 for details).
+
+seeded users: ta-admin, ta-owner, ta-maintainer, ta-supervisor, ta-worker, ta-outsider, ta-owner-b, ta-maintainer-b, ta-owner-c, ta-worker-c, ta-bot, ta-owner-v | organizations: ta-org-a, ta-org-b, ta-org-c, ta-org-v
+  ta-admin: groups=['admin']
+  ta-owner: groups=['user']
+  ta-maintainer: groups=['user']
+  ta-supervisor: groups=['user']
+  ta-worker: groups=['user']
+  ta-outsider: groups=['user']
+  ta-owner-b: groups=['user']
+  ta-maintainer-b: groups=['user']
+  ta-owner-c: groups=['user']
+  ta-worker-c: groups=['user']
+  ta-bot: groups=['user']
+  ta-owner-v: groups=['user']
+  ta-org-a: {'ta-worker': ('worker', True), 'ta-supervisor': ('supervisor', True), 'ta-maintainer': ('maintainer', True), 'ta-owner': ('owner', True)}
+  ta-org-b: {'ta-maintainer-b': ('maintainer', True), 'ta-owner-b': ('owner', True)}
+  ta-org-c: {'ta-bot': ('maintainer', True), 'ta-worker-c': ('worker', True), 'ta-owner-c': ('owner', True)}
+  ta-org-v: {'ta-owner-v': ('owner', True)}
+  ta-outsider: member of nothing
+  sent client event ta-stack-check-1794631470-3153519 as ta-worker
+[ta-stack] event found in ClickHouse (user, scope, obj_name, payload.shape_type): ta-worker	debug:info	ta-stack-check-1794631470-3153519	rectangle
+  ta-org-a: project ta-tracer exists; working time already loaded
+  ta-org-b: project ta-tracer exists; working time already loaded
+  anonymous: 401
+  ta-maintainer, org=ta-org-a: 200 [('ta-worker', 5400000), ('ta-supervisor', 1800000)] after 3 s
+  ta-owner, org=ta-org-a: 200 [('ta-worker', 5400000), ('ta-supervisor', 1800000)]
+  ta-maintainer-b, org=ta-org-b: 200 [('ta-maintainer-b', 3600000)]
+  ta-admin, org=-: 200 [('ta-worker', 5400000), ('ta-maintainer-b', 3600000), ('ta-supervisor', 1800000)]
+  ta-worker, org=ta-org-a: 403 forbidden
+  ta-supervisor, org=ta-org-a: 403 forbidden
+  ta-outsider, org=ta-org-a: 403 forbidden
+  ta-maintainer-b, org=ta-org-a: 403 forbidden
+  ta-maintainer, org=-: 403 organization_required
+2026-11-14 04:44:04,596 INFO team_analytics.refresh refreshed 2026-11-12 05:00:00+00:00 .. 2026-11-14 05:00:00+00:00 as version 1794631444342
+2026-11-14 04:45:05,159 INFO team_analytics.refresh refreshed 2026-11-12 05:00:00+00:00 .. 2026-11-14 05:00:00+00:00 as version 1794631504892
+[ta-stack] service container running since 2026-11-14T04:44:03Z; 1 scheduled refreshes since the load at 2026-11-14 04:44:33 UTC
+  ta-maintainer: header link shown, page /team-analytics rows [["ta-worker","1.5 h"],["ta-supervisor","0.5 h"]]
+  ta-worker: no header link, direct visit shows "Team analytics is not availableThis page is for administrato", service call 403
+[ta-stack] final run: synthetic volume in ta-org-v (history fills while the browser works)
+  volume events already loaded (anchor 2026-11-14); 40 projects
+[ta-stack] final run: the real UI annotates a new job in ta-org-c
+  drew 2 rectangles (mouse, hotkey N)
+  dragged the first box twice
+  copied and pasted the first box
+  propagated the second box (3 copies)
+  changed the first box's class to other (Ctrl+2)
+  deleted the pasted box
+  F x3, D x2, Ctrl+S: 5 boxes saved in the job
+  left the job; 3 POST /api/events: [201,201,201]
+  real UI: 3 POST /api/events, all 201
+  draw:object x2: [{'shape_type': 'rectangle', 'rectangle_count': 1, 'object_type': 'shape', 'input_method': 'mouse'}, {'shape_type': 'rectangle', 'rectangle_count': 1, 'object_type': 'shape', 'input_method': 'hotkey'}]
+  drag:object x2: [{'shape_type': 'rectangle', 'rectangle_count': 1, 'object_type': 'shape', 'input_method': 'mouse', 'object_ref': 1, 'frame': 0}, {'shape_type': 'rectangle', 'rectangle_count': 1, 'object_type': 'shape', 'input_method': 'mouse', 'object_ref': 1, 'frame': 0}]
+  paste:object x1: [('1', {'shape_type': 'rectangle', 'rectangle_count': 1, 'object_type': 'shape', 'input_method': 'hotkey'})]
+  propagate:object x1: [('3', {'shape_type': 'rectangle', 'rectangle_count': 3, 'object_type': 'shape', 'input_method': 'hotkey'})]
+  delete:object x1: [('1', {'shape_type': 'rectangle', 'rectangle_count': 1, 'object_type': 'shape', 'input_method': 'hotkey'})]
+  team_analytics:class_change: [('1', {'shape_type': 'rectangle', 'rectangle_count': 1, 'object_type': 'shape', 'input_method': 'hotkey'})]
+  team_analytics:input_summary x1: hotkeys {'SWITCH_DRAW_MODE_STANDARD_CONTROLS': 1, 'COPY_SHAPE': 1, 'PASTE_SHAPE': 1, 'PROPAGATE_OBJECT': 1, 'SWITCH_LABEL_2': 1, 'DELETE_OBJECT_STANDARD_WORKSPACE': 1, 'NEXT_FRAME': 3, 'PREV_FRAME': 2, 'SAVE_JOB': 1}, mouse {'controls_sidebar': 1, 'popup': 1, 'canvas': 2, 'modal': 1, 'other': 1}
+  team_analytics:model_creation (sent through the API, see evidence): 3 objects, payload {'rectangle_count': 2, 'client_id': '0736915896', 'is_active': True}
+  ta-bot: saved 3 boxes through the API
+  working time: 2 send:working_time rows, 19994 ms; client scopes ['change:frame', 'click:element', 'copy:object', 'debug:info', 'delete:object', 'drag:object', 'draw:object', 'load:job', 'load:workspace', 'paste:object', 'propagate:object', 'save:job']; create:shapes by ta-worker-c 5
+[ta-stack] final run: figures, access, page
+  figures of project 45: ready after 42 s
+  operations: {'creation': 6, 'alignment': 1, 'class_change': 1, 'deletion': 1, 'other': 0}, methods {'drawn': 2, 'pasted': 1, 'propagated': 3}, model {'objects': 6, 'share': 0.5}
+  sessions 1 (145590 ms), working time 19994 ms, saved boxes 8 (ta-worker-c 5), hotkeys {'NEXT_FRAME': 3, 'PREV_FRAME': 2, 'COPY_SHAPE': 1, 'DELETE_OBJECT_STANDARD_WORKSPACE': 1, 'PASTE_SHAPE': 1, 'PROPAGATE_OBJECT': 1, 'SAVE_JOB': 1}, started by hotkey/mouse {'creation': (5, 1), 'alignment': (0, 1), 'class_change': (1, 0), 'deletion': (1, 0), 'other': (0, 0)}
+  bounding boxes: model 5
+  trends: current week 19994 ms, boxes 6
+  history processing: ready after 0 s
+  volume figures: ready after 3 s
+  week: 100 annotators, 40 projects, 100 sessions, 9000000 ms, 300 drawn, saved 290, hotkeys 697, mouse 100, canvas 600
+  trends: 10 weeks with work match the loaded events; two annotators compared
+  list: 100 annotators; details by project: 40 rows
+  ta-admin, org=-: 200  on 5 endpoints
+  ta-admin, org=ta-org-a: 200  on 5 endpoints
+  ta-admin, org=ta-org-v: 200  on 5 endpoints
+  ta-owner, org=ta-org-a: 200  on 5 endpoints
+  ta-maintainer, org=ta-org-a: 200  on 5 endpoints
+  ta-supervisor, org=ta-org-a: 403 forbidden on 5 endpoints
+  ta-worker, org=ta-org-a: 403 forbidden on 5 endpoints
+  ta-outsider, org=ta-org-a: 403 forbidden on 5 endpoints
+  ta-outsider, org=-: 403 forbidden on 5 endpoints
+  ta-maintainer-b, org=ta-org-a: 403 forbidden on 5 endpoints
+  ta-owner-b, org=ta-org-a: 403 forbidden on 5 endpoints
+  ta-maintainer-b, org=ta-org-b: 200  on 5 endpoints
+  ta-maintainer, org=-: 403 organization_required on 5 endpoints
+  ta-worker, org=-: 403 forbidden on 5 endpoints
+  ta-bot, org=ta-org-c: 200  on 5 endpoints
+  ta-worker-c, org=ta-org-c: 403 forbidden on 5 endpoints
+  anonymous: 401
+  ta-admin, org=ta-org-a: rows ['ta-supervisor', 'ta-worker']
+  real UI figures on the page (project 45): {"Creation":"6","Alignment":"1","Class change":"1","Deletion":"1"}, methods {"Drawn":"2","Pasted":"1","Propagated":"3","Model":"6"}, hotkey actions 12
+  page loads: 100 active annotators, 8 + "92 more" annotators, 8 + "32 more" projects; height 3186 px (ta-org-c: 2754 px); no overflow
+  period: Year (Nov 15, 2025 – Nov 14, 2026, 53 weekly bars) and back to Week
+  filters: project -> 3 annotators, + annotator -> 1 (?period=week&project=7&annotator=910004); cleared -> 100
+  full view: 100 annotators listed, no overflow; "Back to overview" returns
+  trends: two lines, legend ["ta-volume-annotator-001-","ta-volume-annotator-002-"]
+  narrow window (400 px): page within the window, 13 cards in one column, 3/3 tables scroll sideways, nothing out of its card (CVAT's own header keeps the app 1025 px wide)
+[ta-stack] final run: the service stopped
+deployment.apps/team-analytics scaled
+pod/team-analytics-5c5d5d7b99-q7bpq condition met
+  service stopped: the page shows "Team analytics could not be loadedThe analytics service did not answer"
+  service stopped: ta-worker-c drew and saved a box in job 7 (1 shape on the server, no error notice)
+deployment.apps/team-analytics scaled
+deployment "team-analytics" successfully rolled out
+[ta-stack] final run passed
+[ta-stack] up:http://localhost:8490 (accounts: see README.md, password $TA_SEED_PASSWORD)
+exit 0
+up2 end 2026-11-14 04:50:21 UTC
