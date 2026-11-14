@@ -83,6 +83,29 @@ show_path() {
     fi
 }
 
+# What the tools the launcher runs print when they fail (a Python traceback, a Node stack, a
+# Bash error) names files by their full path, which show_path cannot reach. Everything the
+# launcher and those tools write to stderr passes through redact_paths, which writes the
+# repository root as . and the home directory, by each of its names, as ~. Stdout carries data
+# (a render, a bundle check's verdicts) and is left as it is.
+redact_paths() {
+    local args=() p
+    sed_literal() { printf '%s' "$1" | sed 's/[][\.*^$|/]/\\&/g'; }
+    for p in "$(realpath -m -- "$HERE/../..")" "$HERE/../.."; do
+        args+=(-e "s/$(sed_literal "$p")/./g")
+    done
+    if [ "$(realpath -m -- "${HOME:-/}")" != / ]; then
+        for p in "$(realpath -m -- "$HOME")" "$HOME" "/home/$(id -un)"; do
+            args+=(-e "s/$(sed_literal "$p")/~/g")
+        done
+    fi
+    sed -u "${args[@]}"
+}
+if [ -z "${TA_STDERR_REDACTED:-}" ]; then
+    export TA_STDERR_REDACTED=1
+    exec 2> >(redact_paths >&2)
+fi
+
 case "$TA_NAMESPACE" in
     *[!a-z0-9-]* | -* | *- | "") die "TA_NAMESPACE '$TA_NAMESPACE' is not a DNS label" ;;
 esac
