@@ -13,10 +13,11 @@
 - [x] The difference between the patched policies and the stock ones, taken against the import's tag, is exactly the patch.
 - [x] The fork specification's section on issue and comment permissions states the floor and the invariant.
 - [x] The copied policy directory is not edited; it is removed in ticket 12.
-- [ ] The policy change gets an independent review.
+- [x] The policy change gets an independent review.
 
 ## Comments
 
 - 2026-11-14: Shown in `docs/evidence/2026-11-14-policies-role-floor.md`. The new cases were run on the stock tag (pass), against the old copies under `opa/rules/` (3 fail), then on the patched tree and the stock tag (all pass). Commands: `verify/policy_test.sh` (patched) and `verify/policy_test.sh stock`, from the repository root. The marker in each patched policy is the comment text `Local patch (role floor)`.
 - 2026-11-14: The independent review is not the implementer's; it follows the merge, so that criterion stays unticked.
 - 2026-11-14: Merged into `feat/team-analytics-page` in merge `ff0c4a9`; evidence `docs/evidence/2026-11-14-policies-role-floor.md`. On the merged tree `verify/policy_test.sh` and `verify/policy_test.sh stock` each pass 17 of 17 tests; against `cvat-v2.82.0-widened` both patched policies show 12 added lines and none deleted, and the iam `utils.rego` and `organizations.rego` are identical to the tag's. The ticket stays open: the independent review of the policy change is outstanding.
+- 2026-11-14: Reviewed independently after merge `ff0c4a9`: no defect in the policies. The findings and what was done about each are under "Independent review" and "Cases added after the review" in `docs/evidence/2026-11-14-policies-role-floor.md`. The coverage gaps it found are closed by the cases in commit `9a22568`; both runs pass 27 of 27.
