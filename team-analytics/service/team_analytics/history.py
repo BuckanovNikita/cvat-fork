@@ -22,6 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
+from team_analytics.cutover import look_for_cutover
 from team_analytics.refresh import Refresher
 from team_analytics.sql import Sql
 
@@ -130,7 +131,8 @@ class History:
 
     def check(self) -> int:
         """The daily check (holding the lease): marks days whose raw count changed, and their neighbours,
-        for computing again. Returns the number of days marked."""
+        for computing again, then looks for an earlier cutover in the recorded events. Returns the number of
+        days marked."""
         now = self._clock()
         params = {"before": _text(_day_start(now.astimezone(UTC).date()))}
         days = [row["neighbour"] for row in self._sql.rows("control/history_changed_days.sql", params)]
@@ -141,6 +143,8 @@ class History:
             })
         self._sql.statements("control/history_record_check.sql", {"checked_at": _instant(now), "changed": len(days)})
         log.info("history check: %s day(s) to compute again", len(days))
+        # after the check is recorded: a search that fails is tried again by the next daily check, not at once
+        look_for_cutover(self._sql, now, self._refresher.ensure_lease)
         return len(days)
 
     def process_next(self) -> date | None:

@@ -19,7 +19,7 @@ from typing import Any
 from team_analytics import endpoints
 from team_analytics.access import Access, Refused, Scope
 from team_analytics.config import Config
-from team_analytics.cutover import Legacy, load_cutover
+from team_analytics.cutover import Legacy, load_cutover, look_for_cutover
 from team_analytics.history import History
 from team_analytics.periods import BadRequest, Span, decimal, period_span
 from team_analytics.refresh import LeaseClock, Refresher, RefreshResult
@@ -122,9 +122,16 @@ class Service:
         self.endpoints = {module.PATH: module for module in discover(endpoints)}
 
     def setup(self) -> None:
-        """Creates the totals database and tables (idempotent)."""
+        """The start of the service, before it answers: creates the totals database and tables (idempotent),
+        then looks for the cutover in the recorded events, so that the first answer already has it."""
         for name in self.sql.files("schema"):
             self.sql.statements(name)
+        try:
+            look_for_cutover(self.sql, self._clock())
+        except Exception:
+            # e.g. CVAT has not created its events table yet: the service starts all the same, and the
+            # cutover is looked for again by the daily check
+            log.exception("could not look for the cutover at start")
 
     def refresh(self) -> RefreshResult:
         return self.refresher.run()

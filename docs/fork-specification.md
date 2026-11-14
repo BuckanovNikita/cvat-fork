@@ -222,12 +222,14 @@ Behavior to preserve:
   CVAT for project names and the details project search stay bounded: names
   go 100 ids per request, and the search sends one table page of ids.
 - Legacy rule: the cutover is the hour of the first shape-tagged operation
-  event on the instance, reported by `status`. The step that first stores a
-  shape-tagged hour finds it with one bounded aggregate over the raw events and
-  stores it in the totals database before its hours become visible; requests
-  read the stored value, which never moves. Until it is stored there is no
-  cutover. A
-  period that ends at or before it, or any period while there is none, is a
+  event on the instance, reported by `status`. The service looks for it in
+  the recorded events with one aggregate over the raw events: when it starts,
+  before it answers; in the daily check; and in the step that first stores a
+  shape-tagged hour while none is stored, before those hours become visible.
+  Every hour found is stored in the totals database, and requests read the
+  earliest stored hour, so the cutover moves to an earlier hour when an
+  earlier shape-tagged event turns up and never to a later one. Until an hour
+  is stored there is no cutover. A period that ends at or before it, or any period while there is none, is a
   legacy period (all shapes, the legacy notice, class change and hotkey use
   not recorded, saved boxes in place of Model). A period that begins at or
   after it is never legacy. A period that holds it is partly legacy: figures
@@ -235,13 +237,22 @@ Behavior to preserve:
   buckets follow the same rule; the bucket that holds the cutover is not
   legacy. An empty period (no job work in the scope) shows only the empty
   state: no legacy notice and no partly-legacy notice.
-- Known limits of the stored cutover: it is found only once a shape-tagged
-  hour reaches the stored totals, so a processed period can read as legacy
-  until then (for example right after an upgrade that adds the `cutover`
-  table, or while recent work is all in 3D jobs, which are never tagged). An
-  event that arrives after the cutover was stored cannot move it. To correct a
-  wrong value, delete the row from the `cutover` table in the totals database;
-  the next refresh finds it again.
+- Known limits of the stored cutover: the service looks for it in the
+  recorded events when it starts and in the daily check, and stores every hour
+  it finds; the earliest stored hour is the cutover. An earlier shape-tagged
+  event that arrives late therefore moves the cutover only at the next daily
+  check or start, and the periods in between read as legacy until then. A
+  later event never moves it. A shape-tagged event with a wrongly early date
+  moves the cutover to its hour, and deleting the stored value does not undo
+  that: the next search finds the same event. The correction is to remove
+  that event from the `events` table, then every row of the `cutover` table
+  in the totals database, and then to restart the service or wait for the
+  daily check, which finds the cutover again. Until then there is no cutover
+  and every period reads as legacy. The search reads every recorded event
+  before the stored cutover, or all of them while none is stored, so its cost
+  grows with that history; what it cost at the volume of the design
+  measurements is in `docs/evidence/2026-11-14-cutover-search-cost.md`. If the
+  search fails at start, the service starts without it.
 - New measurements travel inside existing client event types (ADR 0002):
   payload fields on draw, paste, propagate, drag, resize and delete, plus three
   `debug:info` records (`team_analytics:class_change`,

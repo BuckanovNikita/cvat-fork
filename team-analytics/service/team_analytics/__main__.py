@@ -1,8 +1,8 @@
 """Entry point: `python -m team_analytics` (cwd = team-analytics/service, or on PYTHONPATH).
 
-Applies the schema, starts the refresh loop (the refresh of recent hours every
-TEAM_ANALYTICS_REFRESH_INTERVAL_S seconds, first run at start; history one day at a time in between)
-and serves HTTP.
+Applies the schema and looks for the cutover (`Service.setup`), starts the refresh loop (the refresh of recent
+hours every TEAM_ANALYTICS_REFRESH_INTERVAL_S seconds, first run at start; history one day at a time in
+between) and serves HTTP.
 """
 
 from __future__ import annotations
