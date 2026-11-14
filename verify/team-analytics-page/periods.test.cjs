@@ -3,12 +3,10 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
 
 const { createMemoryHistory } = dependency('history');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 const HOUR = 3600000;
 const pad = (n) => String(n).padStart(2, '0');
@@ -79,14 +77,14 @@ test('the period control offers Week, Two weeks, Month and Year, and no custom r
     assert.doesNotMatch(html, /type="date"|Custom/);
 });
 
-domTest('the page opens on Week and asks the service for it', async () => {
+test('the page opens on Week and asks the service for it', async () => {
     const page = await openPage();
     assert.deepEqual(page.overviews().map((q) => [q.period, q.month]), [['week', undefined]]);
     assert.match(page.text(), /Last 7 days/);
     await page.view.unmount();
 });
 
-domTest('a chosen period goes into the address and Back returns to the previous selection', async () => {
+test('a chosen period goes into the address and Back returns to the previous selection', async () => {
     const page = await openPage();
     await page.click('Two weeks');
     assert.equal(new URLSearchParams(page.history.location.search).get('period'), 'two_weeks');
@@ -106,7 +104,7 @@ domTest('a chosen period goes into the address and Back returns to the previous 
     await page.view.unmount();
 });
 
-domTest('Month opens on the current month, to date, and later months cannot be chosen', async () => {
+test('Month opens on the current month, to date, and later months cannot be chosen', async () => {
     const page = await openPage();
     await page.click('Month');
     const address = new URLSearchParams(page.history.location.search);
@@ -119,7 +117,7 @@ domTest('Month opens on the current month, to date, and later months cannot be c
     await page.view.unmount();
 });
 
-domTest('the team lead steps to earlier months and back, each month in the address', async () => {
+test('the team lead steps to earlier months and back, each month in the address', async () => {
     const page = await openPage({ address: '/team-analytics?period=month' });
     await page.click('Previous month');
     assert.equal(new URLSearchParams(page.history.location.search).get('month'), PREVIOUS);
@@ -137,7 +135,7 @@ domTest('the team lead steps to earlier months and back, each month in the addre
     await page.view.unmount();
 });
 
-domTest('an address with a month opens that month; a later month or an unknown period falls back', async () => {
+test('an address with a month opens that month; a later month or an unknown period falls back', async () => {
     let page = await openPage({ address: `/team-analytics?period=month&month=${PREVIOUS}` });
     assert.equal(page.overviews()[0].month, PREVIOUS);
     await page.view.unmount();
@@ -151,7 +149,7 @@ domTest('an address with a month opens that month; a later month or an unknown p
     await page.view.unmount();
 });
 
-domTest('choosing the period already shown adds no history entry, so Back still leaves it', async () => {
+test('choosing the period already shown adds no history entry, so Back still leaves it', async () => {
     const page = await openPage();
     try {
         const entries = page.history.length;
@@ -164,7 +162,7 @@ domTest('choosing the period already shown adds no history entry, so Back still 
     }
 });
 
-domTest('changing the period keeps other parts of the address', async () => {
+test('changing the period keeps other parts of the address', async () => {
     const page = await openPage({ address: '/team-analytics?project=4&org=team-org&view=annotators' });
     await page.click('Month');
     await page.click('Week');
@@ -175,7 +173,7 @@ domTest('changing the period keeps other parts of the address', async () => {
     await page.view.unmount();
 });
 
-domTest('while figures for a new period load, the previous ones stay on screen dimmed', async () => {
+test('while figures for a new period load, the previous ones stay on screen dimmed', async () => {
     let release;
     const page = await openPage({
         respond: (url) => (url.includes('period=year') ?

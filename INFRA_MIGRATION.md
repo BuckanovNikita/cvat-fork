@@ -95,4 +95,4 @@ The required outcome passes this repository's verification, the project owner
 has been told it has moved, and the sweeper report shows its namespaces carrying
 a quota. Then delete this file.
 
-Plan: `/mnt/wsl/data/nkt/k8s-infra/docs/plans/2026-11-09-managed-infrastructure-reset.md`.
+Plan: `<home>/k8s-infra/docs/plans/2026-11-09-managed-infrastructure-reset.md`.

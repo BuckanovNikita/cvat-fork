@@ -3,10 +3,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 const HOUR = 3600000;
 const WEEKS = ['2026-08-24', '2026-08-31', '2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28', '2026-10-05',
@@ -270,7 +268,7 @@ function offer(container, name) {
 
 const rgb = (hex) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
 
-domTest('a compared line keeps its colour while others are added and removed', async () => {
+test('a compared line keeps its colour while others are added and removed', async () => {
     const { fetch, requests } = suppliedFetch(trendsAnswer);
     const page = await mount(section(fetch));
     try {
@@ -300,7 +298,7 @@ domTest('a compared line keeps its colour while others are added and removed', a
     }
 });
 
-domTest('typing narrows the offer; switching to projects or months asks the service again', async () => {
+test('typing narrows the offer; switching to projects or months asks the service again', async () => {
     const { fetch, requests } = suppliedFetch(trendsAnswer);
     const page = await mount(section(fetch));
     try {
@@ -329,7 +327,7 @@ domTest('typing narrows the offer; switching to projects or months asks the serv
     }
 });
 
-domTest('trends follow the filters and the shape switch but not the period', async () => {
+test('trends follow the filters and the shape switch but not the period', async () => {
     const { createMemoryHistory } = dependency('history');
     const history = createMemoryHistory({ initialEntries: ['/team-analytics'] });
     const { fetch, requests } = suppliedFetch((url) => {
@@ -368,7 +366,7 @@ domTest('trends follow the filters and the shape switch but not the period', asy
     }
 });
 
-domTest('trends are asked for again as history is processed', async () => {
+test('trends are asked for again as history is processed', async () => {
     const { fetch, requests } = suppliedFetch(trendsAnswer);
     let advance;
     const { type: Section, props } = section(fetch);
