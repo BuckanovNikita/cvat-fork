@@ -4,8 +4,9 @@ Status: needs-triage
 
 Rewritten on 2026-11-14 after three rounds of questions to the owner. Nothing
 here is implemented. The decisions of section 1 are the owner's; the defaults
-of section 2 are not yet confirmed. Once they are, this file becomes a
-specification and one ticket file per package of section 4.
+of section 2 were not confirmed one by one. The behaviour is specified in
+[`spec.md`](spec.md); this file keeps the order of work, the file-level notes
+and how each defect is known, until ticket files are cut from section 4.
 
 It covers the list the owner asked to have fixed: the problems confirmed on
 2026-11-14 around the issue and comment policies, the gaps the Team Analytics
