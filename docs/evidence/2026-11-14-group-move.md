@@ -145,7 +145,7 @@ specification (TA-1, "Known limit of the stored totals") says so.
 An independent review of the counting changes of tickets 19, 21 and 22 found the
 group-move rule sound through the read interface (a group record and its grabbed
 drag either side of a window or hour edge give 3 alignments once; a duplicated
-group record counts twice, as any duplicated record does). Three of its findings
+group record counts twice, as any duplicated record does). Four of its findings
 concern this ticket, all recorded in documents with no code change: the canvas's
 dispatch order as an upstream dependency (fork specification and
 `docs/upstream-upgrade.md`), the old rule's effect on a group drag followed by a

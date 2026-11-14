@@ -176,9 +176,9 @@ nothing was expected:
 | A next-frame key at the last frame, then a frame entered in the frame number field | `NEXT_FRAME: 1` |
 | A search started with the mouse and still running, a blocked key, then the search's frame change | `NEXT_FRAME: 1` |
 
-Written with the fix and passing: a search key counts the frame it found, and a
-key pressed while that frame loads counts its own (`SEARCH_FORWARD: 1,
-PREV_FRAME: 1`). The reviewer's "second key during a slow search" cannot happen
+Written with the fix, a pin that also passed before it: a search key counts the
+frame it found, and a key pressed while that frame loads counts its own
+(`SEARCH_FORWARD: 1, PREV_FRAME: 1`). The reviewer's "second key during a slow search" cannot happen
 as described in the browser: cvat-core's annotation search is synchronous inside
 a resolved promise, so nothing runs between the key and the search's change.
 The case that can happen, a second key while the search's frame loads, is the
@@ -197,7 +197,11 @@ deepest chain (a filtered next-frame key: the frame search, then
 `searchAnnotationsAsync`'s annotation search) took 9 microtasks with the real
 cvat-core plugin wrapper (`plugins.ts`, loaded through the harness) and the
 session wrappers and `findFrame`'s await copied in shape, with no plugins and
-with three registered. `TURN_MICROTASKS` is 100. A frame search waits for the
+with three registered. The replica was a throwaway script run once and not
+kept. The harness transpiles to ES2020 with native `async`; the UI bundle keeps
+native `async` too (`tsconfig.json` targets ESNext, and Babel's preset-env
+targets browsers that all have it), so the count should carry over, though it
+was not measured in the bundle. `TURN_MICROTASKS` is 100. A frame search waits for the
 server only while cvat-core fetches or saves the frame meta (`getFramesMeta`
 reloading it, `saveMeta`); a key pressed then counts nothing for its change.
 This limit is in the fork specification.
@@ -218,5 +222,15 @@ comments.
   finds a frame and see one.
 - That no plugin a deployment registers adds a wait to the frame or annotation
   search (cvat-core's plugin wrapper awaits a plugin's `enter`).
+- Order against CVAT's own records: the logging's listeners are now attached
+  before upstream's, so a summary that falls due at a click is handed to the
+  logger just before CVAT's click record for it, where it used to follow it.
+  The harnesses stub CVAT's own event recorder, so no test sees this.
+- For the owner: the task asked that a second key pressed during a slow search
+  not take the count from the search. Under the own-turn rule a search that
+  answers in a later task counts nothing for its own change, with or without a
+  second key; stock cvat-core's searches answer within the turn, so this
+  happens only in the frame meta case above or with a plugin that waits. Lifting
+  it would need hooks around the searches in upstream files.
 - The canvas's dispatch order and the single frame-change path, beyond reading
   the target release (see the fork specification).
