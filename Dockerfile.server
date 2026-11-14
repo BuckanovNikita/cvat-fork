@@ -1,0 +1,10 @@
+# Fork server image (ADR 0004): the stock CVAT server image with the two patched policies
+# of the import copied over the stock ones, and nothing else. No package, no Python change,
+# no configuration change. Built by build-server.sh with cvat/cvat/apps/engine/rules as the
+# context.
+ARG BASE_IMAGE=cvat/server:v2.82.0
+FROM ${BASE_IMAGE}
+
+# The server builds the bundle it serves at /api/auth/rules from this directory. Owner and
+# mode are those of the stock files (root:root, 644); the server runs as django and only reads.
+COPY --chown=root:root --chmod=644 issues.rego comments.rego /opt/cvat/cvat/apps/engine/rules/
