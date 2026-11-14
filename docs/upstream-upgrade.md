@@ -54,8 +54,11 @@ so merging and testing the policies needs no separate upstream checkout.
 Refresh the filtered mirror using `mirror-cvat.sh`; `UPSTREAM` can select a
 different source. The script downloads upstream history into
 `.cvat-mirror.git.new`, beside the existing mirror, and applies its maintained
-path list there. It replaces `.cvat-mirror.git` only after both steps succeeded;
-a failed run leaves the existing mirror as it was. Keep unique work out of
+path list there. It replaces `.cvat-mirror.git` only after both steps succeeded
+and the result holds at least one tag and, on upstream's default branch, the
+paths of its `REQUIRED` list; a failed or refused run leaves the existing mirror
+as it was. When upstream moves one of those paths, update `PATHS` and
+`REQUIRED` together. Keep unique work out of
 these generated directories. The path list (`PATHS`) is the widened one of the
 v2.82.0 re-import: the UI build inputs, the analytics components, upstream's
 root lint configuration, the Helm chart, and the issue and comment policies
@@ -141,7 +144,10 @@ compare its helper policies (`cvat/apps/iam/rules/utils.rego`,
 `cvat/apps/organizations/rules/organizations.rego`) with the old ones. The four
 files come from one upstream revision through the import; mixing helper
 versions can hide precisely the compatibility failures the policy test is
-meant to detect.
+meant to detect. Then run the issue and comment matrix's expectations against
+both sides with the new import tag, without a server:
+`STOCK_TAG="cvat-${TARGET}" verify/team-analytics-stack/run.sh check-issue-policies patched`
+and `... check-issue-policies stock`. Every stack `up` runs both as well.
 
 Read the scopes of both stock policies in the target release against the
 previous one. The added rule has no scope whitelist, so every scope upstream
@@ -157,15 +163,18 @@ and the fork server tag), `build-team-analytics-service.sh` and
 `team-analytics/Dockerfile`, `team-analytics/k8s/deployment.yaml`,
 `verify/team_analytics_service.sh`, the stack's `stack.env` and `run.sh`, and
 the import tag that `verify/policy_test.sh` (`STOCK_TAG`),
-`tools/gate/ui-lint.sh` (`IMPORT_TAG`) and the stack's policy check default to.
+`tools/gate/ui-lint.sh` (`IMPORT_TAG`), `build-server.sh` (`STOCK_TAG`) and the
+stack's `check-issue-policies` (`STOCK_TAG`) default to.
 Review the imported Dockerfile's build arguments and base-image name against
 the UI script's BuildKit override. Consult project dependency configuration for
 compatible tools rather than adding version pins to these instructions.
 
 Rebuild the fork server image from the merged policies on the target's stock
-server image (`./build-server.sh`, BUILD-1), and check its bundle as under
-"Policies" in section 4. Check added or renamed chart services and images
-against the stack's render checks and approved image list. Update the
+server image (`./build-server.sh`, BUILD-1); it tags the image only when the
+build's bundle holds the merged policies and the base's bundle holds the four
+policy files of the new import tag. Check its bundle as under "Policies" in
+section 4. Check added or renamed chart services and images
+against the stack's render checks and the image lists in `stack.env`. Update the
 specification only for intentional behavior changes, and record their
 acceptance evidence.
 
@@ -308,7 +317,8 @@ access differs. The check pipeline runs both.
 
 Then check what the rebuilt fork server image serves. The bundle is built by the
 server's own builder inside the image, so a copy to a directory the server does
-not read shows here, and nowhere else fails:
+not read shows here; `build-server.sh` runs the same checks and leaves no image
+under the tag when one fails, and the stack checks the served bundle again:
 
 ```bash
 IMAGE=<fork server tag> BASE_IMAGE=<stock server tag> ./build-server.sh
@@ -377,10 +387,12 @@ TA_SERVER_IMAGE=cvat/server:<tag> TA_UI_IMAGE=cvat/ui:<tag> \
     TA_SCREENSHOT_DIR=<dir> verify/team-analytics-stack/run.sh cycle
 ```
 
-For a new release, update the stack's pinned upstream commit, `Chart.lock`,
-`chart-deps.sha256` and the approved image list in `stack.env` together. `cycle`
-brings up a disposable CVAT from the import's chart, on the fork server image,
-and the service in their own namespace. It first checks the policy bundle the
+For a new release, update `Chart.lock`, `chart-deps.sha256`, the approved
+image list and `TA_LOCAL_IMAGES` in `stack.env` together; the chart itself
+comes with the import. `cycle`
+first runs `check-issue-policies` on both sides, then brings up a disposable
+CVAT from the import's chart, on the fork server image, and the service in
+their own namespace. It first checks the policy bundle the
 running server serves, each patched policy by itself. It sends
 events, waits for the service's own scheduled refresh, and checks figures and
 refusals for every role, and sends one request through the service's Ingress.
@@ -400,13 +412,16 @@ function. Record what ran and what stayed unverified in dated evidence.
 The three images are built by their scripts (BUILD-1): `./build-ui.sh` with
 the chosen `IMAGE`/`NODE_IMAGE` overrides, `./build-server.sh` and
 `./build-team-analytics-service.sh` with `IMAGE`/`BASE_IMAGE`. None of them
-pulls; the stock server image must be local first. Use `SAVE=1` only if an
+pulls; the stock server image must be local first, and `./build-server.sh`
+needs the import tag. Use `SAVE=1` only if an
 archive is needed. Inspect served assets in the built UI image and check the
 fork server image's bundle (under "Policies"). Without touching the cluster,
 `verify/team-analytics-stack/run.sh preflight` checks that the fork server
-image is local, builds the import's chart with its pinned dependencies and
-applies the render checks: no cluster-wide object, no image outside the
-approved list, and the fork server image as the only backend image.
+image is local, runs `check-issue-policies` on both sides, builds the import's
+chart with its pinned dependencies and applies the render checks to the render
+read as objects, CRDs included: only kinds the cluster lists as namespaced, no
+other namespace, no image outside the stack's list (`stack.env`), none untagged
+or `latest`, no forced pull, and the fork server image as the only server image.
 
 All live verification runs on the test stack under "Team Analytics", in the
 project's own namespace with a quota and its own teardown (`down`, or `cycle`).
