@@ -7,7 +7,7 @@ from tests.support import at, working_time
 from tests.test_bounding_boxes import BOX, BOX_TRACK
 from tests.test_creation_methods import paste
 from tests.test_keyboard_mouse import summary
-from tests.test_model_saved_boxes import IMPORTER, detector, saved
+from tests.test_model_saved_boxes import detector, saved
 from tests.test_operations import ALICE, BOB, ORG, OperationsCase, client, draw, seconds
 
 MINUTE = 60_000

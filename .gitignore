@@ -12,3 +12,7 @@ __pycache__/
 # Dependencies of the frontend harness (verify/package.json). No trailing slash:
 # a worktree's link to an installed copy is ignored as well as the directory.
 /verify/node_modules
+
+# Environment and cache of the check pipeline's Python tools (pyproject.toml, prek.toml)
+/.venv/
+.ruff_cache/

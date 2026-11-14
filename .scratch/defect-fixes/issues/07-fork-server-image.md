@@ -4,12 +4,32 @@
 
 **Blocked by:** 06 (Policies patched in place with the role floor).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A build script beside the UI's builds the image from the stock release image and the two patched policies of the import. Nothing is installed and no Python changes.
-- [ ] The image's tag names the release and marks it as the fork's. Its default is set in the script, as for the UI image.
-- [ ] The server's own bundle builder, run in the image with no mounts, yields a bundle whose two policies equal the patched files of the import. The same check on the stock image shows the stock policies.
-- [ ] Compared with the stock image, only those two files differ.
-- [ ] The script needs no network when the stock image is local, and never pulls or pushes.
-- [ ] The Team Analytics service image still builds on the stock base, unchanged.
-- [ ] The checks are recorded in a dated evidence file.
+- [x] A build script beside the UI's builds the image from the stock release image and the two patched policies of the import. Nothing is installed and no Python changes.
+- [x] The image's tag names the release and marks it as the fork's. Its default is set in the script, as for the UI image.
+- [x] The server's own bundle builder, run in the image with no mounts, yields a bundle whose two policies equal the patched files of the import. The same check on the stock image shows the stock policies.
+- [x] Compared with the stock image, only those two files differ.
+- [x] The script needs no network when the stock image is local, and never pulls or pushes.
+- [x] The Team Analytics service image still builds on the stock base, unchanged.
+- [x] The checks are recorded in a dated evidence file.
+
+## Comments
+
+2026-11-14: `./build-server.sh` (`Dockerfile.server`) builds the image. Its default tag is
+`cvat/server:v2.82.0-fork-policies`. The record is
+`docs/evidence/2026-11-14-fork-server-image.md`. For ticket 08, a served bundle is checked
+with `curl -s <api>/auth/rules | verify/policy_bundle.sh check`, which compares each policy
+byte for byte with the import's file.
+
+2026-11-14: The no-network criterion is now shown. The script, given the stock image under a
+temporary name on the unresolvable host `registry.invalid` as its base, built the same image
+(same ID) with no pull; see the evidence file. The earlier comment below is superseded.
+
+2026-11-14 (superseded): The no-network criterion is unticked. Its second half is shown: the script
+refuses a base that is not local, never pulls and has no push step, and the build's events
+showed no pull. The first half is not shown: the Docker daemon's network cannot be switched
+off from here, so the build never ran with the network off. Both halves currently rest on the
+local-base check, `--pull=false`, the absence of `RUN` steps, the events and the build log.
+
+2026-11-14: Resolved by merge `bdfb5232` into `feat/team-analytics-page`; evidence in `docs/evidence/2026-11-14-fork-server-image.md`. On the merged tree: `bash -n` exits 0 for `build-server.sh` and `verify/policy_bundle.sh`; the bundle built from `cvat/server:v2.82.0-fork-policies` equals the import's two policies, and the bundle built from `cvat/server:v2.82.0` differs from them and equals `cvat-v2.82.0-widened`; nothing under `cvat/` changed.

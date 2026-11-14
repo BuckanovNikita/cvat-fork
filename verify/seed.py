@@ -1,4 +1,7 @@
-import os, sys, time, requests
+import os
+import sys
+import time
+import requests
 
 BASE = "http://localhost:8181/api"
 USER, PASSWORD = "admin", "verify-pass-123"
