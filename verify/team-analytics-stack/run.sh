@@ -3,7 +3,7 @@
 # of the local docker-desktop cluster, reached at http://localhost:$TA_HOST_PORT.
 # See README.md beside this file.
 #
-#   run.sh up             namespace, chart, service, proxy, port-forward, seed, checks
+#   run.sh up             preflight, then namespace, chart, service, proxy, port-forward, seed, checks
 #   run.sh down           remove everything up created (succeeds when nothing exists)
 #   run.sh cycle          up, then down (also when up fails)
 #   run.sh seed           (re)load the synthetic accounts into a running stack
@@ -24,11 +24,12 @@
 #   run.sh check-policies fetch the policy bundle the running server serves and check both
 #                         patched policies in it, each by itself
 #   run.sh forward        (re)start the port-forward of a running stack
-#   run.sh status         what exists now
+#   run.sh status         what exists now, and whether the namespace predates the cluster's last restart
 #   run.sh preflight      what up does before it touches the cluster: the server image check,
-#                         the chart build and the render checks; creates and pulls nothing
+#                         check-issue-policies on both sides, the chart build and the render
+#                         checks (render_guard.py); creates and pulls nothing
 #   run.sh build-chart    only build the import's chart with its pinned dependencies
-#   run.sh render         print the chart render that up checks and installs (unchecked)
+#   run.sh render         print the chart render, CRDs included, that up checks and installs (unchecked)
 #   run.sh check-render F apply up's render checks to the render in file F
 #   run.sh check-bundle   check a policy bundle (tar.gz) given on stdin as check-policies does,
 #                         e.g. one from verify/policy_bundle.sh from-image IMAGE
@@ -183,46 +184,40 @@ helm_args() {
 render() {
     local args
     mapfile -t args < <(helm_args)
-    "${H[@]}" template "${args[@]}"
+    # With the CRDs of every chart's crds/ directory, which helm install creates as well.
+    "${H[@]}" template --include-crds "${args[@]}"
 }
 
-# Refuses a render that would create cluster-wide objects, pull from outside the approved
-# list, or force pulls.
+# The images a render may name: the approved pulls, and the images the launcher names itself
+# or requires locally. Any other image is refused.
+stack_images() {
+    printf '%s\n' $TA_APPROVED_PULLS $TA_LOCAL_IMAGES "$TA_SERVER_IMAGE" "$TA_UI_IMAGE" "$TA_PROXY_IMAGE" "$TA_SERVICE_IMAGE"
+}
+
+# Reads a render as the stream of objects kubectl would create from it (kubectl parses each
+# document, YAML or JSON, and flattens Lists; --local contacts no server) and has
+# render_guard.py judge every object against the cluster's resource list: a namespaced kind
+# only, no other namespace than the stack's, every image field on the stack's list and with a
+# tag other than latest, no pull policy other than IfNotPresent or Never. With a second
+# argument, the backend check too: the fork server image is in the render and no other image
+# of its repository is, so a fallback to the stock image is refused although it is approved.
+# Writes the render's images, one per line, to the file named by GUARD_IMAGES when it is set.
 guard_render() {
-    local rendered="$1" kinds cluster_kinds image bad=0
-    cluster_kinds="$("${K[@]}" api-resources --namespaced=false --no-headers | awk '{print $NF}' | sort -u)"
-    grep -qx CustomResourceDefinition <<<"$cluster_kinds" || die "could not list cluster-scoped kinds"
-    kinds="$(grep -h '^kind:' "$rendered" | awk '{print $2}' | sort -u)"
-    for k in $kinds; do
-        if grep -qx "$k" <<<"$cluster_kinds"; then log "cluster-wide kind in render: $k"; bad=1; fi
-    done
-    if grep -q 'imagePullPolicy: *"\?Always' "$rendered"; then log "render forces image pulls"; bad=1; fi
-    for image in $(render_images "$rendered"); do
-        image_local "$image" && continue
-        approved "$image" || { log "image neither local nor approved: $image"; bad=1; }
-    done
-    [ "$bad" = 0 ] || die "render refused"
+    local rendered="$1" backend="${2:-}" work rc=0 images
+    work="$(mktemp -d)"
+    "${K[@]}" api-resources --no-headers >"$work/resources" || { rm -rf "$work"; die "could not list the cluster's resource kinds"; }
+    if ! "${K[@]}" label --local --overwrite -f "$rendered" ta-stack-guard=read -o json >"$work/objects.json"; then
+        rm -rf "$work"; die "render refused: kubectl cannot read it as Kubernetes objects"
+    fi
+    mapfile -t images < <(stack_images)
+    python3 -I -B "$HERE/render_guard.py" --namespace "$TA_NAMESPACE" --resources "$work/resources" \
+        --allow "${images[@]}" ${backend:+--backend "$backend"} <"$work/objects.json" >"$work/images" || rc=$?
+    if [ "$rc" = 0 ] && [ -n "${GUARD_IMAGES:-}" ]; then cp "$work/images" "$GUARD_IMAGES"; fi
+    rm -rf "$work"
+    [ "$rc" = 0 ] || die "render refused"
 }
 
-# The backend (server, workers, initializer and their init containers) runs the fork server
-# image and no other server image: a render that falls back to the stock image is refused,
-# although that image may be local and is approved.
-check_backend_image() {
-    local rendered="$1" image found=0 bad=0
-    for image in $(render_images "$rendered"); do
-        image="$(normalize_image "$image")"
-        if [ "$image" = "$TA_SERVER_IMAGE" ]; then
-            found=1
-        elif [ "${image%%[:@]*}" = cvat/server ]; then
-            log "server image other than the fork server image in render: $image"; bad=1
-        fi
-    done
-    [ "$found" = 1 ] || { log "the fork server image $TA_SERVER_IMAGE is not in the render"; bad=1; }
-    [ "$bad" = 0 ] || die "render refused"
-}
-
-render_images() { grep -h '^ *image: ' "$1" | sed -E 's/^ *image: *"?([^"]+)"?.*/\1/' | sort -u; }
-normalize_image() { local i="${1#docker.io/}"; echo "${i#library/}"; }
+normalize_image() { local i="${1#docker.io/}"; i="${i#index.docker.io/}"; echo "${i#library/}"; }
 image_local() { docker image inspect "$1" >/dev/null 2>&1 || docker image inspect "$(normalize_image "$1")" >/dev/null 2>&1; }
 approved() {
     local n
@@ -238,14 +233,17 @@ check_server_image() {
         || die "fork server image $TA_SERVER_IMAGE is not local (IMAGE=$TA_SERVER_IMAGE ./build-server.sh); it is never pulled"
 }
 
-# Pulls missing approved images one at a time, at low priority.
+# Pulls the render's missing images one at a time, at low priority, when they are approved
+# pulls; any other missing image stops the run (it must be local, never pulled). $1 is the
+# guard's image list.
 pull_images() {
     local image
-    for image in $(render_images "$1"); do
+    while read -r image; do
         image_local "$image" && continue
+        approved "$image" || die "image $image is not local and is not an approved pull (it is never pulled)"
         log "pulling $(normalize_image "$image")"
         nice -n19 docker pull -q "$(normalize_image "$image")" >&2
-    done
+    done <"$1"
     image_local "$TA_PROXY_IMAGE" || die "proxy image $TA_PROXY_IMAGE is not local (it is never pulled)"
     image_local "$TA_SERVICE_IMAGE" || die "service image $TA_SERVICE_IMAGE is not local (build-team-analytics-service.sh)"
 }
@@ -256,10 +254,27 @@ ns_phase() { "${K[@]}" get ns "$TA_NAMESPACE" -o jsonpath='{.status.phase}' 2>/d
 ns_owned() {
     [ "$("${K[@]}" get ns "$TA_NAMESPACE" -o jsonpath="{.metadata.labels.app\.kubernetes\.io/managed-by}" 2>/dev/null)" = "$MANAGED_BY" ]
 }
+ns_created() { "${K[@]}" get ns "$TA_NAMESPACE" -o jsonpath='{.metadata.creationTimestamp}'; }
 ns_age_hours() {
-    local created
-    created="$("${K[@]}" get ns "$TA_NAMESPACE" -o jsonpath='{.metadata.creationTimestamp}')"
-    echo $(( ($(date +%s) - $(date -d "$created" +%s)) / 3600 ))
+    echo $(( ($(date +%s) - $(date -d "$(ns_created)" +%s)) / 3600 ))
+}
+
+# The cluster sweeper also drops a namespace created before the cluster's last restart. Its
+# restart time is the one the sweeper itself recorded on its last tick (k8s-infra: the
+# last-run ConfigMap of infra-janitor, restart_at); empty when it cannot be read or when that
+# tick had no restart rule. It can lag a restart by one tick, and k8s-infra does not yet count
+# the sweeper's restart detection as proven.
+cluster_restart_at() {
+    "${K[@]}" -n infra-janitor get configmap last-run -o jsonpath='{.data.restart_at}' 2>/dev/null || true
+}
+# yes, no, or unknown (no readable restart time)
+ns_predates_restart() {
+    local restart
+    restart="$(cluster_restart_at)"
+    if [ -z "$restart" ] || ! date -d "$restart" +%s >/dev/null 2>&1; then echo unknown
+    elif [ "$(date -d "$(ns_created)" +%s)" -lt "$(date -d "$restart" +%s)" ]; then echo yes
+    else echo no
+    fi
 }
 
 wait_ns_gone() {
@@ -282,6 +297,12 @@ ensure_namespace() {
         elif [ "$(ns_age_hours)" -ge "$TA_MAX_REUSE_HOURS" ]; then
             log "namespace $TA_NAMESPACE is older than $TA_MAX_REUSE_HOURS h; recreating"
             teardown
+        else
+            case "$(ns_predates_restart)" in
+                yes) log "namespace $TA_NAMESPACE was created before the cluster's last restart ($(cluster_restart_at)); recreating"
+                     teardown ;;
+                unknown) log "the cluster's last restart time is not readable (infra-janitor/last-run); only the age rule applies" ;;
+            esac
         fi
     fi
     if [ -z "$(ns_phase)" ]; then
@@ -399,11 +420,23 @@ backend_pod() {
         --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}'
 }
 
+# Runs a seed script ($1) in the backend's Django shell with the seed password and the accounts
+# ($2, JSON) in its environment. Both travel in the script's standard input, as a first line that
+# sets them, and never on a command line (kubectl's arguments are visible to every local user in
+# the process list): the line is built by a child that reads them from its environment.
+backend_shell() {
+    local preamble
+    preamble="$(TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_ACCOUNTS="$2" python3 -I -c '
+import base64, json, os
+values = {k: os.environ[k] for k in ("TA_SEED_PASSWORD", "TA_ACCOUNTS")}
+print(base64.b64encode(json.dumps(values).encode()).decode())')"
+    { printf 'import base64, json, os; os.environ.update(json.loads(base64.b64decode("%s")))\n' "$preamble"; cat "$1"; } |
+        "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- python manage.py shell
+}
+
 seed() {
     log "loading synthetic accounts"
-    "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- \
-        env TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_ACCOUNTS="$(cat "$HERE/accounts.json")" \
-        python manage.py shell <"$HERE/seed_users.py" >&2
+    backend_shell "$HERE/seed_users.py" "$(cat "$HERE/accounts.json")" >&2
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I "$HERE/stack_api.py" seed
 }
 
@@ -505,9 +538,7 @@ load_volume() {
     local accounts started=$SECONDS
     log "volume: the annotators' accounts in ${TA_VOLUME_ORG:-ta-org-v}"
     accounts="$(final_py volume-accounts)"
-    "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- \
-        env TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_ACCOUNTS="$accounts" \
-        python manage.py shell <"$HERE/seed_users.py" >/dev/null
+    backend_shell "$HERE/seed_users.py" "$accounts" >/dev/null
     log "volume: accounts ready after $((SECONDS - started)) s"
     final_py load-volume ${1:+"$1"}
     log "volume: done after $((SECONDS - started)) s"
@@ -565,8 +596,12 @@ check_bundle() {
     cat >"$work/bundle.tar.gz"
     "$ROOT/verify/policy_bundle.sh" check <"$work/bundle.tar.gz" >&2 || status=1
     mkdir "$work/bundle"
-    tar -xzf "$work/bundle.tar.gz" -C "$work/bundle" || status=1
+    # Only an archive the check accepted is extracted: it holds each policy once, as a file.
+    # The markers are looked for only then.
+    [ "$status" = 0 ] && { tar -xzf "$work/bundle.tar.gz" -C "$work/bundle" || status=1; }
+    local extracted="$status"
     for name in issues.rego comments.rego; do
+        [ "$extracted" = 0 ] || break
         if ! grep -qF "$POLICY_MARKER" "$IMPORT_DIR/cvat/apps/engine/rules/$name"; then
             log "the import's $name lacks the patch marker '$POLICY_MARKER'"; status=1
         elif ! grep -qF "$POLICY_MARKER" "$work/bundle/rules/$name" 2>/dev/null; then
@@ -625,9 +660,7 @@ check_ingress() { access_py check-ingress "$TA_INGRESS_HOST"; }
 # The access cases' own accounts (access_accounts.json); makes the removed member a member again.
 seed_access() {
     log "loading the access cases' accounts"
-    "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- \
-        env TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_ACCOUNTS="$(cat "$HERE/access_accounts.json")" \
-        python manage.py shell <"$HERE/seed_access.py" >&2
+    backend_shell "$HERE/seed_access.py" "$(cat "$HERE/access_accounts.json")" >&2
 }
 
 # The four access cases against the real CVAT, each judged by access_cases.py; with an argument,
@@ -677,9 +710,7 @@ check_issues() {
     local out="$STATE_DIR/issue-matrix.json"
     mkdir -p "$STATE_DIR"
     log "issue matrix: loading the accounts of issue_accounts.json"
-    "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- \
-        env TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_ACCOUNTS="$(cat "$HERE/issue_accounts.json")" \
-        python manage.py shell <"$HERE/seed_users.py" >&2
+    backend_shell "$HERE/seed_users.py" "$(cat "$HERE/issue_accounts.json")" >&2
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/issue_matrix.py" live "$out"
     log "issue matrix results: $(show_path "$out")"
 }
@@ -737,6 +768,9 @@ teardown() {
 
 status() {
     echo "namespace: $TA_NAMESPACE ($(ns_phase || true))"
+    if [ -n "$(ns_phase)" ]; then
+        echo "created:   $(ns_created); cluster's last restart $(cluster_restart_at || true); created before it: $(ns_predates_restart)"
+    fi
     echo "address:   $BASE_URL"
     if pf_alive; then echo "port-forward: running (pid $(cut -d' ' -f1 "$PF_STATE"))"; else echo "port-forward: not running"; fi
     [ -n "$(ns_phase)" ] && "${K[@]}" -n "$TA_NAMESPACE" get pods,pvc
@@ -744,21 +778,27 @@ status() {
 }
 
 # What up does before its first change to the cluster or to the local images: the server image,
-# the chart build, the render and its checks. Leaves the render in RENDERED for pull_images.
+# the issue matrix's expectations against both sides' policies (no server), the chart build,
+# the render and its checks. Leaves the render's images in RENDER_IMAGES for pull_images.
 preflight() {
     check_server_image
+    check_issue_policies patched
+    check_issue_policies stock
     build_chart
-    RENDERED="$(mktemp)"
-    trap 'rm -f "$RENDERED"' EXIT
+    RENDERED="$(mktemp)" RENDER_IMAGES="$(mktemp)"
+    trap 'rm -f "$RENDERED" "$RENDER_IMAGES"' EXIT
     render >"$RENDERED"
-    guard_render "$RENDERED"
-    check_backend_image "$RENDERED"
+    GUARD_IMAGES="$RENDER_IMAGES" guard_render "$RENDERED" "$TA_SERVER_IMAGE"
 }
 
 up() {
+    local image
     preflight
-    pull_images "$RENDERED"
-    rm -f "$RENDERED"
+    pull_images "$RENDER_IMAGES"
+    for image in $TA_LOCAL_IMAGES; do
+        image_local "$image" || die "image $image is not local (it is never pulled)"
+    done
+    rm -f "$RENDERED" "$RENDER_IMAGES"
     trap - EXIT
     ensure_namespace
     install_chart
@@ -801,7 +841,7 @@ case "${1:-}" in
     build-chart) build_chart; show_path "$CHART_DIR" ;;
     render) build_chart; render ;;
     check-render) [ -f "${2:-}" ] || die "usage: run.sh check-render FILE"
-        guard_render "$2"; check_backend_image "$2"; log "render accepted" ;;
+        guard_render "$2" "$TA_SERVER_IMAGE"; log "render accepted" ;;
     render-ingress) render_ingress ;;
     check-ingress) check_ingress ;;
     seed-access) seed_access ;;
