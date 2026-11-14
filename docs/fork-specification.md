@@ -16,6 +16,7 @@ to the repository root.
 | Build and deployment | `build-ui.sh`, `docker-compose.override.yml` | Custom UI image and server-side OPA mounts |
 | Verification | `verify/` | Frontend regression tests, policy tests and legacy live verification harnesses |
 | Mechanical formatting | `ruff.toml`, `cvat/components/analytics/clickhouse/init.py` | Formatting convention; no intended ClickHouse behavior change |
+| Team Analytics | `team-analytics/`, `build-team-analytics-service.sh`, the page and logging directories under `cvat/cvat-ui/src/`, wiring in eleven UI files (TA-1) | Work figures per annotator and project from CVAT's own events, read by a separate service |
 
 The authoritative import path selection is `PATHS` in `mirror-cvat.sh`.
 `tools/git-filter-repo` is vendored tooling, not a place for fork policy.
@@ -150,6 +151,115 @@ file. Compose resolves relative mounts from the first Compose file, so simply
 combining `cvat/docker-compose.yml` with the root override from this checkout
 does not satisfy that layout. The OPA verification overlay uses an absolute
 `OPA_RULES` path for this reason.
+
+## TA-1: Team Analytics
+
+Team Analytics shows how annotation work is done: working time, sessions,
+operations, creation methods, Model, saved boxes, keyboard and mouse use,
+projects and trends. Admins and organization owners and maintainers see it at
+`/team-analytics`, linked from the header. The terms are defined in
+[`GLOSSARY.md`](../GLOSSARY.md), the decisions in
+[ADR 0001](adr/0001-thin-analytics-service-with-stored-totals.md),
+[ADR 0002](adr/0002-new-measurements-inside-existing-event-types.md) and
+[ADR 0003](adr/0003-kubernetes-only-with-the-upstream-helm-chart.md), and the
+layout in [`docs/design/team-analytics/`](design/team-analytics/design.md).
+
+Behavior to preserve:
+
+- The service (`team-analytics/service/`) reads only CVAT's ClickHouse `events`
+  table and writes its stored totals to its own database. Its SQL lives in
+  files; Python binds parameters and shapes rows. It runs from the stock
+  `cvat/server` image with no added dependency (`team-analytics/Dockerfile`).
+  Its Kubernetes manifests and environment are in `team-analytics/k8s/`.
+- Its routes are under `/team-analytics-api/v1/`. Every request is checked
+  against CVAT with the caller's own cookie or token: `/api/users/self`,
+  `/api/organizations`, `/api/memberships`. Admins (the `admin` group) see any
+  organization, or the whole instance without one. Organization owners and
+  maintainers see their organization. Everyone else is refused. A maintainer
+  with no organization selected is asked to select one.
+- New measurements travel inside existing client event types (ADR 0002):
+  payload fields on draw, paste, propagate, drag, resize and delete, plus three
+  `debug:info` records (`team_analytics:class_change`,
+  `team_analytics:model_creation`, `team_analytics:input_summary`). The names
+  are fixed in `utils/team-analytics-logging/contract.ts` and in the service
+  SQL. Change them together. A batch with a scope the server does not accept is
+  rejected whole, so no new scope may be introduced.
+- The logging module never throws into the annotation view. After three
+  failures it switches itself off for the page's life. It records nothing
+  outside an open 2D job.
+- The input summary written as a job closes must leave with the closing log
+  save: `untrackInputJob()` settles once the record is logged, and the view
+  saves after it.
+- The page fits a narrow window inside CVAT's 1024 px minimum app width: cards
+  stack, and wide tables scroll inside their cards.
+- With the service unreachable, the page shows its error panel. Nothing else
+  in CVAT depends on the service.
+
+### Team Analytics integration map
+
+The feature's own code lives in new directories: `team-analytics/` (service,
+SQL, manifests), `cvat/cvat-ui/src/components/team-analytics-page/` (page)
+and `cvat/cvat-ui/src/utils/team-analytics-logging/` (UI logging). Its tests
+and stack tooling are in `verify/team-analytics-*` and
+`verify/team_analytics_*`. Upstream files get wiring only. All paths in this
+table are under `cvat/cvat-ui/src/`.
+
+| File | Responsibility / upstream changes to inspect |
+| --- | --- |
+| `components/cvat-app.tsx` | `/team-analytics` route (lazy page with its own error boundary); window capture listener calling `inputEvent` for key presses and clicks |
+| `components/header/header.tsx` | Former "Analytics" link renamed "Grafana"; "Team Analytics" link shown by `canOpenTeamAnalytics` from the analytics plugin flag, `user.groups` and the current organization role |
+| `components/annotation-page/annotation-page.tsx` | `trackInputJob(job)` where the job logger is set; on unmount `untrackInputJob().then(saveLogs)` |
+| `utils/mousetrap-react.tsx` | `hotkeyUsed(action, event)` before every shortcut handler |
+| `components/annotation-page/canvas/views/canvas2d/canvas-wrapper.tsx` | Shape fields on draw, canvas paste, drag and resize; `drawingStarted`/`drawingEnded` for the input method |
+| `actions/annotation-actions.ts` | Shape fields on propagate, single and selection delete, and multi paste |
+| `components/annotation-page/standard-workspace/objects-side-bar/labels-list.tsx` | Class change record for label hotkeys |
+| `containers/annotation-page/standard-workspace/objects-side-bar/object-item.tsx` | Class change record for the sidebar label select |
+| `components/annotation-page/canvas/views/canvas2d/selection-context-menu.tsx` | Class change record for the selection context menu (selector gained the job) |
+| `components/annotation-page/attribute-annotation-workspace/attribute-annotation-sidebar/attribute-annotation-sidebar.tsx` | Class change record in attribute annotation mode (state gained the job) |
+| `components/annotation-page/standard-workspace/controls-side-bar/tools-control.tsx` | Model creation record after the built-in detector created objects |
+
+Upstream behavior this feature depends on although the fork does not modify
+it:
+
+- the `events` table schema created by `cvat/components/analytics/clickhouse/init.py`;
+- the server's allowed client scopes in `apps/events` and its
+  `send:working_time` calculation;
+- Vector's allowlist of top-level fields (`payload` passes whole);
+- cvat-core's logger (`job.logger.log`, the plugin wrapper around it, and
+  `logger.save`), and the UI's 90 s periodic log save;
+- the server event names for saved annotations (`create:shapes` and the like,
+  with the shape type in `obj_name`);
+- `/api/server/plugins` (`ANALYTICS`), `MembershipRole`, and the memberships
+  policy that lists a user's own memberships;
+- the project list filter on `id` that the page uses for project names;
+- CVAT's `#root` minimum width and header layout;
+- the shortcut action names in the UI keymaps, which the page shows with the
+  viewer's own keys.
+
+A new upstream event type, scope, call site or shortcut action needs a
+decision on whether it is an operation. A rename breaks the figures silently.
+
+### Team Analytics acceptance scenarios
+
+| ID | Expected observable outcome | Existing evidence mechanism |
+| --- | --- | --- |
+| TA-A | The real server accepts every record the UI logging adds, and each reaches the events table with its fields | Seam 2 (`node --test verify/team_analytics_logging.cjs`) for the serialized batch; `verify/team-analytics-stack/run.sh check-final` for a real browser, server and ClickHouse |
+| TA-B | Stock event logging and working time are unchanged by the new logging; the closing input summary leaves with the closing save | Seam 2; `check-final` (client scopes, `client_id`, `send:working_time`, all event POSTs answered 201) |
+| TA-C | For given events the service returns the agreed figures for sessions, working time, operations, creation methods, Model, saved boxes, keyboard and mouse, projects, trends, history and late events | Seam 1 (`verify/team_analytics_service.sh`, real ClickHouse); `check-final` for real UI work and loaded volume |
+| TA-D | Each role gets exactly what the access rules allow, on every endpoint, with real accounts | Seam 1 with supplied CVAT answers; `check-tracer` and `check-final` against the real CVAT |
+| TA-E | The page renders every state, filters, full views, comparison, long names and large numbers | Seam 3 (`node --test verify/team_analytics_page.cjs`); `check-final` in a browser |
+| TA-F | With a hundred annotators and forty long-named projects the overview keeps its length and nothing overflows; on a narrow window cards stack and wide tables scroll sideways | `check-final` in headless Chrome (seam 3 has no layout) |
+| TA-G | With the service stopped the page shows its error panel and annotation still draws and saves | `check-final` |
+| TA-H | The service image adds no dependency to the stock server image; the UI image serves the page | `build-team-analytics-service.sh`, `build-ui.sh`; the stack run uses both images |
+
+Seams 1 to 3 run real code with the boundaries supplied: CVAT's answers to the
+service, the cvat-core transport for the logging, and the service's responses
+for the page. They do not prove delivery through Vector, the real server's
+scope list, or layout. The stack run proves those for the scenarios it drives.
+It does not cover the detector with a deployed model (its record is sent
+through the API in the shape the UI module produces), a removed member, or
+CVAT being unreachable (seam 1 only). The independent review of the access
+rules is recorded with the dated evidence.
 
 ## Acceptance scenarios
 
