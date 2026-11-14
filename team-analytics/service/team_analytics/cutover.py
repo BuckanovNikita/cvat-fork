@@ -31,8 +31,10 @@ log = logging.getLogger(__name__)
 def look_for_cutover(sql: Sql, now: datetime, limit: Limit,
                      before_write: Callable[[], None] | None = None) -> datetime | None:
     """The long-range search, run when the service starts and in the daily check. It reads the recorded events
-    before the stored cutover (all of them up to the end of the current hour while none is stored) and stores
-    the hour of the earliest shape-tagged operation event among them, so the cutover is known before a tagged
+    before the stored cutover (before the end of the current hour while none is stored) in time order, stops
+    at the first shape-tagged operation event and stores its hour. Once a cutover is stored it finds none unless
+    an earlier event turned up, so it reads every event before the stored cutover; while none is stored it reads up to the first tagged
+    event, or all of them when there is none to find. So the cutover is known before a tagged
     hour reaches the stored totals and moves earlier when an earlier event turned up. Returns the cutover
     as it is afterwards, or None.
 
