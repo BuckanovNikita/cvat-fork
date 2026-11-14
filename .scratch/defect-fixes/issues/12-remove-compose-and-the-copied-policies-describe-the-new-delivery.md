@@ -13,7 +13,7 @@
 - [x] The Team Analytics spec gets a dated comment that its lines on the stock backend, the chart download and the Compose checks are superseded by ADR 0004 and the amended ADR 0003.
 - [x] The READMEs are updated, and the infrastructure migration note records its outcome.
 - [ ] A stack `up` still passes after the removal.
-- [ ] The delivery change as integrated (policies, image, stack, removals) gets an independent review.
+- [x] The delivery change as integrated (policies, image, stack, removals) gets an independent review.
 
 ## Comments
 
@@ -22,3 +22,7 @@
 Outstanding: a stack `up` after the removal (criterion 7). The stack was in use by ticket 26, and no launcher was run for this ticket; the run waits until the stack is free. The independent review (criterion 8) follows the merge and is not this ticket's work.
 
 2026-11-15: The removal and the documents are merged into `feat/team-analytics-page` in merge `740f4a9b`; evidence `docs/evidence/2026-11-15-compose-removed.md`. Still outstanding: a stack `up` after the removal, which waits for the stack to be free, and the independent review of the delivery change.
+
+2026-11-15: Raised by the independent review of the delivery change (finding 4): the removal was merged (`740f4a9b`) after both live checks it waited for had passed on the stack (ticket 09's matrix and ticket 10's task progress), and before a fresh `up` and `down` on the integrated tree. Criterion 7 stays unticked; ticket 27's final run, a fresh `up`, `up`, `down`, shows it.
+
+2026-11-15: The independent review of the delivery change as integrated is done (criterion 8): who reviewed, the verdict, the nine findings and what branch `fix/delivery-review` did about each, the failing cases before and the outcomes after, what held and what was not checked are in `docs/evidence/2026-11-15-compose-removed.md`, "Independent review of the delivery change, 2026-11-15".
