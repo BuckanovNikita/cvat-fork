@@ -119,3 +119,10 @@ the spec describes; the fallback is not used.
 - The service's own start. The statement ran through `clickhouse-client`, not through the
   service; the service start that runs it is covered by the seam 1 tests on small data
   (`2026-11-14-cutover-at-start.md`).
+
+Later (2026-11-14, after the independent review): the shipped statement now reads the
+events in timestamp order and stops at the first match, and runs with these limits as
+ClickHouse settings. The figures above are those of the earlier aggregate; the new
+statement was not measured at this scale. See
+[`2026-11-14-refresh-lease-two-minutes.md`](2026-11-14-refresh-lease-two-minutes.md),
+"Independent review".
