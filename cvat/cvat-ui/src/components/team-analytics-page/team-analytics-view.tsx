@@ -80,7 +80,8 @@ function shownAddress(period: Period | undefined, address: Address | undefined):
 
 function annotatorLabel(id: number | null, overview: Overview | null): string {
     if (id === null) return '';
-    const shown = overview?.by_annotator.rows.find((row) => row.user_id === id)?.user_name;
+    // an overview without figures (a period not wholly processed) has no rows; the filter echo still names them
+    const shown = overview?.by_annotator?.rows.find((row) => row.user_id === id)?.user_name;
     const echoed = overview?.filters?.annotator?.user_id === id ? overview.filters.annotator.user_name : null;
     return shown ?? echoed ?? `Annotator #${id}`;
 }

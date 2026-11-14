@@ -288,7 +288,8 @@ export default function FullView({
     const known = { ...projectNames, ...names };
 
     // names of every listed project, as CVAT returns them to the viewer
-    const wanted = list && list.by === 'projects' ?
+    // a list without figures (a period not wholly processed) has no rows to name
+    const wanted = list && list.by === 'projects' && list.rows ?
         [...new Set(list.rows.map((row) => row.id))]
             .filter((id) => id > 0 && !(id in known))
             .sort((a, b) => a - b) : [];

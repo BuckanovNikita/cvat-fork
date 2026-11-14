@@ -99,7 +99,8 @@ export default function DetailsSection({
 
     // names of the shown projects, and of every project while searching by name
     const wanted = by === 'projects' ? [...new Set([
-        ...(details?.by === 'projects' ? details.rows.map((row) => row.id) : []),
+        // a table without figures (a period not wholly processed) has no rows to name
+        ...(details?.by === 'projects' && details.rows ? details.rows.map((row) => row.id) : []),
         ...(searching ? allProjects : []),
     ])].filter((id) => id > 0 && !(id in known)).sort((a, b) => a - b) : [];
     const wantedKey = wanted.join(',');
