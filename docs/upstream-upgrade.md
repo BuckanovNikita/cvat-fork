@@ -40,21 +40,26 @@ git log --first-parent --oneline
 
 This tree-to-tree comparison is essential: a root-level comparison with an
 upstream commit would mix the subtree layout with fork changes. It also omits
-root-owned OPA/build/verification files, which must be reviewed separately.
+the root-owned build and verification files (the build scripts,
+`Dockerfile.server`, `verify/`), which must be reviewed separately.
 
 ## 2. Import the target release
 
 Choose the target upstream tag and record its full raw commit ID, resolving an
-annotated tag to its commit. Obtain the matching full upstream source separately
-for backend policy comparison. Review upstream release changes relevant to the
-UI, OPA, image build and server/database compatibility.
+annotated tag to its commit. Review upstream release changes relevant to the
+UI, the policies, the Helm chart, image build and server/database
+compatibility. The import carries the four policy files the fork depends on,
+so merging and testing the policies needs no separate upstream checkout.
 
 Refresh the filtered mirror using `mirror-cvat.sh`; `UPSTREAM` can select a
 different source. The script downloads upstream history into
 `.cvat-mirror.git.new`, beside the existing mirror, and applies its maintained
 path list there. It replaces `.cvat-mirror.git` only after both steps succeeded;
 a failed run leaves the existing mirror as it was. Keep unique work out of
-these generated directories. If the new release requires
+these generated directories. The path list (`PATHS`) is the widened one of the
+v2.82.0 re-import: the UI build inputs, the analytics components, upstream's
+root lint configuration, the Helm chart, and the issue and comment policies
+with their two helper policies. If the new release requires
 additional build/runtime files, update `PATHS` before regenerating the mirror.
 
 After selecting `TARGET` (for example, the chosen `vX.Y.Z` tag):
@@ -122,31 +127,47 @@ on the final commit. Account for every remaining file in the fork specification;
 if upstream now provides an equivalent feature, verify the acceptance scenarios
 before removing its local replacement.
 
-## 3. Rebase the external overlays
+## 3. Merge the policies and update the images
 
-Compare the old stock rules with `opa/rules/` to identify the local additions.
-Use the target release's full `cvat/apps/engine/rules/issues.rego` and
-`comments.rego` as the new base, and reapply the same-organization member action
-and base-filter extensions. Retain the target's upstream context checks and
-filter wrapper. Compare old and new IAM/organization helpers as well.
+The issue and comment policies are patched in place inside the import
+(`cvat/cvat/apps/engine/rules/issues.rego` and `comments.rego`, IAM-1), so the
+subtree pull of section 2 merges upstream's changes to them like any other
+imported file; nothing is reapplied by hand. Each policy must come out of the
+merge as the target's stock file plus the same two additions marked
+`# Local patch (role floor):`, and nothing else:
+`git diff "cvat-${TARGET}" HEAD:cvat -- cvat/apps/engine/rules` shows exactly
+those. Retain the target's upstream context checks and filter wrapper, and
+compare its helper policies (`cvat/apps/iam/rules/utils.rego`,
+`cvat/apps/organizations/rules/organizations.rego`) with the old ones. The four
+files come from one upstream revision through the import; mixing helper
+versions can hide precisely the compatibility failures the policy test is
+meant to detect.
 
-Keep the four policy sources from one raw upstream revision: the two resource
-rules, `cvat/apps/iam/rules/utils.rego`, and
-`cvat/apps/organizations/rules/organizations.rego`. Mixing helper versions can
-hide precisely the compatibility failures this check is meant to detect.
+Read the scopes of both stock policies in the target release against the
+previous one. The added rule has no scope whitelist, so every scope upstream
+adds to the issue or comment policy is granted to organization members at or
+above the floor once the merge is committed. Decide for each new scope whether
+that is wanted; if not, the added rule needs an exclusion, which is a change to
+the specification.
 
-Update default custom UI tags together in `build-ui.sh`,
-`docker-compose.override.yml` and `verify/docker-compose.verify.yml`. Select
-the matching stock backend version in the deployment/test configuration.
+Update the release in the default tags together. Search for the old release
+number outside `cvat/`, `docs/evidence/` and `.scratch/`; at least these name
+it: `build-ui.sh`, `build-server.sh` and `Dockerfile.server` (the stock base
+and the fork server tag), `build-team-analytics-service.sh` and
+`team-analytics/Dockerfile`, `team-analytics/k8s/deployment.yaml`,
+`verify/team_analytics_service.sh`, the stack's `stack.env` and `run.sh`, and
+the import tag that `verify/policy_test.sh` (`STOCK_TAG`),
+`tools/gate/ui-lint.sh` (`IMPORT_TAG`) and the stack's policy check default to.
 Review the imported Dockerfile's build arguments and base-image name against
-the script's BuildKit override. Consult project dependency configuration for
+the UI script's BuildKit override. Consult project dependency configuration for
 compatible tools rather than adding version pins to these instructions.
 
-Check added/renamed services against the verification overlays: fixed upstream
-container names can cause collisions if an overlay no longer renames every
-service. Reconcile runtime mounts and Compose path resolution with the intended
-deployment directory. Update the specification only for intentional behavior
-changes, and record their acceptance evidence.
+Rebuild the fork server image from the merged policies on the target's stock
+server image (`./build-server.sh`, BUILD-1), and check its bundle as under
+"Policies" in section 4. Check added or renamed chart services and images
+against the stack's render checks and approved image list. Update the
+specification only for intentional behavior changes, and record their
+acceptance evidence.
 
 ## 4. Verify the integrated changes
 
@@ -189,13 +210,13 @@ Kept out of the pipeline, each a separate command with its own prerequisites:
 
 - `verify/team_analytics_service.sh`: the service seam, under "Team
   Analytics"; Docker, the stock server image and a ClickHouse image.
+- `verify/policy_bundle.sh`: the bundle check of the fork server image, under
+  "Policies"; Docker and the built image.
 - `verify/team-analytics-stack/run.sh cycle`: the stack, under "Team
-  Analytics"; both built images, a cluster and the reserved host port.
+  Analytics"; the three built images, a cluster and the reserved host port.
 - `BROWSER_BIN=<browser> node --test verify/task_progress.cjs`: the browser
   check of the task legend, under "Frontend"; without `BROWSER_BIN` the
   pipeline's run skips it.
-- `verify/run.sh` and `verify/opa_issues.sh all`: the legacy live launchers,
-  under "Packaging and integration".
 
 ### Frontend
 
@@ -268,30 +289,36 @@ styles and task-card stylesheet in an isolated browser profile. Without
 avoids installing upstream Git hooks in the wrapper repository. A host build
 does not prove image packaging.
 
-### OPA
+### Policies
 
-Set `UPSTREAM_CVAT` to an absolute full-source checkout of the exact target
-upstream commit, and `OPA_IMAGE` to the OPA image selected by the imported
-Compose configuration. The existing policy test can run without starting CVAT:
+The policy test runs from the repository, without starting CVAT and without an
+outside checkout, in a one-off container of the OPA image (`OPA_IMAGE`, default
+the one the script names):
 
 ```bash
-docker run --rm --network none --cpus=1 --memory=256m \
-  -v "$PWD:/repo:ro" -v "$UPSTREAM_CVAT:/upstream:ro" "$OPA_IMAGE" \
-  test /repo/opa/rules /repo/verify/opa_issues_test.rego \
-  /upstream/cvat/apps/iam/rules/utils.rego \
-  /upstream/cvat/apps/organizations/rules/organizations.rego -v
+verify/policy_test.sh          # the import's patched policies, patched expectations
+verify/policy_test.sh stock    # the stock policies of STOCK_TAG, stock expectations
 ```
 
-Repeat with the two stock resource rules instead of `/repo/opa/rules` and an
-additional data file containing `{"expected":{"patched":false}}`. Pass that
-file as another positional input to `opa test`. Keep it in a task-owned mounted
-temporary directory and remove it afterward. Both runs must match their own
-expectations; an identical result is not the goal because member access differs.
+Both runs read the two resource policies and their two helper policies; the
+patched run from the import in the working tree, the stock run from the import
+tag (`STOCK_TAG`, which follows the import as in section 3). Both must match
+their own expectations; an identical result is not the goal because member
+access differs. The check pipeline runs both.
 
-Confirm where the target server image keeps `cvat/apps/engine/rules/` and that
-both Compose overlays mount the patched files there (`/opt/cvat/cvat/...` since
-2.72.0). Build the bundle in that image with the mounts applied and check that
-both files in it carry the patch; a wrong target fails silently.
+Then check what the rebuilt fork server image serves. The bundle is built by the
+server's own builder inside the image, so a copy to a directory the server does
+not read shows here, and nowhere else fails:
+
+```bash
+IMAGE=<fork server tag> BASE_IMAGE=<stock server tag> ./build-server.sh
+verify/policy_bundle.sh from-image <fork server tag> | verify/policy_bundle.sh check
+verify/policy_bundle.sh from-image <stock server tag> | verify/policy_bundle.sh check "cvat-${TARGET}"
+```
+
+The first check must report both policies equal to the import's, the second
+both stock files equal to the import tag's. Each policy is compared by itself,
+byte for byte; a marker in only one of them does not pass.
 
 Check policy compilation with the same target helpers. If strict OPA lint fails,
 compare stock and patched rules before classifying an inherited warning. Retain
@@ -338,21 +365,28 @@ The service tests run in a container of the stock server image. Set
 server image's Python or `clickhouse_connect` changed, check that the service
 still needs nothing beyond them.
 
-Then build both images from the integrated tree and run the stack once
+Then build the three images from the integrated tree and run the stack once
 (`verify/team-analytics-stack/README.md`; reserved host port 8490):
 
 ```bash
+IMAGE=cvat/server:<tag> ./build-server.sh
 IMAGE=cvat/ui:<tag> ./build-ui.sh
 IMAGE=cvat/team-analytics:<tag> ./build-team-analytics-service.sh
-TA_UI_IMAGE=cvat/ui:<tag> TA_SERVICE_IMAGE=cvat/team-analytics:<tag> \
+TA_SERVER_IMAGE=cvat/server:<tag> TA_UI_IMAGE=cvat/ui:<tag> \
+    TA_SERVICE_IMAGE=cvat/team-analytics:<tag> \
     TA_SCREENSHOT_DIR=<dir> verify/team-analytics-stack/run.sh cycle
 ```
 
 For a new release, update the stack's pinned upstream commit, `Chart.lock`,
 `chart-deps.sha256` and the approved image list in `stack.env` together. `cycle`
-brings up a disposable CVAT and the service in their own namespace. It sends
+brings up a disposable CVAT from the import's chart, on the fork server image,
+and the service in their own namespace. It first checks the policy bundle the
+running server serves, each patched policy by itself. It sends
 events, waits for the service's own scheduled refresh, and checks figures and
-refusals for every role. Its final run has the real UI annotate in headless
+refusals for every role. It checks task progress on the tasks list in a
+browser, runs the issue and comment matrix through the real API (an account
+with no global role among the accounts), sends one request through the
+service's Ingress, and runs the access cases. Its final run has the real UI annotate in headless
 Chrome and finds each new record in ClickHouse. It checks the figures for that
 work and for a synthetic hundred annotators and forty long-named projects. It
 drives the page (period, filters, full view, trend comparison, narrow window)
@@ -363,28 +397,22 @@ function. Record what ran and what stayed unverified in dated evidence.
 
 ### Packaging and integration
 
-Check shell syntax and render applicable Compose configurations without starting
-services. Inspect the resolved images, rule mounts and service names. For actual
-packaging, use `./build-ui.sh` with the chosen `IMAGE`/`NODE_IMAGE` overrides;
-use `SAVE=1` only if an archive is needed. Inspect served assets in the built
-image, then exercise the specification's browser/API scenarios in owned test
-infrastructure.
+The three images are built by their scripts (BUILD-1): `./build-ui.sh` with
+the chosen `IMAGE`/`NODE_IMAGE` overrides, `./build-server.sh` and
+`./build-team-analytics-service.sh` with `IMAGE`/`BASE_IMAGE`. None of them
+pulls; the stock server image must be local first. Use `SAVE=1` only if an
+archive is needed. Inspect served assets in the built UI image and check the
+fork server image's bundle (under "Policies"). Without touching the cluster,
+`verify/team-analytics-stack/run.sh preflight` checks that the fork server
+image is local, builds the import's chart with its pinned dependencies and
+applies the render checks: no cluster-wide object, no image outside the
+approved list, and the fork server image as the only backend image.
 
-Read [`INFRA_MIGRATION.md`](../INFRA_MIGRATION.md) before live verification.
-The current legacy entry points are `verify/run.sh` (frontend) and
-`verify/opa_issues.sh all` (stock/patched permissions). They use fixed Compose
-projects, names and ports and leave stacks running. Establish ownership before
-using them; their successful exit is not proof of all acceptance scenarios.
-The OPA checker prints a matrix that needs review, and the frontend seed covers
-only part of the palette. Verify both bundle files and live policy behavior,
-including negative authorization cases. Recreate only the intended server and
-allow for OPA's asynchronous bundle refresh.
-
-Clean up only resources created for this verification. The legacy `down`
-commands remove their project volumes, so use them only for owned disposable
-stacks. Account for temporary seed/bundle directories if a launcher fails.
-Do not treat these launchers as completion of the pending infrastructure
-migration or as permission to intervene in an existing deployment.
+All live verification runs on the test stack under "Team Analytics", in the
+project's own namespace with a quota and its own teardown (`down`, or `cycle`).
+It needs no shared deployment and creates nothing in the cluster outside its
+namespace; `down` also stops only its own port-forward. Clean up only what a
+run created.
 
 ## 5. Record and hand off
 
@@ -398,6 +426,6 @@ test counts and deployment results out of the evergreen specification.
 Commit only task-owned changes using the repository's commit convention, with
 safe mechanical formatting fixes separate from behavior changes. Publishing
 or deployment requires its own authorization. Before an authorized deployment,
-retain the prior UI image, policy files and deployment configuration, and plan
+retain the prior UI and fork server images and deployment configuration, and plan
 database backup/rollback according to the target upstream release; reverting
 the subtree alone does not undo server database migrations.

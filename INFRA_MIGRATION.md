@@ -9,13 +9,14 @@ No wipe date is set. Shared data is destroyed without backups or imports, and
 the old service credentials, helper scripts and run-tag model are retired.
 This repository does not consume those shared stands, so the wipe itself is
 not expected to break its current verification stacks. Its maintained Compose
-verification setup nevertheless needs the migration described here.
+verification setup nevertheless needed the migration described here.
 
-## What is affected here
+## What was affected here
 
 The plan lists no shared-stand dependency for cvat-fork. Inspection of the
 maintained launchers and verification files found Compose stacks rather than
-the retired k8s-infra registry, run tags or storage paths.
+the retired k8s-infra registry, run tags or storage paths. As found when this
+notice was written (all of these are now removed; see "Outcome, 2026-11-15"):
 
 - `verify/run.sh` starts and tears down a Compose CVAT stack and seeds it through
   Docker commands; its API is reached on `localhost:8181`.
@@ -88,6 +89,32 @@ work. There is no root `AGENTS.md` or equivalent specification workflow here,
 and no named Spec Kit or OpenSpec process. Use the existing verification under
 `verify/` as the behavioral baseline and decide the migration's specification
 and acceptance within this repository; this notice does not invent a workflow.
+
+## Outcome, 2026-11-15
+
+The required outcome is in place in this repository:
+
+- Live verification runs on the Kubernetes test stack
+  (`verify/team-analytics-stack/`): its own namespace `cvat-ta-it-<run id>` with a
+  `ResourceQuota` and a `LimitRange`, the default storage class, its own teardown
+  (`run.sh down`, `run.sh cycle`), and a namespace that is recreated when missing
+  or too old for the sweeper's lifetime. Host access is by `kubectl port-forward`.
+- The two Compose checks moved onto that stack: the task progress check
+  (`run.sh check-task-progress`) and the issue and comment permission matrix
+  (`run.sh check-issues`), beside the check of the policy bundle the server serves
+  (`run.sh check-policies`). Both live checks passed on the stack
+  (`docs/evidence/2026-11-14-task-progress-on-stack.md`,
+  `docs/evidence/2026-11-14-stack-issue-matrix.md`).
+- The policies reach the server in the fork server image (ADR 0004), not through
+  a mount.
+- The Compose overlay, the three Compose verification files, the two Compose
+  launchers, the seed and check scripts only they used, and the copied policy
+  directory are deleted. No maintained Compose launcher is left.
+
+Not yet shown, so this notice stays: a stack `up` run after the removal (the
+live checks above ran before it), that the project owner has been told the
+verification has moved, and that the sweeper report lists the stack's namespace
+with its quota. None of these is recorded in this repository.
 
 ## Done when
 

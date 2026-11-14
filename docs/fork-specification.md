@@ -13,8 +13,8 @@ to the repository root.
 | Upstream import | `mirror-cvat.sh`, `cvat/` | Filtered Git subtree containing frontend build inputs and deployment components |
 | Task progress | Eight UI files listed below | Per-stage/state job counts, legend and progress segments |
 | Organization issues/comments | `cvat/cvat/apps/engine/rules/issues.rego`, `cvat/cvat/apps/engine/rules/comments.rego` (patched in place inside the import) | Broader actions and listing for members of the resource organization who hold at least the `worker` global role |
-| Build and deployment | `build-ui.sh`, `docker-compose.override.yml` | Custom UI image and server-side OPA mounts |
-| Verification | `verify/` | Frontend regression tests, policy tests and legacy live verification harnesses |
+| Build and deployment | `build-ui.sh`, `build-server.sh`, `Dockerfile.server` | Custom UI image, and the fork server image that delivers the patched policies (BUILD-1) |
+| Verification | `verify/` | Frontend regression tests, the policy test and the policy bundle check, the Team Analytics seams, and the test stack on Kubernetes (`verify/team-analytics-stack/`) that runs the live checks |
 | Mechanical formatting | `ruff.toml` | Formatting convention for the fork's own Python. It is not applied inside the import: `cvat/components/analytics/clickhouse/init.py` equals upstream's file |
 | Team Analytics | `team-analytics/`, `build-team-analytics-service.sh`, the page and logging directories under `cvat/cvat-ui/src/`, wiring in eleven UI files (TA-1) | Work figures per annotator and project from CVAT's own events, read by a separate service |
 
@@ -141,7 +141,23 @@ business validation. An unassigned worker can have issue API permission yet
 still be unable to open the job in the UI. Canvas verification therefore needs
 a worker who can access the job.
 
+The patched files reach a server only inside the fork server image (BUILD-1);
+nothing mounts them, and there is no second copy of them. Because the added
+rule has no scope whitelist, any scope a later upstream release adds to either
+policy is granted to members at or above the floor as soon as the policies are
+merged with that release. The upgrade procedure has the review step.
+
 ## BUILD-1: Packaging and policy delivery
+
+The fork ships three images, each built by a script in this repository from the
+working tree. None of them is pulled from a registry; each must be present on
+the node that runs it.
+
+| Image | Built by | Content |
+| --- | --- | --- |
+| UI | `build-ui.sh` | Upstream `cvat/Dockerfile.ui` with the fork's UI changes |
+| Fork server image | `build-server.sh`, `Dockerfile.server` | The stock release server image with the import's two patched policies copied over the stock ones ([ADR 0004](adr/0004-a-fork-server-image-that-adds-only-the-patched-policies.md)) |
+| Team Analytics service | `build-team-analytics-service.sh`, `team-analytics/Dockerfile` | The stock release server image with the service code and SQL (TA-1) |
 
 `build-ui.sh` compiles the frontend inside upstream `cvat/Dockerfile.ui`. Preserve
 its selected Node image override through the named BuildKit context, disabled
@@ -150,28 +166,39 @@ The script's `IMAGE` and `NODE_IMAGE` variables are supported overrides;
 `SAVE=1` additionally exports a compressed image archive, while the default
 only builds the image. Consult the script for current defaults.
 
-The custom image tag belongs only to `cvat_ui`. Backend services and workers
-use the matching stock upstream release through `CVAT_VERSION`; never use the
-custom UI suffix as the backend version. Align the build script, deployment
-override and frontend verification override when changing the default image.
+The fork server image is the stock release image named by `BASE_IMAGE`, with
+`issues.rego` and `comments.rego` from `cvat/cvat/apps/engine/rules/` copied
+over the stock files at `/opt/cvat/cvat/apps/engine/rules/`, with the stock
+files' owner and mode, and nothing else: no package, no Python change, no
+configuration change. That directory of the import is the whole build context.
+`build-server.sh` never pulls or pushes: the stock base must already be local,
+and the build runs without network. `IMAGE` and `BASE_IMAGE` are its supported
+overrides; it refuses an `IMAGE` equal to `BASE_IMAGE`, so the stock tag is
+never overwritten. `SAVE=1` additionally exports a compressed image archive.
 
-The deployment overlay mounts both copied policies read-only into
-`cvat_server`, under `/opt/cvat/cvat/apps/engine/rules/`. The server packages
-and serves `/api/auth/rules`; mounting files only into `cvat_opa` is insufficient.
-Restart/recreate the intended server after rule changes to invalidate its
-cached bundle, then verify OPA has loaded the changed bundle.
+The chart has one backend image setting, so the server, every worker and the
+initializer run the fork server image. The custom UI suffix is never a backend
+tag, and the Team Analytics service keeps its own image on the stock base, so a
+change to analytics code never rolls out the CVAT backend.
 
-The mount target must be the directory the server builds its bundle from.
-Upstream moved the installed sources from `/home/django` to `/opt/cvat` in
-2.72.0. A mount to a directory the server does not read raises no error and
-leaves the stock rules in force, so confirm the target in the release's server
-image and inspect the served bundle for both files.
+The policies are patched in place inside the import (IAM-1). The server packages
+the bundle it serves at `/api/auth/rules` from its installed rules directory, so
+the copy must land in the directory the server builds that bundle from. Upstream
+moved the installed sources from `/home/django` to `/opt/cvat` in 2.72.0; a copy
+to a directory the server does not read raises no error and leaves the stock
+policies in force. The bundle check finds that:
+`verify/policy_bundle.sh from-image IMAGE` builds the bundle with the server's
+own builder in a one-off container of the image, without network, and
+`verify/policy_bundle.sh check` compares each of the two policies in a bundle
+given on stdin, by itself and byte for byte, with the import's file (with
+`check <tag>`, with the file at that import tag). The test stack applies the
+same check to the bundle the running server serves (`run.sh check-policies`)
+and also requires the patch marker in each policy; its render check refuses a
+backend image other than the fork server image.
 
-The deployment overlay expects `opa/` beside the deployment's base Compose
-file. Compose resolves relative mounts from the first Compose file, so simply
-combining `cvat/docker-compose.yml` with the root override from this checkout
-does not satisfy that layout. The OPA verification overlay uses an absolute
-`OPA_RULES` path for this reason.
+Rebuild the fork server image whenever a policy changes and on every upstream
+upgrade, and run the backend on the rebuilt image: a running server caches the
+bundle it built.
 
 ## TA-1: Team Analytics
 
@@ -569,11 +596,11 @@ rules is recorded with the dated evidence.
 | UI-C | Empty page makes no jobs request; zero total and zero fetched jobs render no segments | Same regression suite |
 | UI-D | Paginated job collection covers the page, and stale success/failure cannot overwrite a new query | Mocked thunk/reducer tests; live API for actual pagination |
 | UI-E | Failed summary fetch preserves task display and the upstream progress fallback | Mocked failure tests; browser for complete task-item fallback |
-| IAM-A | Unassigned organization members with at least the `worker` global role can act on issues/comments and list the organization's resources; below the floor the result is stock's | `verify/opa_issues_test.rego` through `verify/policy_test.sh`; live API matrix |
-| IAM-B | Nonmembers, removed members, other organizations and sandbox/context mismatches do not gain access from the patch | Same policy suite; live negative cases |
+| IAM-A | Unassigned organization members with at least the `worker` global role can act on issues/comments and list the organization's resources; below the floor the result is stock's | `verify/opa_issues_test.rego` through `verify/policy_test.sh`; the stack's issue and comment matrix (`run.sh check-issues`) |
+| IAM-B | Nonmembers, removed members, other organizations and sandbox/context mismatches do not gain access from the patch | Same policy suite; the negative rows of the stack's matrix |
 | IAM-C | Sandbox behavior and upstream filter shape remain compatible with the target release | Stock-versus-patched policy suite with target helpers |
-| BUILD-A | Built image serves the changed UI without stale bundles/source maps; backend uses stock release | Image inspection and browser verification |
-| BUILD-B | Both served rule files match the intended overlay and real requests exhibit the patched behavior | Bundle inspection plus live API, not marker presence alone |
+| BUILD-A | Built image serves the changed UI without stale bundles/source maps; the backend runs the fork server image, which differs from the stock release only in the two policies | Image inspection and browser verification; the stack's render check |
+| BUILD-B | Both served policy files equal the import's, each by itself, and real requests exhibit the patched behavior | `verify/policy_bundle.sh` on the image, `run.sh check-policies` on the served bundle, and `run.sh check-issues`; not marker presence alone |
 
 The frontend suite executes real TypeScript, Redux and server-rendered React
 with mocked boundaries. Its optional `BROWSER_BIN` check renders the real summary
@@ -584,21 +611,24 @@ wiring, complete page layout or a live server. Policy tests evaluate synthetic
 inputs using upstream helper rules; they do not prove bundle delivery or
 Django/API integration.
 
-The current live OPA checker prints observations rather than asserting every
-expected HTTP outcome. Its bundle marker check can pass when only one rule has
-the marker. Inspect the actual results and both rule contents. The frontend
-seed covers a subset of the stage/state matrix. These harnesses alone do not
-establish every acceptance scenario.
+The live checks run on the test stack (`verify/team-analytics-stack/`), each
+judging its own outcome. The issue and comment matrix runs every row through
+the real API with real accounts, one of them with no global role, against the
+fork server image; the stock column is checked against the policy engine only
+(`run.sh check-issue-policies stock`), not against a running stock server. The
+task progress check creates a job in every stage and state and checks the
+legend, segments, colours and total in a browser on the stack's UI image.
 
 ## Changes that do not need reimplementation
 
 The remaining ClickHouse delta is formatting only. Preserve upstream semantics
 when resolving it; formatting is not a product requirement. Earlier submodule,
 patch-series and custom-Dockerfile workflows have been replaced by the subtree
-and upstream Dockerfile build. The old HTML head fix is absent from the current
+and upstream Dockerfile build of the UI. The old HTML head fix is absent from the current
 baseline diff, and upstream Google Fonts links are retained. Reapply current
 behavior, not every historical commit.
 
-Infrastructure migration is a separate pending task governed by
-[`INFRA_MIGRATION.md`](../INFRA_MIGRATION.md). The existing Compose verification
-files describe the current implementation, not completion of that migration.
+Live verification runs only on the Kubernetes test stack; the earlier Compose
+overlay, its launchers and the copied policies are gone.
+[`INFRA_MIGRATION.md`](../INFRA_MIGRATION.md) records that outcome and what is
+still needed before the notice can be deleted.
