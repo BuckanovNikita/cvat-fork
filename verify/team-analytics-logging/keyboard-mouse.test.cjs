@@ -1,7 +1,8 @@
 // Ticket 13: hotkey actions, mouse actions and the input method of operations. Shortcuts go in through
 // the UI's single shortcut dispatcher (utils/mousetrap-react.tsx, with Mousetrap supplied), clicks and
-// key presses through a window capture listener wired as cvat-app.tsx wires it, and operations through
-// their UI call sites; the batch the real cvat-core logger sends to the server comes out.
+// key presses through the logging's window listeners (listenForInput, as cvat-app.tsx attaches them),
+// and operations through their UI call sites; the batch the real cvat-core logger sends to the server
+// comes out.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -62,10 +63,8 @@ function annotationPage(handlers = {}, { job: jobOptions = {} } = {}) {
     GlobalHotKeys({ keyMap, handlers: allHandlers });
 
     const window = domWindow(PAGE);
-    // cvat-app.tsx: one capture listener on the window for key presses and clicks
-    const listener = (event) => { logging.inputEvent(event); };
-    window.addEventListener('keydown', listener, { capture: true });
-    window.addEventListener('click', listener, { capture: true });
+    // cvat-app.tsx: the logging's own window listeners, attached as the application attaches them
+    logging.listenForInput(window);
 
     return {
         core,
@@ -179,6 +178,21 @@ test('one summary at most once a minute, written only when the person acts, and 
     t.mock.timers.tick(5 * 60_000);
     page.click('save');
     assert.equal((await page.summaries()).length, 2, 'nothing outside a job, nothing twice at close');
+});
+
+test('a key press is a moment the person acts: a summary that is due is written then', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-15T10:00:00Z') });
+    const page = annotationPage();
+    page.logging.trackInputJob(page.job);
+    page.press('ctrl+z');
+    t.mock.timers.tick(2 * 60_000);
+    assert.deepEqual(await page.summaries(), []);
+
+    // a key that is no shortcut (typing an attribute value): only the window listener sees it
+    page.window.document.body.dispatchEvent(new page.window.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    const [summary, ...others] = await page.summaries();
+    assert.deepEqual(summary.payload.hotkeys, { UNDO: 1 });
+    assert.deepEqual(others, []);
 });
 
 test('no event per hotkey action: frame changes still compress into one event', async (t) => {

@@ -50,3 +50,5 @@ that criterion. A redo made in the browser and read back from the events table b
 to ticket 27.
 
 2026-11-14: Resolved on `feat/team-analytics-page` by merge `ff5dda4`. Evidence: `docs/evidence/2026-11-14-redo-is-not-a-creation.md`.
+
+2026-11-15: An independent review of tickets 19, 21 and 22 found the redo rule sound (a redo across a window edge gives 2 alignments and 0 creations), with no finding for this ticket. Recorded in `docs/evidence/2026-11-14-frame-navigation-hotkeys.md` ("Independent review, 2026-11-15"), with a pointer from this ticket's evidence. Nothing changed for this ticket.
