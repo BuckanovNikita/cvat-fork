@@ -13,3 +13,38 @@
 - [ ] Operation shares still add up, and Other is never below zero.
 - [ ] Nothing changes in the UI; the redo event is sent as before.
 - [ ] The ticket states what happens to hours already stored under the old rule, and the fork specification says the same.
+
+## Comments
+
+**2026-11-14. Hours already stored under the old rule.** Nothing computes them again
+because the rule changed. At start the service applies its schema and goes on with its
+usual steps, so:
+
+- The trailing refresh window (48 hours unless configured otherwise) is computed again
+  at the next refresh and follows the new rule from then on.
+- An older day keeps the figures it was stored with until it is computed again. That
+  happens only when the daily check finds that its raw event count, or that of the day
+  before or after it, changed.
+- In hours stored under the old rule a redo of created objects stays a creation with its
+  time, under the method of the creation it restored or as Drawn. Rows an earlier version
+  stored as `redone` are still read as Drawn. The read queries are unchanged.
+- A period can therefore hold hours of both rules.
+
+`docs/fork-specification.md` (TA-1) says the same. This was read in the code and then
+seen once on a throwaway ClickHouse, with the old calculation file standing for the
+service before the upgrade: `docs/evidence/2026-11-14-redo-is-not-a-creation.md`. No
+recount of stored history was added; that would be a new mechanism and a decision for
+the owner.
+
+**2026-11-14. Which redo ends an alignment run.** The same one as before this ticket:
+a redo of created objects inside a job. A redo of anything else did not end a run and
+still does not. The criterion's "a redo" is read as that one.
+
+**2026-11-14. Criteria whose tests never went red on the old code.** "An undone creation
+still counts" and the alignment default held before the fix and hold after it, so their
+tests pin behaviour. The alignment test was seen to fail with the redo branch removed
+and nothing else changed, before the redo was made to end a run again.
+
+**2026-11-14. UI.** No file under `cvat/` changed, which is all this ticket shows for
+that criterion. A redo made in the browser and read back from the events table belongs
+to ticket 27.
