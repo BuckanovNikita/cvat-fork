@@ -39,3 +39,5 @@ What ticket 27's browser run should also look at for these, at 1400 px and at 40
 - A row without parts, if an older service can be put in front of the page: one dark grey bar, clearly unlike Other's light grey, and its hover saying it is not split.
 
 The last criterion stays unticked; it remains ticket 27's.
+
+**2026-11-15:** The review follow-up (`fix/page-review`) was merged into `feat/team-analytics-page` in `bd1d00d9`. Evidence is in `docs/evidence/2026-11-14-overview-bars-split-by-operation.md` ("Independent review, 2026-11-15"). On the merged tree, seam 3, UI logging and `prek run --all-files` passed with nothing skipped. The ticket stays open; its last criterion belongs to ticket 27's browser run.
