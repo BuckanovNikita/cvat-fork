@@ -1,8 +1,9 @@
 // Ticket 21: a frame-navigation hotkey is one hotkey action per frame it moves. The shortcut goes in
 // through the UI's shortcut dispatcher (utils/mousetrap-react.tsx), runs the top bar's navigation
 // (containers/annotation-page/top-bar/top-bar.tsx) and the real frame change (annotation-actions.ts
-// changeFrameAsync) over a store that shows the frame it is given; clicks go in through the window
-// capture listener cvat-app.tsx sets. Frames are fetched only when the test lets them load, so a key
+// changeFrameAsync) over a store that shows the frame it is given; the search keys run the real
+// searchAnnotationsAsync. Clicks go in through the logging's window listeners (listenForInput, as
+// cvat-app.tsx attaches them). Frames are fetched only when the test lets them load, so a key
 // can be pressed and held while a frame is loading. The batch the real cvat-core logger sends comes out.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -174,11 +175,8 @@ function annotationPage({ frame = 3, job: jobOptions = {} } = {}) {
     window.document.getElementById('slider').addEventListener('mousedown', () => {
         pending.push(topBar.onChangePlayerSliderValue(0));
     });
-    // cvat-app.tsx: capture listeners on the window for key presses, clicks and mouse button presses
-    const listener = (event) => { logging.inputEvent(event); };
-    window.addEventListener('keydown', listener, { capture: true });
-    window.addEventListener('click', listener, { capture: true });
-    window.addEventListener('mousedown', listener, { capture: true });
+    // cvat-app.tsx: the logging's own window listeners, attached as the application attaches them
+    logging.listenForInput(window);
 
     async function settle() {
         for (let round = 0; round < 50; round++) await new Promise((resolve) => { setImmediate(resolve); });

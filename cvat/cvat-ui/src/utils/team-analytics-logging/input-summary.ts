@@ -9,7 +9,9 @@
 //                         written first)
 //   untrackInputJob()     the job is closed: what was counted is written, counting stops
 //   hotkeyUsed(action, event)  the shortcut dispatcher is about to run the handler of `action`
-//   inputEvent(event)     every keydown and click the application's window listeners see
+//   listenForInput(window)  the application starts: the window listeners the counting needs (capture
+//                         listeners for key presses and clicks, which call inputEvent) are attached, once
+//   inputEvent(event)     every keydown and click those listeners see
 //   frameRequested()      a frame change starts (annotation-actions.ts changeFrameAsync); returns the
 //                         frame-navigation hotkey that asked for it, or null
 //   frameShown(hotkey, from, to)  that frame change shows frame `to`; `from` is the frame shown when it
@@ -212,5 +214,22 @@ export function inputEvent(event: { type?: string; target?: unknown } | null | u
         // a click in a dialog confirms what was started before it
         if (zone !== 'modal') markInput('mouse');
         if (event.target.closest(CONTROL)) add(mouse, zone);
+    });
+}
+
+// What the application window offers for listening.
+interface InputTarget {
+    addEventListener(type: 'keydown' | 'click', listener: (event: Event) => void, options: { capture: boolean }): void;
+}
+
+let listening: InputTarget | null = null;
+
+/** Attaches the window listeners the counting needs; cvat-app.tsx calls it once, a second call does nothing. */
+export function listenForInput(target: InputTarget): void {
+    guarded(undefined, () => {
+        if (listening === target) return;
+        listening = target;
+        target.addEventListener('keydown', inputEvent, { capture: true });
+        target.addEventListener('click', inputEvent, { capture: true });
     });
 }
