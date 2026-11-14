@@ -114,10 +114,19 @@ With the toolchain required by the imported package configuration:
 
 ```bash
 (cd cvat && DISABLE_HUSKY=1 yarn install --immutable)
+npm ci --prefix verify
 node --test verify/task_progress.cjs
 (cd cvat && yarn run type-check)
 (cd cvat && SOURCE_MAPS_ENABLED=false yarn run build:cvat-ui)
 ```
+
+`npm ci --prefix verify` installs the frontend harness's own dependencies: the
+browser environment (jsdom) that the two Team Analytics frontend suites below
+load. `verify/package.json` declares it and `verify/package-lock.json` locks it;
+the import's manifest and lock are not involved. It goes to
+`verify/node_modules`, which git ignores, once per checkout. A worktree may link
+that path to the `verify/node_modules` of a checkout that has it installed
+instead. `verify/task_progress.cjs` does not need it.
 
 For task-legend color changes, also run the browser regression with an installed
 Chrome/Chromium executable (name or absolute path):
@@ -174,7 +183,10 @@ annotation event names, the memberships policy, the project `id` filter,
 CVAT's minimum app width, and the shortcut action names. A changed name breaks
 figures without an error, so compare them, not only the build.
 
-Run the three seams. They need only Docker and `cvat/node_modules`:
+Run the three seams. The service seam needs only Docker. The two frontend
+seams need `cvat/node_modules` and the harness's dependencies
+(`npm ci --prefix verify`, under "Frontend" above); without the latter they fail
+and name what is missing, they do not skip tests:
 
 ```bash
 verify/team_analytics_service.sh               # service against a real ClickHouse

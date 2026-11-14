@@ -4,10 +4,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 const HOUR = 3600000;
 const LONG_NAME = 'annotator.with.a.very.long.name.from.the.northern.district.second.shift';
@@ -283,7 +281,7 @@ test('a card on the overview keeps its top rows; its show all control names ever
 
 // --- opening, closing and the address ------------------------------------------------------------
 
-domTest('a full view replaces the overview, keeps the header and filters, and is part of the address', async () => {
+test('a full view replaces the overview, keeps the header and filters, and is part of the address', async () => {
     const { history, requests, Page } = openPage();
     await opened(Page, async (view) => {
         await click(fullViewButton(view.container, 'cvat-team-analytics-working-time-by-annotator'));
@@ -314,7 +312,7 @@ domTest('a full view replaces the overview, keeps the header and filters, and is
     });
 });
 
-domTest('a shared address opens its full view; an unknown one shows the overview', async () => {
+test('a shared address opens its full view; an unknown one shows the overview', async () => {
     const shared = openPage({ search: '?period=week&view=hotkeys' });
     await opened(shared.Page, async (view) => {
         assert.equal(fullView(view.container).querySelector('h2').textContent, 'Hotkey usage');
@@ -327,7 +325,7 @@ domTest('a shared address opens its full view; an unknown one shows the overview
     });
 });
 
-domTest('the show all control of a chart opens its full view', async () => {
+test('the show all control of a chart opens its full view', async () => {
     const { history, Page } = openPage();
     await opened(Page, async (view) => {
         await click(button(view.container.querySelector('.cvat-team-analytics-working-time-by-annotator'),
@@ -340,7 +338,7 @@ domTest('the show all control of a chart opens its full view', async () => {
 
 // --- lists ---------------------------------------------------------------------------------------
 
-domTest('by annotator: every row with its rank, whole name, bar, value and share; search and sorting', async () => {
+test('by annotator: every row with its rank, whole name, bar, value and share; search and sorting', async () => {
     const { Page } = openPage({ search: '?view=annotators' });
     await opened(Page, async (view) => {
         const rows = listRows(view.container);
@@ -367,7 +365,7 @@ domTest('by annotator: every row with its rank, whole name, bar, value and share
     });
 });
 
-domTest('by project: names from CVAT, No project, an unknown project by its identifier', async () => {
+test('by project: names from CVAT, No project, an unknown project by its identifier', async () => {
     const { lookups, Page } = openPage({ search: '?view=projects' });
     await opened(Page, async (view) => {
         assert.deepEqual(listRows(view.container).map((row) => row[1]), ['Street scenes', 'No project', 'Project #7']);
@@ -377,7 +375,7 @@ domTest('by project: names from CVAT, No project, an unknown project by its iden
     });
 });
 
-domTest('the legend sits at the top of a full view, above the rows', async () => {
+test('the legend sits at the top of a full view, above the rows', async () => {
     const { Page } = openPage({ search: '?view=split' });
     await opened(Page, async (view) => {
         const full = fullView(view.container);
@@ -390,7 +388,7 @@ domTest('the legend sits at the top of a full view, above the rows', async () =>
     });
 });
 
-domTest('where working time goes: the same list with a switch between annotators and projects', async () => {
+test('where working time goes: the same list with a switch between annotators and projects', async () => {
     const { history, requests, Page } = openPage({ search: '?view=split' });
     await opened(Page, async (view) => {
         assert.equal(fullView(view.container).querySelector('h2').textContent, 'Where working time goes, by annotator');
@@ -404,7 +402,7 @@ domTest('where working time goes: the same list with a switch between annotators
     });
 });
 
-domTest('clicking a row in a list sets the page filter, as on the overview', async () => {
+test('clicking a row in a list sets the page filter, as on the overview', async () => {
     const { history, requests, Page } = openPage({ search: '?view=annotators' });
     await opened(Page, async (view) => {
         const bob = [...view.container.querySelectorAll('.cvat-team-analytics-full-list-row')][1];
@@ -419,7 +417,7 @@ domTest('clicking a row in a list sets the page filter, as on the overview', asy
     });
 });
 
-domTest('the period, the shape switch and the filters still work inside a full view', async () => {
+test('the period, the shape switch and the filters still work inside a full view', async () => {
     const { history, requests, Page } = openPage({ search: '?view=split&rows=projects' });
     await opened(Page, async (view) => {
         await click(button(view.container.querySelector('.cvat-team-analytics-filters'), 'Two weeks'));
@@ -437,7 +435,7 @@ domTest('the period, the shape switch and the filters still work inside a full v
     });
 });
 
-domTest('hotkeys: every hotkey labelled from the viewer keymap with its keys, count and share', async () => {
+test('hotkeys: every hotkey labelled from the viewer keymap with its keys, count and share', async () => {
     const { requests, Page } = openPage({ search: '?view=hotkeys' });
     await opened(Page, async (view) => {
         assert.equal(listRequests(requests).at(-1).get('by'), 'hotkeys');
@@ -462,7 +460,7 @@ function tableHeader(container) {
     return [...container.querySelectorAll('.cvat-team-analytics-full-table thead th')].map((cell) => cell.textContent);
 }
 
-domTest('operations: a table by annotator or by project with a switch between the two', async () => {
+test('operations: a table by annotator or by project with a switch between the two', async () => {
     const { history, Page } = openPage({ search: '?view=operations' });
     await opened(Page, async (view) => {
         assert.equal(fullView(view.container).querySelector('h2').textContent, 'Bounding box operations, by annotator');
@@ -480,7 +478,7 @@ domTest('operations: a table by annotator or by project with a switch between th
     });
 });
 
-domTest('creation methods: a table with each method, Model and all annotator methods', async () => {
+test('creation methods: a table with each method, Model and all annotator methods', async () => {
     const { Page } = openPage({ search: '?view=methods' });
     await opened(Page, async (view) => {
         assert.equal(fullView(view.container).querySelector('h2').textContent, 'How boxes are created, by annotator');
@@ -494,7 +492,7 @@ domTest('creation methods: a table with each method, Model and all annotator met
 
 // --- time and trends -----------------------------------------------------------------------------
 
-domTest('working time over the period: a large chart and every value listed', async () => {
+test('working time over the period: a large chart and every value listed', async () => {
     const { requests, Page } = openPage();
     await opened(Page, async (view) => {
         await click(fullViewButton(view.container, 'cvat-team-analytics-time-chart'));
@@ -508,7 +506,7 @@ domTest('working time over the period: a large chart and every value listed', as
     });
 });
 
-domTest('a trend: a large chart, a legend with whole names and latest values on top, all twelve points', async () => {
+test('a trend: a large chart, a legend with whole names and latest values on top, all twelve points', async () => {
     const { history, Page } = openPage();
     await opened(Page, async (view) => {
         const charts = [...view.container.querySelectorAll('.cvat-team-analytics-trend-chart')];
@@ -533,7 +531,7 @@ domTest('a trend: a large chart, a legend with whole names and latest values on 
     });
 });
 
-domTest('a full view of a period not wholly processed shows no partial figures', async () => {
+test('a full view of a period not wholly processed shows no partial figures', async () => {
     const { Page } = openPage({
         search: '?view=annotators',
         respond: (url) => (url.includes('/list?') ? { body: { ...listAnswer(url).body, processed: false } } : answer(url)),
@@ -544,7 +542,7 @@ domTest('a full view of a period not wholly processed shows no partial figures',
     });
 });
 
-domTest('a trend full view keeps the comparison chosen on the overview', async () => {
+test('a trend full view keeps the comparison chosen on the overview', async () => {
     const { requests, Page } = openPage();
     await opened(Page, async (view) => {
         await click(button(view.container.querySelector('.cvat-team-analytics-trends'), '+ alice'));
@@ -559,7 +557,7 @@ domTest('a trend full view keeps the comparison chosen on the overview', async (
     });
 });
 
-domTest('a list that cannot be updated keeps the previous rows dimmed and says so', async () => {
+test('a list that cannot be updated keeps the previous rows dimmed and says so', async () => {
     let lists = 0;
     const { history, Page } = openPage({
         search: '?view=annotators',
@@ -581,7 +579,7 @@ domTest('a list that cannot be updated keeps the previous rows dimmed and says s
     });
 });
 
-domTest('a project with no working time is left out of the working time list but stays in the tables', async () => {
+test('a project with no working time is left out of the working time list but stays in the tables', async () => {
     const respond = (url) => {
         if (!url.includes('/list?') || !url.includes('by=projects')) return answer(url);
         const body = listAnswer(url).body;
