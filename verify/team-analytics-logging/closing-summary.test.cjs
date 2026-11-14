@@ -89,8 +89,8 @@ test('the summary written as the annotation view closes is in the save it makes 
     const logging = loadSource('cvat-ui/src/utils/team-analytics-logging/index.ts', uiBoundaries(core));
     const view = annotationView(core, job, logging);
     logging.trackInputJob(job);
-    logging.hotkeyUsed('NEXT_FRAME', { repeat: false });
-    logging.hotkeyUsed('NEXT_FRAME', { repeat: true });
+    logging.hotkeyUsed('UNDO', { repeat: false });
+    logging.hotkeyUsed('UNDO', { repeat: false });
 
     await view.unmount();
 
@@ -99,7 +99,7 @@ test('the summary written as the annotation view closes is in the save it makes 
         .map((event) => ({ ...event, payload: event.payload ? JSON.parse(event.payload) : {} }));
     const summaries = sent.filter((event) => event.obj_name === SUMMARY);
     assert.equal(summaries.length, 1, `events POSTed as the view closed: ${JSON.stringify(sent.map((e) => e.scope))}`);
-    assert.deepEqual(summaries[0].payload.hotkeys, { NEXT_FRAME: 2 });
+    assert.deepEqual(summaries[0].payload.hotkeys, { UNDO: 2 });
     assert.deepEqual([summaries[0].project_id, summaries[0].task_id, summaries[0].job_id], [11, 12, 13]);
 });
 
@@ -109,7 +109,7 @@ test('a failing logger at close neither throws nor stops the closing save', asyn
     const logging = loadSource('cvat-ui/src/utils/team-analytics-logging/index.ts', uiBoundaries(core));
     const view = annotationView(core, job, logging);
     logging.trackInputJob(job);
-    logging.hotkeyUsed('NEXT_FRAME', { repeat: false });
+    logging.hotkeyUsed('UNDO', { repeat: false });
     core.logger.log('click:element', { obj_name: 'cvat-header-tasks-button' });
     job.logger.log = () => Promise.reject(new Error('logger broken'));
 
