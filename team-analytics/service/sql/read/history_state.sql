@@ -9,7 +9,7 @@ WITH
     (SELECT count() FROM $events_db.events) AS event_rows,
     (SELECT toDate(min(timestamp)) FROM $events_db.events) AS first_day,
     (SELECT if(count() = 0, NULL, argMax(window_from, data_as_of)) FROM $totals_db.refresh_runs) AS trailing,
-    (SELECT max(computed_to) FROM $totals_db.history_today WHERE toDate(computed_to) = {today:Date}) AS today_done
+    (SELECT max(computed_to) FROM $totals_db.history_today) AS today_done
 SELECT
     if(event_rows > 0, first_day, NULL) AS first_event_day,
     trailing AS trailing_from,

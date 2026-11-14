@@ -171,7 +171,8 @@ class History:
 
     def _process_today(self, today: date, computed_to: datetime, trailing_from: datetime) -> None:
         """Computes today's hours before the refresh window that have not been computed since they left it:
-        from where the step got to today (`computed_to`), or from midnight, up to `trailing_from`."""
+        from where the step got to (`computed_to`), or from today's midnight when that is later, up to
+        `trailing_from`."""
         hours_from = max(_day_start(today), computed_to)
         now = self._clock()
         params = self._refresher.recompute(hours_from, trailing_from)
