@@ -102,18 +102,19 @@ test('each use of a shortcut inside a job counts under its action name, whatever
     assert.deepEqual(page.calls, ['DELETE_OBJECT_STANDARD_WORKSPACE', 'DELETE_OBJECT_STANDARD_WORKSPACE', 'UNDO']);
 });
 
-test('a held frame-navigation key counts every invocation, any other held key once', async (t) => {
+// A held frame-navigation key counts the frames it moves: frame-navigation.test.cjs.
+test('a held key counts once, and a frame-navigation key that moves no frame counts nothing', async (t) => {
     t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-13T10:00:00Z') });
     const page = annotationPage();
     page.logging.trackInputJob(page.job);
-    page.press('f');
+    page.press('f'); // no frame change follows
     for (let i = 0; i < 9; i++) page.press('f', { repeat: true });
     page.press('ctrl+z');
     for (let i = 0; i < 9; i++) page.press('ctrl+z', { repeat: true });
     page.logging.untrackInputJob();
 
     const [summary] = await page.summaries();
-    assert.deepEqual(summary.payload.hotkeys, { NEXT_FRAME: 10, UNDO: 1 });
+    assert.deepEqual(summary.payload.hotkeys, { UNDO: 1 });
     // the shortcut itself still runs on every repeat
     assert.equal(page.calls.length, 20);
 });
@@ -145,9 +146,9 @@ test('one summary at most once a minute, written only when the person acts, and 
     t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-13T10:00:00Z') });
     const page = annotationPage();
     page.logging.trackInputJob(page.job);
-    page.press('f');
+    page.press('ctrl+z');
     t.mock.timers.tick(30_000);
-    page.press('f');
+    page.press('ctrl+z');
     assert.deepEqual(await page.summaries(), [], 'less than a minute since the job opened');
 
     // five idle minutes: nothing is written
@@ -155,10 +156,10 @@ test('one summary at most once a minute, written only when the person acts, and 
     assert.deepEqual(await page.summaries(), []);
 
     page.click('save'); // the person is active again: one summary of what was counted before
-    page.press('f');
+    page.press('ctrl+z');
     page.click('save');
     const [first, ...others] = await page.summaries();
-    assert.deepEqual(first.payload.hotkeys, { NEXT_FRAME: 2 });
+    assert.deepEqual(first.payload.hotkeys, { UNDO: 2 });
     assert.deepEqual(first.payload.mouse, {});
     assert.deepEqual(others, [], 'the next minute has not passed');
     assert.equal(first.scope, 'debug:info');
@@ -169,11 +170,11 @@ test('one summary at most once a minute, written only when the person acts, and 
     const written = await page.summaries();
     assert.equal(written.length, 2);
     const last = written[1];
-    assert.deepEqual(last.payload.hotkeys, { NEXT_FRAME: 1 });
+    assert.deepEqual(last.payload.hotkeys, { UNDO: 1 });
     assert.deepEqual(last.payload.mouse, { header: 2 });
 
     page.logging.untrackInputJob();
-    page.press('f');
+    page.press('ctrl+z');
     page.click('save');
     t.mock.timers.tick(5 * 60_000);
     page.click('save');
