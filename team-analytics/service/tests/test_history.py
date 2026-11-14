@@ -141,6 +141,88 @@ class FillTest(HistoryCase):
         self.assertTrue(history["complete"], history)
         self.assertEqual(history["periods"], {"week": True, "two_weeks": True, "month": True, "year": True})
 
+    def test_with_the_default_window_today_takes_no_step_of_its_own(self):
+        worked = 0
+        for _ in range(40):
+            if self.stack.service.step() >= 1:  # nothing left to do: waiting for the next refresh
+                break
+            worked += 1
+        # the ten-minute refresh, the seven steps of the days before today (see the first test), the daily check
+        self.assertEqual(worked, 9)
+        self.assertEqual(self.alice_ms(period="two_weeks"), 31 * MINUTE)
+
+
+class ShortWindowTest(HistoryCase):
+    """A refresh window shorter than a day leaves hours of today before it. They are processed once the
+    history step has computed them, not before."""
+
+    stack_options = {"refresh_window_hours": 1}  # at 15:20 the ten-minute refresh covers 15:00 onwards
+
+    def week_processed(self, alice_ms: int) -> bool:
+        """Whether the week reads as processed. When it does, Alice's working time in it must be `alice_ms`."""
+        overview = self.overview()
+        if overview["processed"]:
+            rows = overview["by_annotator"]["rows"]
+            self.assertEqual(sum(row["working_time_ms"] for row in rows if row["user_id"] == ALICE[0]), alice_ms)
+        return overview["processed"]
+
+    def test_an_event_from_earlier_today_is_counted_or_its_period_reads_as_not_processed(self):
+        self.stack.add_events([working_time(at("2026-11-13 10:00:00"), 16 * MINUTE, user=ALICE, org=ORG)])
+        processed = []
+        for _ in range(3):
+            self.step()
+            processed.append(self.week_processed(16 * MINUTE))
+        # the ten-minute refresh leaves 10:00 out; the history step computes it; then the daily check
+        self.assertEqual(processed, [False, True, True])
+
+    def test_status_offers_no_period_until_todays_earlier_hours_are_computed(self):
+        self.stack.add_events([working_time(at("2026-11-13 10:00:00"), 16 * MINUTE, user=ALICE, org=ORG)])
+        self.step()  # the ten-minute refresh only
+        history = self.history()
+        self.assertFalse(history["complete"])
+        self.assertEqual(history["ready_from"], "2026-11-13T15:00:00+00:00")
+        self.assertEqual(history["periods"], {"week": False, "two_weeks": False, "month": False, "year": False})
+
+        self.step()
+        history = self.history()
+        self.assertTrue(history["complete"])
+        self.assertEqual(history["periods"], {"week": True, "two_weeks": True, "month": True, "year": True})
+
+    def test_todays_earlier_hours_come_first_then_the_days_before_most_recent_first(self):
+        self.stack.add_events([
+            working_time(at("2026-11-10 10:00:00"), 1 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-12 10:00:00"), 2 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-13 10:00:00"), 4 * MINUTE, user=ALICE, org=ORG),
+        ])
+        ready = []
+        for _ in range(5):
+            self.step()
+            history = self.history()
+            ready.append(None if history["complete"] else history["ready_from"])
+        self.assertEqual(ready, [
+            "2026-11-13T15:00:00+00:00",  # the ten-minute refresh: the current hour
+            "2026-11-13T00:00:00+00:00",  # today's hours before it
+            "2026-11-12T00:00:00+00:00",
+            "2026-11-11T00:00:00+00:00",  # an empty day
+            None,  # the 10th, the first day with events: complete
+        ])
+        self.assertEqual(self.alice_ms(period="two_weeks"), 7 * MINUTE)
+
+    def test_an_hour_that_left_the_window_is_computed_again_before_it_reads_as_processed(self):
+        self.stack.add_events([working_time(at("2026-11-13 15:05:00"), 1 * MINUTE, user=ALICE, org=ORG)])
+        self.settle()
+        self.assertTrue(self.week_processed(1 * MINUTE))
+
+        # in the last minutes of the hour, after its last ten-minute refresh
+        self.stack.add_events([working_time(at("2026-11-13 15:55:00"), 2 * MINUTE, user=ALICE, org=ORG)])
+        self.stack.now = at("2026-11-13 16:05:00")
+        self.step()  # the ten-minute refresh, now from 16:00
+        self.assertFalse(self.week_processed(3 * MINUTE))
+        self.step()  # the history step: the hour from 15:00
+        self.assertTrue(self.week_processed(3 * MINUTE))
+        self.settle()
+        self.assertTrue(self.week_processed(3 * MINUTE))
+
 
 class NothingToProcessTest(HistoryCase):
     def test_before_the_first_refresh_nothing_is_available(self):
