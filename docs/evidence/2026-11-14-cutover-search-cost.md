@@ -154,3 +154,28 @@ daily check, 512 MiB in both.
 - The in-order statement stays when it is not worse in the steady state and fits in every
   state where the aggregate fits. Otherwise each state gets the cheaper form. Where neither
   fits, the figures are recorded and nothing else is designed.
+
+### The first pass, and why a second one follows
+
+Read after the first pass (`summary.txt`): in the steady state with no limit, the in-order
+statement's cold runs took 4.21 to 4.29 s and the aggregate's 4.00 to 4.16 s. Read
+literally, the rule above calls the in-order statement worse there, by 0.05 s. The rule
+cannot tell that apart from the machine: the same aggregate in the same state took 4.18 to
+4.50 s cold under the start limits, which it never came near, so it was "worse" than
+itself by the same rule, and in the early state its warm runs took 3.50 to 3.58 s in one
+block and 4.06 to 4.15 s in the next. Three runs a cell, the aggregate always run first,
+and a host load average of 5 to 8 from other jobs (see below) make blocks drift by up to
+ten times the gap. That is a fault of the rule's design, recorded here, not a result.
+
+So the steady state, the one that decides, is measured once more, with a rule committed
+before that run:
+
+- Steady state only (the stored cutover 2026-11-13 06:00, every record before it untagged),
+  no limit, ten cold and ten warm runs of each statement, the two interleaved and their
+  order alternating from one pair to the next, so drift falls on both alike
+  (`measure.sh replicate`).
+- The in-order statement is worse in the steady state when its median cold run, or its
+  median warm run, is more than 5 % slower than the aggregate's.
+- If it is worse, the shipped search uses the aggregate when a cutover is stored and the
+  in-order read when none is, test first. If not, the in-order statement stays. This run
+  decides; there is no third.

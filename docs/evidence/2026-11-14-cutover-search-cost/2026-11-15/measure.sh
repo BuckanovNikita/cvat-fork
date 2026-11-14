@@ -207,8 +207,41 @@ all() {
     cat "$D/summary.txt" "$D/stops.txt"
 }
 
+replicate() {  # the steady state again, after `all`: no limit, the statements interleaved in alternating order
+    local runs="$D/replicate-runs.txt" n first second cache
+    RUN_ID="r$RUN_ID"
+    note() { say "$*" | tee -a "$runs"; }
+    : > "$runs"
+    ch -q "TRUNCATE TABLE ta_totals.cutover"
+    ch -q "INSERT INTO ta_totals.cutover (at) VALUES ('$STEADY')"
+    for cache in cold warm; do
+        for n in $(seq 10); do
+            if [ $((n % 2)) = 1 ]; then first=aggregate second=in_order; else first=in_order second=aggregate; fi
+            run steady "$first" none "$cache" "$n" "$STEADY.000" keep
+            run steady "$second" none "$cache" "$n" "$STEADY.000" keep
+        done
+    done
+    ch -q "SYSTEM FLUSH LOGS"
+    ch --format PrettyCompactNoEscapesMonoBlock -q "
+        SELECT splitByChar('|', log_comment)[4] AS statement,
+               splitByChar('|', log_comment)[6] AS cache,
+               count() AS runs, countIf(type = 'QueryFinish') AS done,
+               round(quantileExact(0.5)(query_duration_ms) / 1000, 3) AS median_s,
+               round(min(query_duration_ms) / 1000, 2) AS fastest_s,
+               round(max(query_duration_ms) / 1000, 2) AS slowest_s,
+               formatReadableSize(max(memory_usage)) AS peak_memory,
+               min(read_rows) AS read_rows_min, max(read_rows) AS read_rows_max,
+               formatReadableSize(min(ProfileEvents['OSReadBytes'])) AS disk_read_min
+        FROM system.query_log
+        WHERE log_comment LIKE 'tcm|$RUN_ID|%' AND type != 'QueryStart'
+        GROUP BY statement, cache ORDER BY cache, statement" | tee "$D/replicate-summary.txt"
+    echo "host load average after the runs: $(cut -d' ' -f1-3 /proc/loadavg)" | tee -a "$D/replicate-summary.txt"
+}
+STEADY='2026-11-13 06:00:00'  # the steady state's stored cutover, as `all` found it
+
 case "${1:-}" in
     smoke) smoke ;;
     all) all ;;
-    *) echo "usage: NAME=<container> $0 smoke|all" >&2; exit 2 ;;
+    replicate) replicate ;;
+    *) echo "usage: NAME=<container> $0 smoke|all|replicate" >&2; exit 2 ;;
 esac
