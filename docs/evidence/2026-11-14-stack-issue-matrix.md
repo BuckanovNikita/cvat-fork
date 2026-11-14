@@ -4,9 +4,8 @@ Ticket 09 of the defect fixes (plan row 1.3b, the matrix; the bundle half of tha
 ticket 08's). `verify/team-analytics-stack/run.sh` gains `check_issues`, called from `up` after
 the final run, and the subcommands `check-issues` and `check-issue-policies [patched|stock]`.
 
-This file holds part one: what was checked without a running stack. No `up`, `cycle`, `seed`
-or `check-issues` ran; no namespace was created, nothing was installed, built or pulled. The
-live matrix (part two) is listed at the end and has not run.
+Part one (2026-11-14) was checked without a running stack. Part two (2026-11-15) ran the
+matrix on a live stack; its outcome is under "Live outcome" at the end.
 
 ## What was added
 
@@ -132,11 +131,11 @@ another organization may appear.
 
 How the live run judges a row: allowed is a 2xx answer whose effect the owner reads back
 (the new issue or comment exists, `resolved` is true, the edited text is there, the throwaway
-is gone, the view returns the object); refused is a 4xx answer other than 401 after which the
-owner reads nothing changed. Anything else (a 5xx, a 401, a refusal with an effect, a success
-without one) matches neither expectation and fails the row. The status of every row is
-printed and kept, so the refusal codes are on record; they are not pinned, because they
-cannot be known without the server.
+is gone, the view returns the object); refused is a 403 after which the owner reads nothing
+changed. Anything else (another 4xx, a 5xx, a refusal with an effect, a success without one)
+matches neither expectation and fails the row. Until 2026-11-15 a refusal counted on any 4xx
+other than 401; the first live run answered every refusal with 403, and the code was then
+pinned (`REFUSAL_STATUS`).
 
 ## Checks with supplied boundaries
 
@@ -185,14 +184,13 @@ Compose removal (plan row 1.4) decides on them.
 
 ## Not verified here
 
-- Anything on a running CVAT: that the admin call removes the groups, that the server builds
-  the inputs as `opa-cases` does (the input shapes come from reading the stock image's
-  `permissions.py`, not from a captured request), the refusal codes, and the live outcome of
-  every row.
-- The live code path of `issue_matrix.py live` has not run at all; only its syntax and lint
-  are checked.
+- That the server builds the OPA inputs exactly as `opa-cases` does. No request to OPA was
+  captured. The live decisions agree with the inputs on every row, but that does not show the
+  inputs are the same.
+- The patched matrix was run live only on the fork server image. The stock column was checked
+  only against the policy engine; no stock server was run.
 
-## Part two, not run
+## Part two, as planned on 2026-11-14
 
 On a stack started by the orchestrator (`run.sh up`, which ends with `check_issues`, or
 `run.sh check-issues` on a running, seeded stack):
@@ -216,3 +214,94 @@ On a stack started by the orchestrator (`run.sh up`, which ends with `check_issu
 7. The output is captured before `down`, which deletes the state directory holding
    `issue-matrix.json`. The printed matrix and the refusal codes are copied into this file
    under a "Live outcome" heading, with the image tag and chart revision of the stack.
+
+## Live outcome, 2026-11-15
+
+The stack: namespace `cvat-ta-it-<user>` on `docker-desktop`, reached through the stack's
+port-forward at `http://localhost:8490`. Ticket 08 brought it up and checked the served policy
+bundle. Chart release `cvat` is at revision 2, chart `cvat-2.82.0`. The backend server runs
+`cvat/server:v2.82.0-fork-policies` (image `4b38c649ae96`), built from `3dc1a7bc`. The UI and
+service images are those ticket 08 started (`310e9bbc6a47`, `42d4bb9ab97e`).
+
+What ran: `run.sh check-issues`, twice, from this branch merged with `feat/team-analytics-page`
+at `2bd0d1b8`. The shared lock kept them in turn with the other tickets' stack checks. Nothing
+else ran against the stack: no `up`, `down`, `seed` or other ticket's check. Each run's printed
+output and its `issue-matrix.json` were copied out of the state directory as soon as the run
+ended. An earlier run of the same check on this stack by ticket 08's agent is not counted here.
+
+1. Accounts: `seed_users.py` printed the nine accounts of `issue_accounts.json` and the
+   organizations `ta-org-i` and `ta-org-j`.
+2. Global roles: after the seed, each account read itself back as `['user']`.
+   - `ta-admin`'s `PATCH /api/users/<id>` answered `200` for all nine.
+   - For `ta-norole-i`, the body was `{"groups": []}`. The answer carried `groups=[]`, and the
+     account then read itself back through `/api/users/self` as `[]`, with no global role.
+   - `ta-worker-i2` was answered and read back as `['worker']`. The other seven were answered
+     and read back as `['user']`.
+   - Both organizations' memberships read back as in the file, all active.
+3. Layout: J1 (job 23) and JJ (job 25) were assigned to nobody, J2 (job 24) to `ta-norole-i`.
+   I1, I2 and IJ (issues 1, 2, 3) were opened by their organization's owner. Each has its first
+   comment (1, 3, 5) and a reply.
+4. Matrix, first run: all 124 rows were `ok`. The run ended with `issue matrix passed: 124
+   rows` and exit status 0. In this run, refusals were still judged as any 4xx other than 401
+   together with the owner's read-back. The HTTP statuses:
+
+| Account | Organization named | Target | Status: CI VI UI DI CC VC UC DC |
+| --- | --- | --- | --- |
+| `ta-worker-i` | ta-org-i | I1 | 201 200 200 204 201 200 200 204 |
+| `ta-worker-i2` | ta-org-i | I1 | 201 200 200 204 201 200 200 204 |
+| `ta-supervisor-i` | ta-org-i | I1 | 201 200 200 204 201 200 200 204 |
+| `ta-maintainer-i` | ta-org-i | I1 | 201 200 200 204 201 200 200 204 |
+| `ta-norole-i` | ta-org-i | I1 | 403 403 403 403 403 403 403 403 |
+| `ta-norole-i` | ta-org-i | I2 | 403 200 403 403 403 200 403 403 |
+| `ta-worker-j` | ta-org-j | I1 | 403 403 403 403 403 403 403 403 |
+| `ta-worker-j` | ta-org-i | I1 | 403 403 403 403 403 403 403 403 |
+| `ta-worker-i` | ta-org-i | IJ | 403 403 403 403 403 403 403 403 |
+| `ta-maintainer-i` | ta-org-i | IJ | 403 403 403 403 403 403 403 403 |
+| `ta-outsider-i` | ta-org-i | I1 | 403 403 403 403 403 403 403 403 |
+| `ta-outsider-i` | none | I1 | 403 403 403 403 403 403 403 403 |
+
+| Account | Organization named | Fixed issues listed | Fixed comments listed | Status |
+| --- | --- | --- | --- | --- |
+| `ta-worker-i` | ta-org-i | {I1, I2} | {C1, C2} | 200, 200 |
+| `ta-worker-i2` | ta-org-i | {I1, I2} | {C1, C2} | 200, 200 |
+| `ta-supervisor-i` | ta-org-i | {I1, I2} | {C1, C2} | 200, 200 |
+| `ta-maintainer-i` | ta-org-i | {I1, I2} | {C1, C2} | 200, 200 |
+| `ta-norole-i` | ta-org-i | {I2} | {C2} | 200, 200 |
+| `ta-norole-i` | none | {I2} | {C2} | 200, 200 |
+| `ta-worker-j` | ta-org-j | {IJ} | {CJ} | 200, 200 |
+| `ta-worker-j` | ta-org-i | refused | refused | 403, 403 |
+| `ta-worker-j` | none | {} | {} | 200, 200 |
+| `ta-worker-i` | ta-org-j | refused | refused | 403, 403 |
+| `ta-worker-i` | none | {} | {} | 200, 200 |
+| `ta-outsider-i` | ta-org-i | refused | refused | 403, 403 |
+| `ta-outsider-i` | ta-org-j | refused | refused | 403, 403 |
+| `ta-outsider-i` | none | {} | {} | 200, 200 |
+
+   Lists, counted in full:
+   - Named `ta-org-i`, the lists held exactly the two fixed issues and their four comments.
+   - `ta-norole-i`'s lists held one issue (I2) and its two comments, with or without an
+     organization named.
+   - `ta-worker-j`'s list in `ta-org-j` held IJ and its two comments only.
+
+   The owner read back every allowed row's effect. After every refused row, the owner read
+   nothing changed: no new issue or comment, `resolved` still false, the comment text
+   unchanged, the throwaway still there.
+5. Refusal codes: every refusal answered `403`, 62 actions and 8 lists, so there was no other
+   code to explain. The code was then pinned as `REFUSAL_STATUS = 403` in `issue_matrix.py`;
+   any other code now fails its row. `check-issue-policies` was rerun after the change, with
+   the expectations unchanged: patched 124 of 124, stock 124 of 124.
+6. Second run, with the pinned code: it passed `124 rows` with exit status 0. It reused the
+   same job, issue and comment ids, and every row's status and listed set equalled the first
+   run's.
+7. What this shows on the running server:
+   - Unassigned members at or above the floor do every issue and comment action of their
+     organization and list all of it. This holds for the worker with global role `user`, the
+     worker with global role `worker` and the supervisor.
+   - The account with no global role gets stock's result. On the issue it is not staff of it is
+     refused everything. On the one it is staff of, through its job, it may view the issue and
+     comment and nothing else. Its lists hold only those.
+   - The non-member and the other organization's member are refused with 403. This holds in
+     their own organization, when naming this one, and in the personal workspace.
+   - This organization's members, its maintainer included, are refused on the other
+     organization's issue.
+   - No list for one organization showed anything of the other.

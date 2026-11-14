@@ -6,13 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] The stack seeds an organization with an owner, a maintainer, a supervisor, workers, a member with no global role, a non-member and a member of another organization, and an issue with comments on a job none of the workers is assigned to.
-- [ ] Through the real API, an unassigned worker and an unassigned supervisor create, view, update and delete issues and comments of their organization, and list all of them.
-- [ ] The member with no global role gets what stock CVAT gives: it cannot act on issues it is not staff of, and its list holds only its own.
-- [ ] The non-member and the member of another organization are refused, and nothing crosses organizations.
-- [ ] The run judges the matrix itself, pass or fail; it is not left for reading.
+- [x] The stack seeds an organization with an owner, a maintainer, a supervisor, workers, a member with no global role, a non-member and a member of another organization, and an issue with comments on a job none of the workers is assigned to.
+- [x] Through the real API, an unassigned worker and an unassigned supervisor create, view, update and delete issues and comments of their organization, and list all of them.
+- [x] The member with no global role gets what stock CVAT gives: it cannot act on issues it is not staff of, and its list holds only its own.
+- [x] The non-member and the member of another organization are refused, and nothing crosses organizations.
+- [x] The run judges the matrix itself, pass or fail; it is not left for reading.
 - [ ] The existing seed and check scripts are reused where they fit.
-- [ ] The matrix is kept in a dated evidence file.
+- [x] The matrix is kept in a dated evidence file.
 
 ## Comments
 
@@ -61,3 +61,28 @@ on a running seeded stack); what each step must show:
    ticked then on the evidence's reuse section if the reviewer accepts it.
 
 2026-11-14: Merged into `feat/team-analytics-page` as `7f304201`, after tickets 10 (`3aa2b78b`) and 11 (`f273549f`). Conflicts in `verify/team-analytics-stack/run.sh` (usage lines, functions, the end of `up`) and `README.md` (the subcommand list and the description of `up`) kept both sides; in `up`, `check_issues` comes right after `check_final` and ticket 11's `check_access_cases` stays last. On the merged tree `bash -n` on `run.sh` and `py_compile` on `issue_matrix.py` passed, and `run.sh check-issue-policies patched` and `run.sh check-issue-policies stock` each reported 124 of 124 expectations matching and exited 0; no other launcher command was run. The ticket stays open: part two, the live run above, is outstanding. Evidence: `docs/evidence/2026-11-14-stack-issue-matrix.md`.
+
+**2026-11-15, part two (live).** `run.sh check-issues` was run twice on the stack that ticket 08
+brought up, with the server on `cvat/server:v2.82.0-fork-policies` (`4b38c649ae96`). Both runs
+passed all 124 rows, exit 0, with the same ids and the same statuses. Outcome:
+`docs/evidence/2026-11-14-stack-issue-matrix.md`, "Live outcome, 2026-11-15".
+
+- Steps 1 to 3: the nine accounts and both organizations were seeded. `ta-admin`'s
+  `PATCH /api/users/<id>` answered 200 for each. For `ta-norole-i` it returned `groups=[]`, and
+  the account read itself back with no group. J1 and JJ are unassigned and J2 is assigned to
+  `ta-norole-i`. Each fixed issue has a first comment and a reply. Criterion 1 is ticked.
+- Step 4: the worker, the `worker`-role worker and the supervisor did all eight actions on I1
+  and listed everything in `ta-org-i`. The no-role account was refused on I1, could only view
+  I2 and its comment, and listed only I2. The non-member and the other organization's member
+  got 403, and no list crossed organizations. The run judged each row itself. Criteria 2 to 5
+  are ticked.
+- Step 5: all 70 refusals were 403, so there was nothing to explain. The code is now pinned
+  (`REFUSAL_STATUS`). `check-issue-policies` still matches 124 of 124 on both sides.
+- Step 6: the second run passed with the pinned code and the same ids.
+- Step 7: both runs' output and `issue-matrix.json` were copied before anything could delete the
+  state directory, and the matrix with its statuses is in the evidence. Criterion 7 is ticked.
+- Criterion 6 stays unticked: whether this counts as reuse is a judgement, not something a run
+  shows. The run reuses `seed_users.py` and `stack_api.py`. The Compose seed and check scripts
+  are not called; their rows and techniques were carried over instead. That leaves those two
+  scripts with no caller when the Compose files are removed (plan row 1.4). The orchestrator or
+  reviewer decides.
