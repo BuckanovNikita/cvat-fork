@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] First, without changing behaviour: the lease tests run on a supplied clock, the hanging-renewal test no longer depends on how fast the host is, and all of them pass on both ClickHouse versions.
 - [x] Test first: a holder killed in mid-step is overtaken by another replica once the lease has run out. This fails with the thirty-minute lease.
@@ -23,3 +23,5 @@
 2026-11-14: Merged into `feat/team-analytics-page` as `f5d1f6a5`; ticket 17 followed as `8eda4153`. On the tree of both, seam 1 `tests.test_lease tests.test_cutover tests.test_history tests.test_refresh tests.test_shutdown tests.test_status tests.test_entry_point tests.test_concurrency` ran 65 tests on the default image, OK. Evidence: `docs/evidence/2026-11-14-refresh-lease-two-minutes.md`. The independent review stays open.
 
 2026-11-14: The independent review ran after the merge, over tickets 17, 18 and 20 together: no high-severity defect, one medium finding (the cutover search had no enforced limit), and documentation and test findings. Its findings and what the follow-up on branch `fix/refresh-review` did about each are in "Independent review" in `docs/evidence/2026-11-14-refresh-lease-two-minutes.md`. For this ticket: the killed-holder tests now fail when the kill stops nothing, a holder that is alive is shown keeping the lease past its length, work done after losing the lease is shown absent from status and figures, an expiry test runs on the production lease clock, and the lease clock's time is bound through an explicit marker. The fork specification's wording on the takeover after a kill and the stop signal's limit during a long step were corrected. The six guarding tests still fail when their rule is broken.
+
+2026-11-15: The review follow-up was merged into `feat/team-analytics-page` as `3dc1a7bc`, after the ticket itself as `f5d1f6a5`. With the independent review done and recorded, every criterion is met. On the merged tree `prek run --all-files` passed all nine hooks. Evidence: `docs/evidence/2026-11-14-refresh-lease-two-minutes.md`.
