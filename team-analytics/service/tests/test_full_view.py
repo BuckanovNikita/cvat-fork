@@ -255,6 +255,11 @@ class OverviewSplitTest(FullViewCase):
 
     SECTIONS = (("by_annotator", "annotators", "user_id"), ("by_project", "projects", "project_id"))
 
+    def overview(self, **query) -> dict:
+        # a processed period, as the full view reads it (`listed`), so that the overview holds its figures
+        self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))
+        return super().overview(**query)
+
     def test_each_overview_row_carries_the_operations_of_its_row_in_the_full_view(self):
         self.stack.add_events(operations_per_row())
         for shapes in ("all", "bounding_boxes"):
@@ -301,7 +306,6 @@ class OverviewSplitTest(FullViewCase):
                 self.assertEqual(sum(row["operations"]["other"]["time_ms"] for row in hidden), HOUR)
 
     def test_no_rows_give_an_empty_rest_with_zero_parts(self):
-        self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))
         rest = self.overview()["by_annotator"]["rest"]
         self.assertEqual(rest["count"], 0)
         self.assertEqual(rest["operations"]["other"], {"time_ms": 0})
@@ -327,6 +331,6 @@ class OverviewSplitTest(FullViewCase):
         # a pin: the overview withholds whole sections (ticket 14), so the parts go null with their rows
         self.stack.add_events([working_time(at("2026-10-01 10:00:00"), HOUR, user=ALICE, org=ORG)])
         self.stack.refresh()
-        body = self.overview(period="year")
+        body = FullViewCase.overview(self, period="year")  # history not computed: the year is not processed
         self.assertFalse(body["processed"])
         self.assertEqual((body["by_annotator"], body["by_project"]), (None, None))
