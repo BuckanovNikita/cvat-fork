@@ -1,0 +1,33 @@
+{
+  "users": {
+    "ta-owner-i": {"admin": false, "groups": ["user"]},
+    "ta-maintainer-i": {"admin": false, "groups": ["user"]},
+    "ta-supervisor-i": {"admin": false, "groups": ["user"]},
+    "ta-worker-i": {"admin": false, "groups": ["user"]},
+    "ta-worker-i2": {"admin": false, "groups": ["worker"]},
+    "ta-norole-i": {"admin": false, "groups": []},
+    "ta-outsider-i": {"admin": false, "groups": ["user"]},
+    "ta-owner-j": {"admin": false, "groups": ["user"]},
+    "ta-worker-j": {"admin": false, "groups": ["user"]}
+  },
+  "organizations": {
+    "ta-org-i": {
+      "name": "Team Analytics I (issue matrix)",
+      "members": {
+        "ta-owner-i": "owner",
+        "ta-maintainer-i": "maintainer",
+        "ta-supervisor-i": "supervisor",
+        "ta-worker-i": "worker",
+        "ta-worker-i2": "worker",
+        "ta-norole-i": "worker"
+      }
+    },
+    "ta-org-j": {
+      "name": "Team Analytics J (issue matrix, another organization)",
+      "members": {
+        "ta-owner-j": "owner",
+        "ta-worker-j": "worker"
+      }
+    }
+  }
+}

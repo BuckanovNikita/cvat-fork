@@ -24,6 +24,10 @@
 #   run.sh check-render F apply up's render checks to the render in file F
 #   run.sh check-bundle   check a policy bundle (tar.gz) given on stdin as check-policies does,
 #                         e.g. one from verify/policy_bundle.sh from-image IMAGE
+#   run.sh check-issues   the issue and comment matrix through the real API, with its own accounts
+#                         (issue_accounts.json, one without a global role), judged pass or fail
+#   run.sh check-issue-policies [patched|stock]
+#                         the same matrix's expectations against the policy engine, no server
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -500,6 +504,50 @@ check_policies() {
     [ "$rc" = 0 ] || exit "$rc"
 }
 
+# ---------------------------------------------------------------- issue matrix
+
+# The issue and comment matrix (ticket 09) through the real API: seed_users.py loads the accounts
+# and two organizations of issue_accounts.json, issue_matrix.py sets their global roles through
+# the admin API (one has none), lays out jobs, issues and comments, runs every row and judges it.
+# Needs the stack's own seed (ta-admin). Repeatable on the same stack.
+check_issues() {
+    local out="$STATE_DIR/issue-matrix.json"
+    mkdir -p "$STATE_DIR"
+    log "issue matrix: loading the accounts of issue_accounts.json"
+    "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- \
+        env TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_ACCOUNTS="$(cat "$HERE/issue_accounts.json")" \
+        python manage.py shell <"$HERE/seed_users.py" >&2
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/issue_matrix.py" live "$out"
+    log "issue matrix results: $(show_path "$out")"
+}
+
+# The same matrix's expectations against the policy engine, without a server: issue_matrix.py
+# builds the input the stock server would send for every row, OPA (local image, no network) decides,
+# and issue_matrix.py judges. MODE patched reads the import's policies, MODE stock those of
+# STOCK_TAG, as verify/policy_test.sh does; each mode has its own expectation column.
+check_issue_policies() {
+    local mode="${1:-patched}" work p image="${OPA_IMAGE:-openpolicyagent/opa:1.12.2}" stock_tag="${STOCK_TAG:-cvat-v2.82.0-widened}"
+    local policies=(cvat/apps/engine/rules/issues.rego cvat/apps/engine/rules/comments.rego
+        cvat/apps/iam/rules/utils.rego cvat/apps/organizations/rules/organizations.rego)
+    case "$mode" in patched | stock) ;; *) die "usage: run.sh check-issue-policies [patched|stock]" ;; esac
+    work="$(mktemp -d)"
+    for p in "${policies[@]}"; do
+        mkdir -p "$work/policies/$(dirname "$p")"
+        if [ "$mode" = patched ]; then cp "$IMPORT_DIR/$p" "$work/policies/$p"
+        else git -C "$ROOT" show "$stock_tag:$p" >"$work/policies/$p" || { rm -rf "$work"; die "no $p in $stock_tag"; }; fi
+    done
+    python3 -I -B "$HERE/issue_matrix.py" opa-cases >"$work/cases.json"
+    chmod -R a+rX "$work"
+    local rc=0
+    docker run --rm --network none --cpus=1 --memory=256m -v "$work:/work:ro" "$image" \
+        eval --format json --data /work/policies --data /work/cases.json \
+        "$(python3 -I -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import issue_matrix; print(issue_matrix.OPA_QUERY)' "$HERE")" \
+        >"$work/answers.json" || rc=$?
+    [ "$rc" = 0 ] && { python3 -I -B "$HERE/issue_matrix.py" opa-judge "$mode" <"$work/answers.json" || rc=$?; }
+    rm -rf "$work"
+    [ "$rc" = 0 ] || die "issue matrix expectations differ from the $mode policies"
+}
+
 # ---------------------------------------------------------------- teardown
 
 teardown() {
@@ -560,6 +608,7 @@ up() {
     check_event
     check_tracer
     check_final
+    check_issues
     log "up:$BASE_URL (accounts: see README.md, password \$TA_SEED_PASSWORD)"
 }
 
@@ -573,6 +622,8 @@ case "${1:-}" in
     check-final) check_final ;;
     check-policies) check_policies ;;
     check-bundle) check_bundle ;;
+    check-issues) check_issues ;;
+    check-issue-policies) check_issue_policies "${2:-patched}" ;;
     forward) start_port_forward ;;
     status) status ;;
     preflight) preflight; log "preflight passed; nothing was created or pulled" ;;
