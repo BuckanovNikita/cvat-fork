@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from team_analytics.history import load_state
-from team_analytics.periods import BadRequest, hour_floor, midnight, monday, months_before, today, zone
+from team_analytics.periods import BadRequest, decimal, hour_floor, midnight, monday, months_before, today, zone
 from team_analytics.service import Request
 
 PATH = "trends"
@@ -37,10 +37,11 @@ def _choice(request: Request, key: str, options: tuple[str, ...]) -> str:
 def _ids(text: str) -> list[int]:
     ids: list[int] = []
     for part in filter(None, text.split(",")):
-        if not part.isdigit() or len(part) > 19:
+        number = decimal(part, 19)
+        if number is None:
             raise BadRequest("ids must be identifiers")
-        if int(part) not in ids:
-            ids.append(int(part))
+        if number not in ids:
+            ids.append(number)
     if len(ids) > MAX_COMPARED:
         raise BadRequest(f"at most {MAX_COMPARED} ids can be compared")
     return ids

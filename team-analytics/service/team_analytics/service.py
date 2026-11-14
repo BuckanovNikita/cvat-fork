@@ -19,7 +19,7 @@ from team_analytics import endpoints
 from team_analytics.access import Access, Refused, Scope
 from team_analytics.config import Config
 from team_analytics.history import History
-from team_analytics.periods import BadRequest, Span, period_span
+from team_analytics.periods import BadRequest, Span, decimal, period_span
 from team_analytics.refresh import Refresher, RefreshResult
 from team_analytics.sql import Sql
 from team_analytics.worker import Worker
@@ -62,9 +62,10 @@ class Request:
         value = self.query.get(key, "")
         if value == "":
             return None
-        if not value.isdigit() or len(value) > 19:
+        number = decimal(value, 19)
+        if number is None:
             raise BadRequest(f"{key} must be an identifier")
-        return int(value)
+        return number
 
     def shapes(self) -> str:
         """The page's shape switch: `bounding_boxes` or `all` (the default when not given)."""

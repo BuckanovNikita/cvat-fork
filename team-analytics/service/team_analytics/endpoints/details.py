@@ -14,7 +14,7 @@ unprocessed period says `processed: false` and the page withholds it.
 from __future__ import annotations
 
 from team_analytics.history import load_state
-from team_analytics.periods import BadRequest
+from team_analytics.periods import BadRequest, decimal
 from team_analytics.service import Request
 
 PATH = "details"
@@ -27,16 +27,17 @@ MAX_IDS = 5000
 def _page(text: str) -> int:
     if text == "":
         return 1
-    if not text.isdigit() or len(text) > 9 or int(text) < 1:
+    page = decimal(text, 9)
+    if page is None or page < 1:
         raise BadRequest("page must be a positive number")
-    return int(text)
+    return page
 
 
 def _ids(text: str) -> list[int]:
-    parts = [part for part in text.split(",") if part]
-    if len(parts) > MAX_IDS or any(not part.isdigit() or len(part) > 19 for part in parts):
+    ids = [decimal(part, 19) for part in text.split(",") if part]
+    if len(ids) > MAX_IDS or None in ids:
         raise BadRequest("ids must be identifiers")
-    return sorted({int(part) for part in parts})
+    return sorted(set(ids))
 
 
 def _number(value) -> float | None:

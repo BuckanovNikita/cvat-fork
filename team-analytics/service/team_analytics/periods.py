@@ -20,6 +20,16 @@ class BadRequest(Exception):
     pass
 
 
+_DECIMAL = re.compile(r"[0-9]+")
+
+
+def decimal(text: str, max_digits: int) -> int | None:
+    """`text` as a number when it is 1 to `max_digits` ASCII decimal digits, else None.
+
+    Query values are checked with this, not `str.isdigit()`, which also accepts other Unicode digits."""
+    return int(text) if len(text) <= max_digits and _DECIMAL.fullmatch(text) else None
+
+
 @dataclass(frozen=True)
 class Span:
     start: datetime  # inclusive, UTC, whole hour
@@ -88,13 +98,13 @@ def _ending_today(name: str, first_day: Callable[[date], date], unit: str = "day
     return build
 
 
-_MONTH = re.compile(r"^(\d{4})-(\d{2})$")
+_MONTH = re.compile(r"([0-9]{4})-([0-9]{2})")
 
 
 def _month(now: datetime, tz: ZoneInfo, tz_name: str, month: str | None) -> Span:
     current = today(now, tz)
     if month:
-        match = _MONTH.match(month)
+        match = _MONTH.fullmatch(month)
         # ClickHouse dates start in 1970, so no earlier month can hold figures
         if not match or not 1 <= int(match.group(2)) <= 12 or int(match.group(1)) < 1970:
             raise BadRequest(f"not a month (YYYY-MM): {month}")
