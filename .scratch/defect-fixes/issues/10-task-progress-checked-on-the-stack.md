@@ -4,7 +4,7 @@
 
 **Blocked by:** 08 (The stack runs on the fork server image and the in-tree chart).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The stack seeds tasks that cover every job stage and state, as the Compose seed did.
 - [x] The browser check of the tasks list runs against the stack with the fork's UI image and passes.
@@ -87,3 +87,4 @@ node suite covers it with the API mocked.
     card's edge and the bar is not visible. That is the UI's layout with twelve buckets; it
     is outside this ticket.
   - Not covered by any live run: a "not available" bucket.
+- 2026-11-15: Part two merged into `feat/team-analytics-page` as `07988385`, with no conflict. On the merged tree `bash -n` on `run.sh` passed; no launcher command was run by the merger. All five criteria were ticked from live runs; the ticket is resolved. Evidence: `docs/evidence/2026-11-14-task-progress-on-stack.md`.
