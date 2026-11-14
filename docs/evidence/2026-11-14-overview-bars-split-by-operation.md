@@ -35,16 +35,20 @@ only in the full view. This file records what was changed and what was run.
 Seam 1 (`verify/team_analytics_service.sh`, default ClickHouse image
 `cvat/clickhouse:23.12.2-debian-11-r0`):
 
-- Red: `tests.test_full_view.OverviewSplitTest` against the unchanged service
-  (`35f820d` with the new tests), run on a frozen copy of the tree. Rows, rest
-  and legacy failed on the missing keys (`KeyError: 'operations'`,
-  `KeyError: 'legacy'`). Two of the tests also read the overview before its
-  period was processed (`None` sections). That was a fault in the tests, fixed
-  before the green run by processing the period before the overview read, as
-  `listed` does. The test that a period not fully processed carries no parts
-  passed before the change: it is a pin on ticket 14's behaviour, not a
-  red-to-green test.
-- First green run, on the service change (`bb9f18a`), over the modules that
+- First red run: `tests.test_full_view.OverviewSplitTest` against the unchanged
+  service (`35f820d` with the first version of the tests), on a frozen copy.
+  Some subtests failed on the missing keys. The `shapes='all'` subtests and
+  the rest test failed instead on `None` sections: those tests read the
+  overview before its period was processed, which was a fault in the tests.
+  It was fixed by processing the period before every overview read in the
+  class, as `listed` does.
+- Red, with the corrected tests (as committed in `37350e0`) against the
+  `35f820d` service, on a frozen copy: every subtest of the rows, rest, empty
+  rest and legacy tests failed on the missing keys (8 times
+  `KeyError: 'operations'`, once `KeyError: 'legacy'`). The test that a period
+  not fully processed carries no parts passed: it pins ticket 14's behaviour
+  and is not a red-to-green test.
+- First green run, on the service and page changes (`e232489`, `bb9f18a`), over the modules that
   read the overview or the full view (`test_access`, `test_concurrency`,
   `test_cutover`, `test_details_table`, `test_entry_point`, `test_full_view`,
   `test_history`, `test_keyboard_mouse`, `test_model_saved_boxes`,
@@ -55,7 +59,11 @@ Seam 1 (`verify/team_analytics_service.sh`, default ClickHouse image
   `test_working_time`, `test_projects_filters` and `test_history` already were.
 - Green: `test_full_view` and `test_entry_point` again on the merged tree
   (`e28b022`, with `feat/team-analytics-page` at `a423f82` merged, which
-  touched neither the service nor the page): all passed.
+  touched neither the service nor the page): all passed. The other modules
+  that read the overview, and the trends (`test_bounding_boxes`,
+  `test_class_change`, `test_creation_methods`, `test_http`, `test_isolation`,
+  `test_operations`, `test_query_values`, `test_trends`), on the same tree:
+  all passed.
 
 Seam 3 (`node --test verify/team_analytics_page.cjs`):
 
