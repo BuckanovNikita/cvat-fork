@@ -74,13 +74,12 @@ function add(counts: Record<string, number>, name: string): void {
     counts[name] = (counts[name] ?? 0) + 1;
 }
 
-function write(): void {
-    if (job && counted()) {
-        logRecord(job, RECORD.inputSummary, { hotkeys, mouse });
-    }
+function write(): Promise<void> {
+    const logged = job && counted() ? logRecord(job, RECORD.inputSummary, { hotkeys, mouse }) : Promise.resolve();
     hotkeys = {};
     mouse = {};
     lastWritten = Date.now();
+    return logged;
 }
 
 // The person acts now: a summary is due when a minute has passed since the last one.
@@ -115,11 +114,14 @@ export function trackInputJob(next: LoggingJob | null | undefined): void {
     });
 }
 
-export function untrackInputJob(): void {
-    guarded(undefined, () => {
-        if (job) write();
+// The returned promise settles (never rejects) once the logger holds the last summary: the annotation
+// view saves the logs after it, so the summary leaves with the closing save.
+export function untrackInputJob(): Promise<void> {
+    return guarded(Promise.resolve(), () => {
+        const logged = job ? write() : Promise.resolve();
         job = null;
         resetInputMethod();
+        return logged;
     });
 }
 

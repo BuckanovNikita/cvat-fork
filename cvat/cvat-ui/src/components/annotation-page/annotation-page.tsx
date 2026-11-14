@@ -60,8 +60,7 @@ export default function AnnotationPageComponent(props: Props): JSX.Element {
         }
 
         return () => {
-            untrackInputJob();
-            saveLogs();
+            untrackInputJob().then(saveLogs);
             closeJob();
             EventRecorder.logger = null;
 
