@@ -64,6 +64,12 @@ Seam 1 (`verify/team_analytics_service.sh`, default ClickHouse image
   `test_class_change`, `test_creation_methods`, `test_http`, `test_isolation`,
   `test_operations`, `test_query_values`, `test_trends`), on the same tree:
   all passed.
+- After a second merge of `feat/team-analytics-page` (`0b4c662`, with the
+  review follow-up of tickets 14 to 16 that reads the history state before any
+  figure; the only conflict was in `endpoints/list.py`, resolved by keeping both
+  changes), `test_full_view`, `test_entry_point`, `test_history`,
+  `test_working_time`, `test_projects_filters` and `test_refresh` were run
+  again: all passed.
 
 Seam 3 (`node --test verify/team_analytics_page.cjs`):
 
@@ -91,8 +97,9 @@ what the check shows. Default ClickHouse image.
 ESLint, stylelint and `tsc -p cvat/cvat-ui/tsconfig.json` (section 4 of
 `docs/upstream-upgrade.md`) passed on every UI file touched, in the worktree
 (the type check reads the workspace packages from the main checkout).
-`ruff check team-analytics/service` passed. `prek run --all-files` passed on the
-merged tree, with every hook run and none skipped.
+`ruff check team-analytics/service` passed. `prek run --all-files` passed on
+`0b4c662`, the second merge, with every hook run and none skipped. Its page
+suite hook covers seam 3 on that tree.
 
 ## Not verified
 
