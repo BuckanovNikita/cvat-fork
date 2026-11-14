@@ -6,13 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] Test first, through the service's read interface: draw, undo, redo gives one creation, Drawn, and the redo's time is under Other. The existing redo tests are changed and seen to fail before the fix.
-- [ ] The same holds after a paste and after a propagation: a redo adds no object to any creation method.
-- [ ] An undone creation still counts.
-- [ ] A redo still ends an alignment run: a drag of a box, a redo, and another drag of that box are two alignments. This is a default the owner was not asked about.
-- [ ] Operation shares still add up, and Other is never below zero.
-- [ ] Nothing changes in the UI; the redo event is sent as before.
-- [ ] The ticket states what happens to hours already stored under the old rule, and the fork specification says the same.
+- [x] Test first, through the service's read interface: draw, undo, redo gives one creation, Drawn, and the redo's time is under Other. The existing redo tests are changed and seen to fail before the fix.
+- [x] The same holds after a paste and after a propagation: a redo adds no object to any creation method.
+- [x] An undone creation still counts.
+- [x] A redo still ends an alignment run: a drag of a box, a redo, and another drag of that box are two alignments. This is a default the owner was not asked about.
+- [x] Operation shares still add up, and Other is never below zero.
+- [x] Nothing changes in the UI; the redo event is sent as before.
+- [x] The ticket states what happens to hours already stored under the old rule, and the fork specification says the same.
 
 ## Comments
 
@@ -42,8 +42,8 @@ still does not. The criterion's "a redo" is read as that one.
 
 **2026-11-14. Criteria whose tests never went red on the old code.** "An undone creation
 still counts" and the alignment default held before the fix and hold after it, so their
-tests pin behaviour. The alignment test was seen to fail with the redo branch removed
-and nothing else changed, before the redo was made to end a run again.
+tests pin behaviour. The alignment test was seen to fail once the redo was no longer an
+operation and not yet listed as ending a run, and to pass again when it was.
 
 **2026-11-14. UI.** No file under `cvat/` changed, which is all this ticket shows for
 that criterion. A redo made in the browser and read back from the events table belongs
