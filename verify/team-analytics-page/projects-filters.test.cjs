@@ -77,7 +77,8 @@ test('each chart shows its rows and one line with the count and total of the res
 test('each chart carries its legend inside the card', () => {
     const html = render(View, ready());
     for (const name of ['working-time-by-project', 'working-time-by-annotator']) {
-        assert.match(card(html, name), /cvat-team-analytics-legend[^>]*>.*Working time/);
+        // the split's colours (split-bars.test.cjs)
+        assert.match(card(html, name), /cvat-team-analytics-legend[^>]*>.*Creation.*Other/);
     }
 });
 

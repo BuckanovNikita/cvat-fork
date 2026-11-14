@@ -11,6 +11,8 @@ export interface AnnotatorWorkingTime {
     user_id: number;
     user_name: string;
     working_time_ms: number;
+    // the row's operation parts, equal to its row in the full view
+    operations?: RowOperations;
 }
 
 // The period a response covers, as the service echoes it (days are the viewer's calendar days).
@@ -125,12 +127,23 @@ export interface SavedBoxes {
 export interface ProjectWorkingTime {
     project_id: number; // 0 = No project
     working_time_ms: number;
+    // the row's operation parts, equal to its row in the full view
+    operations?: RowOperations;
 }
 
-// the rows a chart does not show: how many and their working time
+// the rows a chart does not show: how many, their working time and their operation parts added up
 export interface Rest {
     count: number;
     working_time_ms: number;
+    operations?: RowOperations;
+}
+
+// The rows of working time by annotator or by project: the largest and the rest. `legacy` is the full view's flag
+// for these rows (the overview's own `operations.legacy` applies both filters, these rows only the other one).
+export interface WorkingTimeRows<Row> {
+    legacy?: boolean;
+    rows: Row[];
+    rest?: Rest;
 }
 
 // the project and annotator filters the figures were read with (project 0 = No project)
@@ -147,10 +160,10 @@ export type ProjectNames = Record<number, string>;
 export interface Overview {
     period?: Period;
     // the eight largest rows (project filter applied) and the rest
-    by_annotator: { rows: AnnotatorWorkingTime[]; rest?: Rest } | null;
+    by_annotator: WorkingTimeRows<AnnotatorWorkingTime> | null;
     time_series?: TimeSeries | null;
     // the eight largest rows (annotator filter applied) and the rest
-    by_project?: { rows: ProjectWorkingTime[]; rest: Rest } | null;
+    by_project?: WorkingTimeRows<ProjectWorkingTime> | null;
     // active annotators within the scope and both filters, and the projects they worked in
     headline?: { annotators: number; projects: number } | null;
     filters?: AppliedFilters;
@@ -410,6 +423,12 @@ export interface ListFigures {
     average_ms: number | null;
 }
 
+// A row's working time split by operation: each operation's figures and Other (working time less them, never
+// below zero)
+export type RowOperations = Record<'creation' | 'alignment' | 'class_change' | 'deletion', ListFigures> & {
+    other: { time_ms: number };
+};
+
 // One annotator or project of a full view
 export interface ListRow {
     id: number; // project 0 = No project
@@ -417,9 +436,7 @@ export interface ListRow {
     working_time_ms: number;
     // of all rows' working time; null when there is none
     share: number | null;
-    operations: Record<'creation' | 'alignment' | 'class_change' | 'deletion', ListFigures> & {
-        other: { time_ms: number };
-    };
+    operations: RowOperations;
     methods: Record<CreationMethodName, ListFigures>;
     // objects no person drew: detector boxes, and for a project also what technical accounts saved
     model: number;

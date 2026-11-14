@@ -4,16 +4,10 @@
 
 import React, { useState } from 'react';
 
+import { BarPart } from './operations';
+
 // The toolbar, list and table of a full view: every row, searchable and sortable by value or by name, with
 // names shown whole. Rank and share belong to the row (given over all rows), so a found row keeps them.
-
-export interface BarPart {
-    key: string;
-    color: string;
-    // relative size of the part within the row's bar
-    grow: number;
-    title: string;
-}
 
 export interface FullListRow {
     key: string;
