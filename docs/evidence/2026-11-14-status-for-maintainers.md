@@ -147,7 +147,9 @@ Findings and what was done (follow-up on branch `fix/reads-review`):
    `tests.test_trends.ProcessedTest.test_a_candidate_has_working_time_only_from_processed_buckets`
    failed before the fix on `[(12, 7200000), (11, 3600000)]` (Bob ranked first
    on two unprocessed hours) where `[(11, None), (12, None)]` was expected, and
-   passes after it. The withholding tests of all four endpoints now assert that
+   passes after it. The same test then steps history until the 3rd is
+   computed while its week is still unprocessed: Alice's five hours there are
+   stored and must count for nothing. The withholding tests of all four endpoints now assert that
    every key outside the stated envelope is null (per point for the trends,
    per candidate while no bucket is processed), with the envelopes written as
    literals in the tests.
@@ -175,7 +177,13 @@ Findings and what was done (follow-up on branch `fix/reads-review`):
    kept outside the repository, beside the run logs. The history step writes
    the totals, then marks the hours (`hour_versions`), then records the day
    (`history_days`), so a state read first never covers hours whose figures
-   are not yet visible.
+   are not yet visible. Read, not run: a day the daily check marks for
+   computing again keeps its `history_days` row and stays processed, and its
+   hours switch from one complete version to the next when the recompute marks
+   them; a request whose figure reads straddle that mark can mix the two
+   versions across its queries. That was so before this change and is not a
+   partial figure; whether a single query can see rows that
+   `drop_superseded` removes while it runs was not checked.
 5. Documents did not say what the code does (read). `docs/fork-specification.md`
    now says that status depends on who asks and what each group gets, the
    technical-account row of the details table by project, and each endpoint's
@@ -222,12 +230,24 @@ Seam 1, `verify/team_analytics_service.sh`, in Docker, on the default image
   against a copy of the tree at `a423f824` and passed after the fix, run
   together with `tests.test_history`, `tests.test_full_view` and
   `tests.test_details_table`, all of which pass.
+- The candidates' date condition in `read/trends_candidates.sql` was checked
+  against a temporary change that dropped it: the candidate test failed at
+  the state where the 3rd is computed and its week is not processed, on
+  `[(11, 21600000), (12, 7200000)]`; the change was not kept.
 - `status` was not reordered: it reads the history state once and no figure.
+- The whole suite at `2077fb36`: 304 tests, one error,
+  `tests.test_entry_point`, whose poll of the running service read
+  `by_annotator.rows` from an answer that was not yet processed (null
+  section). It never tolerated such an answer; reading the state first makes
+  one more likely right after the service starts. The poll now treats a null
+  section as "not yet"; `tests.test_entry_point` and
+  `tests.test_trends` then pass.
 
 Seam 3, `node --test verify/team_analytics_page.cjs`: 217 pass, 0 skipped
 (the page changed only in a type and a comment). ESLint and the type check
 pass on the two UI files touched (`service.ts`, `team-analytics-view.tsx`).
 
-Not verified in the follow-up: the whole seam 1 suite, and the second
-ClickHouse image (left to the merger's run); the race through a public
-boundary (none allows it); a second independent review of the follow-up.
+Not verified in the follow-up: the whole seam 1 suite after the repair of
+`tests.test_entry_point`, and the second ClickHouse image (left to the
+merger's runs); the race through a public boundary (none allows it); a
+second independent review of the follow-up.
