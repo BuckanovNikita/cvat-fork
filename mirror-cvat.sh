@@ -5,8 +5,8 @@
 # from.
 #
 # The new mirror is built beside the existing one, in .cvat-mirror.git.new, and replaces it
-# only after the clone and the filter both succeeded. A failed run leaves the existing
-# mirror as it was.
+# only after the clone and the filter both succeeded and the result holds a tag and the
+# paths in REQUIRED below. A failed or refused run leaves the existing mirror as it was.
 #
 #   ./mirror-cvat.sh                 # refresh the mirror from upstream
 #   git subtree pull --prefix cvat .cvat-mirror.git <tag> --squash
@@ -51,6 +51,34 @@ git -C "$NEW" for-each-ref --format='%(refname)' refs/ |
     while read -r ref; do git -C "$NEW" update-ref -d "$ref"; done
 
 (cd "$NEW" && python3 "$ROOT/tools/git-filter-repo" --force "${PATHS[@]/#/--path=}")
+
+# A run that succeeds on the wrong source (another repository, a moved layout) must not
+# replace the mirror: the filtered result holds at least one tag, and upstream's default
+# branch holds each of these paths. When upstream moves one of them, update PATHS and this
+# list together.
+REQUIRED=(
+    package.json yarn.lock cvat-ui/package.json cvat-core/package.json
+    components/analytics helm-chart/Chart.yaml
+    cvat/apps/engine/rules/issues.rego cvat/apps/engine/rules/comments.rego
+    cvat/apps/iam/rules/utils.rego cvat/apps/organizations/rules/organizations.rego
+)
+missing=0
+if [ -z "$(git -C "$NEW" tag)" ]; then
+    echo "the filtered mirror holds no tag" >&2
+    missing=1
+fi
+if ! git -C "$NEW" rev-parse -q --verify 'HEAD^{commit}' >/dev/null; then
+    echo "the filtered mirror has no default branch" >&2
+    missing=1
+else
+    for p in "${REQUIRED[@]}"; do
+        git -C "$NEW" cat-file -e "HEAD:$p" 2>/dev/null || { echo "the filtered mirror lacks $p" >&2; missing=1; }
+    done
+fi
+if [ "$missing" != 0 ]; then
+    echo "not replacing $(basename "$MIRROR"): the source does not look like CVAT's (UPSTREAM)" >&2
+    exit 1
+fi
 
 # Swap. If the new mirror cannot take the name, the previous one gets it back.
 if [ -e "$MIRROR" ]; then mv "$MIRROR" "$OLD"; fi
