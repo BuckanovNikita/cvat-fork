@@ -1,7 +1,8 @@
 """Processed history: the fill of older days, the daily recount and late events, as status and figures show them.
 
 The service works in steps (`Service.step()`), as its loop runs them: the ten-minute refresh of recent hours
-when it is due, else the daily check when it is due, else one day of history.
+when it is due, else one day of history (today's hours before a refresh window shorter than a day first), else
+the daily check when it is due.
 """
 
 import json
@@ -14,6 +15,8 @@ import traceback
 from datetime import UTC, datetime, timedelta
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+from team_analytics.http_server import make_server
 
 from tests.support import NOW, FakeUser, StackTestCase, at, working_time
 from tests.test_entry_point import SERVICE_DIR, free_port
@@ -244,6 +247,62 @@ class ShortWindowTest(HistoryCase):
         self.assertTrue(self.week_processed(3 * MINUTE))
         self.settle()
         self.assertTrue(self.week_processed(3 * MINUTE))
+
+    def test_across_midnight_yesterday_reads_as_processed_only_once_it_is_computed_as_a_whole(self):
+        self.stack.now = at("2026-11-13 23:45:00")
+        self.stack.add_events([
+            working_time(at("2026-11-13 10:00:00"), 16 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-13 23:30:00"), 2 * MINUTE, user=ALICE, org=ORG),
+        ])
+        self.settle()
+        self.assertTrue(self.week_processed(18 * MINUTE))
+
+        # a record of the day's last minutes; then midnight passes
+        self.stack.add_events([working_time(at("2026-11-13 23:58:00"), 1 * MINUTE, user=ALICE, org=ORG)])
+        self.stack.now = at("2026-11-14 00:05:00")
+        self.step()  # the ten-minute refresh, now from 00:00
+        self.assertFalse(self.week_processed(19 * MINUTE))
+        self.step()  # the 13th, computed as a whole
+        self.assertTrue(self.week_processed(19 * MINUTE))
+        self.assertGreaterEqual(self.stack.service.step(), 1, "the service kept working after midnight")
+        self.assertTrue(self.history()["complete"])
+
+    def test_two_replicas_whose_clocks_straddle_midnight_differ_only_in_caution(self):
+        """The replica that reads a period as processed is right; the other one only waits, and both agree once the
+        day before midnight has been computed as a whole."""
+        self.stack.now = at("2026-11-13 23:50:00")
+        self.stack.add_events([
+            working_time(at("2026-11-13 10:00:00"), 16 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-13 23:20:00"), 2 * MINUTE, user=ALICE, org=ORG),
+        ])
+        self.settle()
+        ahead = self.stack.new_service(clock=lambda: at("2026-11-14 00:05:00"))
+        behind = self.stack.new_service(clock=lambda: at("2026-11-13 23:59:00"))
+        addresses = {"ahead": self.serve(ahead), "behind": self.serve(behind)}
+
+        def processed() -> dict[str, bool]:
+            """Whether each replica reads the week as processed; where it does, with all 18 minutes."""
+            seen = {}
+            for name, address in addresses.items():
+                self.stack.url = address
+                seen[name] = self.week_processed(18 * MINUTE)
+            return seen
+
+        self.assertEqual(processed(), {"ahead": False, "behind": True})
+        self.assertTrue(ahead.refresh().ran)  # the window from 00:00
+        self.assertEqual(processed(), {"ahead": False, "behind": False})
+        self.assertEqual(behind.step(), 0)  # still the 13th for it: the hours before the window
+        self.assertEqual(processed(), {"ahead": False, "behind": True})
+        self.assertEqual(ahead.step(), 0)  # the 13th, computed as a whole
+        self.assertEqual(processed(), {"ahead": True, "behind": True})
+
+    def serve(self, service) -> str:
+        """Serves another replica over HTTP; returns its address."""
+        http = make_server(service, "127.0.0.1", 0)
+        threading.Thread(target=http.serve_forever, daemon=True).start()
+        self.addCleanup(http.server_close)
+        self.addCleanup(http.shutdown)
+        return f"http://127.0.0.1:{http.server_address[1]}"
 
 
 class NothingToProcessTest(HistoryCase):
