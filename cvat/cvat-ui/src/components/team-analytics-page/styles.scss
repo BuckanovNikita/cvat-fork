@@ -8,6 +8,12 @@
     height: 100%;
     overflow: auto;
     padding: $grid-unit-size * 2 $grid-unit-size * 4;
+    // CVAT keeps the app at least 1024 px wide (#root, header); in a narrower window the page
+    // itself fits the window and stays in view, so its cards stack instead of scrolling with it
+    box-sizing: border-box;
+    max-width: 100vw;
+    position: sticky;
+    left: 0;
 }
 
 .cvat-team-analytics-header {
