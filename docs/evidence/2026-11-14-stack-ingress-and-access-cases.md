@@ -207,9 +207,52 @@ when the readers agree on a later attempt. When they never agree it returns the
 differing pair after 4 attempts. In the live run, every pair matched on the first
 read, so the retry was not used.
 
+## Teardown, 2026-11-15
+
+The live work of tickets 08 to 11, 25 and 26 was finished. The launcher was run from
+branch `ticket/11-ingress-access` at `da7aaa28`, with the integration branch at
+`273b266e` merged in. Times are UTC.
+
+Before `down` (23:11):
+
+- `run.sh status` reported namespace `cvat-ta-it-<user>` as Active and a running
+  port-forward. The namespace was created 21:18 and held 14 pods.
+- The namespace held Ingress `team-analytics`, class `nginx`, host
+  `cvat-ta-it-<user>.k8s.docker.internal`.
+- It had five Bound claims: `cvat-backend-data`, `cvat-kvrocks-data-cvat-kvrocks-0`,
+  `data-cvat-clickhouse-shard0-0`, `data-cvat-postgresql-0` and
+  `redis-data-cvat-redis-master-0`. Each was bound to its own persistent volume of
+  the default class, with reclaim policy `Delete`.
+- Host port 8490 was held by the launcher's `kubectl port-forward` to `svc/ta-proxy`.
+- The launcher's state directory for the namespace held the run files, including the
+  rendered `ingress.yaml` and the port-forward state.
+
+`run.sh down` (23:11 to 23:12, exit 0) printed:
+
+- `stopping port-forward`
+- `deleting namespace cvat-ta-it-<user> (with every volume claim in it)`
+- `nothing of cvat-ta-it-<user> remains`
+
+`run.sh check-ingress-gone` (exit 0) printed: `no Ingress names
+cvat-ta-it-<user>.k8s.docker.internal; the controller answers 404 for it`.
+
+Looked at after `down` (23:12). Nothing was deleted by hand.
+
+- The namespace is not found.
+- No namespace carries the stack's `managed-by` label.
+- No Ingress anywhere names the host. Only k8s-infra's three ClearML Ingresses remain.
+- None of the five persistent volumes exists, and no persistent volume has a claim in
+  the namespace.
+- The port-forward process is gone. Nothing listens on 8490 in WSL, nor on Windows
+  (`Get-NetTCPConnection`).
+- The state directory for the namespace is absent.
+
+So `down` left nothing behind of what the stack created: in the cluster (namespace,
+Ingress, claims, volumes) and on the host (port-forward, host port, state directory).
+Not looked at: the empty per-claim parent directories that the `hostpath`
+provisioner leaves inside Docker Desktop's virtual disk (k8s-infra, "Storage"). They
+are not visible from the cluster API.
+
 ## Unverified
 
-- Criterion 8, that teardown removes the Ingress with the namespace. The stack stays
-  up for further tickets, so `run.sh down` followed by `run.sh check-ingress-gone`
-  runs at the end of the live work.
 - The retry in `same_reads` has not run live.
