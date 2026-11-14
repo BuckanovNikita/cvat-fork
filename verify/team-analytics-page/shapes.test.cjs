@@ -50,7 +50,8 @@ function ready(figures, shown = WEEK) {
 function section(html, className) {
     const match = html.match(new RegExp(`<section[^>]*${className}[^>]*>(.*?)</section>`));
     assert.ok(match, `${className} is shown`);
-    return text(match[1]);
+    // the card's Full view button (full-view.test.cjs) is not part of its wording
+    return text(match[1].replace(/<button[^>]*cvat-team-analytics-full-view-button.*?<\/button>/g, ''));
 }
 
 function switchButtons(html) {

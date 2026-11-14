@@ -1,0 +1,342 @@
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+@import 'base';
+
+$full-control-border: $player-slider-color;
+$full-row-line: #ececec;
+
+// Full view button in a chart's header (full-view-button.tsx) and a chart's show all control
+.cvat-team-analytics-full-view-button,
+.cvat-team-analytics-show-all,
+.cvat-team-analytics-full-back {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 $grid-unit-size * 1.25;
+    border: 1px solid $full-control-border;
+    border-radius: $border-radius-base;
+    background: $background-color-1;
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.cvat-team-analytics-card-header .cvat-team-analytics-full-view-button {
+    margin-left: auto;
+}
+
+.cvat-team-analytics-trend-chart figcaption .cvat-team-analytics-full-view-button {
+    align-self: flex-start;
+    margin-top: $grid-unit-size * 0.5;
+}
+
+.cvat-team-analytics-show-all {
+    margin-top: $grid-unit-size;
+    min-height: 36px;
+    font-size: 14px;
+}
+
+// One chart alone on the page (full-view.tsx)
+.cvat-team-analytics-full-view {
+    display: flex;
+    flex-direction: column;
+    gap: $grid-unit-size * 2;
+    padding: $grid-unit-size * 2 $grid-unit-size * 2.5;
+    border-radius: $border-radius-base;
+    background: $background-color-1;
+}
+
+.cvat-team-analytics-full .cvat-team-analytics-legacy-notice {
+    margin-bottom: $grid-unit-size * 2;
+}
+
+.cvat-team-analytics-full-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $grid-unit-size $grid-unit-size * 2;
+}
+
+.cvat-team-analytics-full-back {
+    min-height: 40px;
+    font-size: 14px;
+}
+
+.cvat-team-analytics-full-heading {
+    flex: 1 1 320px;
+    min-width: 0;
+}
+
+.cvat-team-analytics-full-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.cvat-team-analytics-full-subtitle {
+    color: $text-color-secondary;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.cvat-team-analytics-full-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $grid-unit-size $grid-unit-size * 1.75;
+}
+
+.cvat-team-analytics-full-search {
+    width: 260px;
+    max-width: 100%;
+    min-height: 40px;
+    padding: 0 $grid-unit-size * 1.5;
+    border: 1px solid $full-control-border;
+    border-radius: $border-radius-base;
+    font: inherit;
+}
+
+.cvat-team-analytics-full-segments {
+    display: inline-flex;
+    gap: 2px;
+    padding: 4px;
+    border-radius: $border-radius-base;
+    background: $border-color-1;
+
+    button {
+        min-height: 32px;
+        padding: 0 $grid-unit-size * 2;
+        border: 0;
+        border-radius: $border-radius-base;
+        background: transparent;
+        font: inherit;
+        cursor: pointer;
+    }
+
+    button[aria-pressed='true'] {
+        background: $background-color-1;
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    }
+}
+
+.cvat-team-analytics-full-summary {
+    margin-left: auto;
+    color: $text-color-secondary;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+.cvat-team-analytics-full-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $grid-unit-size $grid-unit-size * 2.5;
+    padding: $grid-unit-size * 1.25 $grid-unit-size * 1.5;
+    border: 1px solid $border-color-1;
+    border-radius: $border-radius-base;
+    font-size: 13px;
+}
+
+.cvat-team-analytics-full-legend-label,
+.cvat-team-analytics-full-legend-hint {
+    color: $text-color-secondary;
+}
+
+.cvat-team-analytics-full-legend-hint {
+    margin-left: auto;
+}
+
+.cvat-team-analytics-full-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+// wide lists and tables scroll sideways on a narrow window
+.cvat-team-analytics-full-scroll {
+    overflow-x: auto;
+}
+
+.cvat-team-analytics-full-list {
+    min-width: 720px;
+    font-variant-numeric: tabular-nums;
+}
+
+.cvat-team-analytics-full-list-header,
+.cvat-team-analytics-full-list-row {
+    display: grid;
+    grid-template-columns: 40px minmax(220px, 1.7fr) minmax(180px, 3fr) 104px 56px;
+    gap: 0 $grid-unit-size * 1.5;
+    align-items: center;
+    padding: 6px $grid-unit-size * 1.25;
+}
+
+.cvat-team-analytics-full-list-extra .cvat-team-analytics-full-list-header,
+.cvat-team-analytics-full-list-extra .cvat-team-analytics-full-list-row {
+    grid-template-columns: 40px minmax(220px, 1.7fr) minmax(96px, 0.7fr) minmax(180px, 3fr) 104px 56px;
+}
+
+.cvat-team-analytics-full-list-header {
+    border-bottom: 1px solid $border-color-1;
+    color: $text-color-secondary;
+    font-size: 12px;
+}
+
+.cvat-team-analytics-full-list-row {
+    width: 100%;
+    min-height: 46px;
+    border: 0;
+    border-bottom: 1px solid $full-row-line;
+    background: $background-color-1;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &.cvat-team-analytics-selected {
+        background: $background-color-2;
+        font-weight: 700;
+    }
+}
+
+.cvat-team-analytics-full-rank {
+    color: $text-color-secondary;
+    text-align: right;
+}
+
+// names are shown whole in a full view
+.cvat-team-analytics-full-name {
+    overflow-wrap: anywhere;
+}
+
+.cvat-team-analytics-full-extra {
+    color: $text-color-secondary;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.cvat-team-analytics-full-value {
+    text-align: right;
+    font-weight: 600;
+}
+
+.cvat-team-analytics-full-share {
+    text-align: right;
+}
+
+.cvat-team-analytics-full-bar {
+    display: flex;
+    align-items: center;
+}
+
+.cvat-team-analytics-full-bar-fill {
+    display: flex;
+    gap: 2px;
+    height: 16px;
+    overflow: hidden;
+    border-radius: 0 4px 4px 0;
+}
+
+.cvat-team-analytics-full-bar-part {
+    min-width: 0;
+}
+
+.cvat-team-analytics-full-table {
+    min-width: 1040px;
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+
+    th,
+    td {
+        padding: $grid-unit-size $grid-unit-size * 1.25;
+        border-bottom: 1px solid $full-row-line;
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    thead th {
+        color: $text-color-secondary;
+        font-size: 12px;
+        font-weight: 400;
+    }
+
+    th:first-child {
+        position: sticky;
+        left: 0;
+        background: $background-color-1;
+        text-align: left;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    tbody th {
+        font-weight: 600;
+    }
+}
+
+.cvat-team-analytics-full-no-match,
+.cvat-team-analytics-full-message {
+    padding: $grid-unit-size * 2 $grid-unit-size * 1.25;
+    color: $text-color-secondary;
+}
+
+// working time over the period, alone and large
+.cvat-team-analytics-time-chart-large {
+    padding: 0;
+
+    .cvat-team-analytics-time-plot {
+        height: 420px;
+    }
+}
+
+.cvat-team-analytics-full-values-title {
+    font-weight: 600;
+}
+
+.cvat-team-analytics-full-values {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 0 $grid-unit-size * 3.5;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-variant-numeric: tabular-nums;
+
+    li {
+        display: flex;
+        justify-content: space-between;
+        gap: $grid-unit-size * 1.5;
+        padding: 7px 0;
+        border-bottom: 1px solid $full-row-line;
+    }
+}
+
+// a trend chart alone and large: legend on top with names whole, every value listed
+.cvat-team-analytics-trend-full {
+    display: flex;
+    flex-direction: column;
+    gap: $grid-unit-size;
+}
+
+.cvat-team-analytics-trend-chart-large {
+    .cvat-team-analytics-trend-plot {
+        height: 380px;
+    }
+
+    .cvat-team-analytics-trend-legend {
+        margin-bottom: $grid-unit-size * 2;
+    }
+
+    .cvat-team-analytics-trend-legend-name {
+        overflow: visible;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+}

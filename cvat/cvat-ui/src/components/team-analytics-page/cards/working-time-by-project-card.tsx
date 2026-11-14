@@ -16,11 +16,12 @@ interface Props {
     onPick?: (projectId: number) => void;
     // the selected period as the page names it
     periodLabel?: string;
+    onFullView?: () => void;
 }
 
 // Working time per project: the largest rows (within the annotator filter) and the rest as one line.
 function WorkingTimeByProjectCard({
-    rows, rest, names, selected, onPick, periodLabel = 'Last 7 days',
+    rows, rest, names, selected, onPick, periodLabel = 'Last 7 days', onFullView,
 }: Props): JSX.Element {
     return (
         <WorkingTimeBreakdown
@@ -33,6 +34,7 @@ function WorkingTimeByProjectCard({
             rest={rest}
             selected={selected}
             onPick={onPick}
+            onFullView={onFullView}
         />
     );
 }

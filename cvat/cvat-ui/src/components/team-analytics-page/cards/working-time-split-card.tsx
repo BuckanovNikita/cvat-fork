@@ -9,9 +9,11 @@ import { OperationsFigures } from '../service';
 import { formatHours, formatShare } from '../format';
 import { OPERATION_LOOKS, hasNoJobWork, isRecorded } from '../operations';
 import { shapeWording } from '../shapes';
+import { FullViewButton } from '../full-view-button';
 
 interface Props {
     figures: OperationsFigures;
+    onFullView?: () => void;
 }
 
 const HOUR_MS = 3600000;
@@ -20,10 +22,11 @@ const SHARE_INSIDE_FROM = 0.09;
 
 // Where working time goes: one stacked bar of the operations and Other, with its legend (name,
 // time, share) inside the card so every share reads without hovering.
-function WorkingTimeSplitCard({ figures }: Props): JSX.Element {
+function WorkingTimeSplitCard({ figures, onFullView }: Props): JSX.Element {
     const header = (
         <div className='cvat-team-analytics-card-header'>
             <Text strong>Where working time goes</Text>
+            <FullViewButton onClick={onFullView} />
         </div>
     );
     if (hasNoJobWork(figures)) {

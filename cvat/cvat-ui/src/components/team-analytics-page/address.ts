@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Filters, filtersSearch, readFilters } from './filters';
 import { Shapes, readShapes, shapesSearch } from './shapes';
+import { FullViewAddress, fullViewSearch, readFullView } from './full-views';
 
 export const PERIODS = [
     { key: 'week', label: 'Week' },
@@ -22,7 +23,8 @@ export const PERIODS = [
 export type PeriodKey = typeof PERIODS[number]['key'];
 
 // project and annotator filters: see filters.ts
-export interface Address extends Filters {
+// the open full view (full-views.ts) is optional: an address without it is the overview
+export interface Address extends Filters, FullViewAddress {
     period: PeriodKey;
     // YYYY-MM when the period is a month, otherwise null
     month: string | null;
@@ -48,7 +50,7 @@ const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 export function readAddress(search: string, now: Date = new Date()): Address {
     const query = new URLSearchParams(search);
     const period = PERIODS.find(({ key }) => key === query.get('period'))?.key ?? 'week';
-    const filters = { ...readFilters(search), shapes: readShapes(search) };
+    const filters = { ...readFilters(search), shapes: readShapes(search), ...readFullView(search) };
     if (period !== 'month') return { period, month: null, ...filters };
     const latest = currentMonth(now);
     const month = query.get('month') ?? '';
@@ -58,7 +60,8 @@ export function readAddress(search: string, now: Date = new Date()): Address {
 
 // The query string for `address`, keeping every key of `search` this module does not own.
 export function addressSearch(address: Address, search: string): string {
-    const query = new URLSearchParams(filtersSearch(address, shapesSearch(address.shapes, search)));
+    const others = shapesSearch(address.shapes, fullViewSearch(address, search));
+    const query = new URLSearchParams(filtersSearch(address, others));
     query.set('period', address.period);
     if (address.period === 'month' && address.month) query.set('month', address.month);
     else query.delete('month');

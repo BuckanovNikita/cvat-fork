@@ -20,7 +20,7 @@ import { monthAvailable, periodAvailable } from './history';
 import { lookupProjectNames } from './project-names';
 import { hotkeyLabels } from './hotkeys';
 import TeamAnalyticsView from './team-analytics-view';
-import TrendsSection from './trends-section';
+import TrendsSection, { useTrendsSelection } from './trends-section';
 import DetailsSection from './details-section';
 
 // The status (last refresh) is read again this often while the page is open.
@@ -45,6 +45,8 @@ export default function TeamAnalyticsPage(): JSX.Element {
     // bumped to load the figures of the same selection again
     const [reloads, setReloads] = useState(0);
     const shownOrganization = useRef<string | null>(organization);
+    // kept here so that a trend's full view and the overview show the same comparison
+    const trendsSelection = useTrendsSelection();
 
     useEffect(() => {
         let current = true;
@@ -132,7 +134,7 @@ export default function TeamAnalyticsPage(): JSX.Element {
             timeZone={timeZone}
             projectNames={projectNames}
             hotkeyLabels={labels}
-            renderTrends={(scopeLabel) => (
+            renderTrends={(scopeLabel, options) => (
                 <TrendsSection
                     organization={organization}
                     timeZone={timeZone}
@@ -143,6 +145,9 @@ export default function TeamAnalyticsPage(): JSX.Element {
                     projectNames={projectNames}
                     historyProgress={status?.history ?
                         `${status.history.complete}|${status.history.ready_from}` : ''}
+                    selection={trendsSelection}
+                    full={options?.full}
+                    onOpenFull={options?.onOpenFull}
                 />
             )}
             renderDetails={() => (

@@ -33,6 +33,8 @@ import CreationMethodsCard from './cards/creation-methods-card';
 import LegacyNotice from './legacy-notice';
 import ShapeSwitch from './shape-switch';
 import { DEFAULT_SHAPES } from './shapes';
+import FullView from './full-view';
+import { FullView as FullViewKey, viewOfTrend } from './full-views';
 
 interface Props {
     // slug of the organization selected in CVAT, null for none
@@ -53,10 +55,16 @@ interface Props {
     projectNames?: ProjectNames;
     // the viewer's keymap: hotkey action -> name and keys
     hotkeyLabels?: HotkeyLabels;
-    // the trends card (loads on its own); gets who and where the scope's line covers
-    renderTrends?: (scopeLabel: string) => React.ReactNode;
-    // the details table (loads on its own)
+    // the trends card (loads on its own); gets who and where the scope's line covers, and in a trend's full
+    // view the metric key of the chart shown alone
+    renderTrends?: (scopeLabel: string, options?: TrendsOptions) => React.ReactNode;
+    // the details table (loads on its own); it stays on the overview and has no full view
     renderDetails?: () => React.ReactNode;
+}
+
+export interface TrendsOptions {
+    full?: string | null;
+    onOpenFull?: (metric: string) => void;
 }
 
 const WEEK: Address = {
@@ -95,6 +103,8 @@ export default function TeamAnalyticsView({
     const pick = (key: keyof Filters) => (onAddressChange ? (id: number): void => {
         onAddressChange({ [key]: filters[key] === id ? null : id });
     } : undefined);
+    // a chart's Full view button and show all control open its full view (a new history entry)
+    const open = (view: FullViewKey) => (onAddressChange ? (): void => onAddressChange({ view }) : undefined);
 
     if (state.kind === 'denied') {
         return (
@@ -151,6 +161,34 @@ export default function TeamAnalyticsView({
     } else if (state.overview.processed === false) {
         // partial figures are never shown: one gate for every card
         content = <NotProcessedNotice />;
+    } else if (address?.view && onAddressChange) {
+        // one chart alone with every row, in place of the overview
+        const { overview } = state;
+        const who = filters.annotator === null ? 'All annotators' : annotatorLabel(filters.annotator, overview);
+        const where = filters.project === null ? 'All projects' : projectName(filters.project, projectNames);
+        const full = (
+            <FullView
+                view={address.view}
+                rows={address.rows ?? 'annotators'}
+                overview={overview}
+                organization={organization}
+                timeZone={timeZone}
+                address={address}
+                onAddressChange={onAddressChange}
+                periodLabel={periodLabel(shownAddress(overview.period, address), latestMonth)}
+                who={who}
+                where={where}
+                projectNames={projectNames}
+                hotkeyLabels={hotkeyLabels}
+                renderTrend={(metric) => renderTrends?.(`${who} · ${where}`, { full: metric })}
+            />
+        );
+        content = (
+            <div className={`cvat-team-analytics-full${pending ? ' cvat-team-analytics-pending' : ''}`} aria-busy={pending}>
+                {overview.operations?.legacy ? <LegacyNotice /> : null}
+                {address.view.startsWith('trend-') ? <TrendsGate history={status?.history}>{full}</TrendsGate> : full}
+            </div>
+        );
     } else {
         const { overview } = state;
         const annotatorRest = overview.by_annotator.rest?.count ?? 0;
@@ -173,14 +211,21 @@ export default function TeamAnalyticsView({
                 {overview.operations ? (
                     <CreationHeadlineCards figures={overview.operations} methods={overview.creation_methods} />
                 ) : null}
-                {overview.time_series ? <WorkingTimeOverPeriodCard series={overview.time_series} /> : null}
-                {overview.operations ? <WorkingTimeSplitCard figures={overview.operations} /> : null}
-                {overview.operations ? <OperationsTableCard figures={overview.operations} /> : null}
+                {overview.time_series ? (
+                    <WorkingTimeOverPeriodCard series={overview.time_series} onFullView={open('time')} />
+                ) : null}
+                {overview.operations ? (
+                    <WorkingTimeSplitCard figures={overview.operations} onFullView={open('split')} />
+                ) : null}
+                {overview.operations ? (
+                    <OperationsTableCard figures={overview.operations} onFullView={open('operations')} />
+                ) : null}
                 {overview.creation_methods ? (
                     <CreationMethodsCard
                         methods={overview.creation_methods}
                         legacy={!!overview.operations?.legacy}
                         savedBoxes={overview.saved_boxes}
+                        onFullView={open('methods')}
                     />
                 ) : null}
                 {overview.by_project ? (
@@ -191,6 +236,7 @@ export default function TeamAnalyticsView({
                         selected={filters.project}
                         onPick={pick('project')}
                         periodLabel={shownPeriod}
+                        onFullView={open('projects')}
                     />
                 ) : null}
                 <WorkingTimeByAnnotatorCard
@@ -199,19 +245,24 @@ export default function TeamAnalyticsView({
                     selected={filters.annotator}
                     onPick={pick('annotator')}
                     periodLabel={shownPeriod}
+                    onFullView={open('annotators')}
                 />
                 {overview.input || overview.operations?.legacy ? (
                     <KeyboardMouseCard
                         figures={overview.input ?? null}
                         legacy={!!overview.operations?.legacy}
                         labels={hotkeyLabels}
+                        onFullView={open('hotkeys')}
                     />
                 ) : null}
                 <TrendsGate history={status?.history}>
                     {renderTrends?.([
                         filters.annotator === null ? 'All annotators' : annotatorLabel(filters.annotator, overview),
                         filters.project === null ? 'All projects' : projectName(filters.project, projectNames),
-                    ].join(' · '))}
+                    ].join(' · '), {
+                        onOpenFull: onAddressChange ?
+                            (metric) => onAddressChange({ view: viewOfTrend(metric) }) : undefined,
+                    })}
                 </TrendsGate>
                 {renderDetails?.()}
             </div>

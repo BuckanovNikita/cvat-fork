@@ -9,6 +9,7 @@ import Text from 'antd/lib/typography/Text';
 import { InputFigures } from '../service';
 import { formatCount, formatShare, shortCount } from '../format';
 import { HotkeyLabels, hotkeyLabel } from '../hotkeys';
+import { FullViewButton, ShowAllButton } from '../full-view-button';
 
 interface Props {
     // null: the service sent no keyboard figures
@@ -16,6 +17,8 @@ interface Props {
     // a legacy period (no shape-tagged operation): hotkey use was not recorded unless input was counted
     legacy: boolean;
     labels?: HotkeyLabels;
+    // opens the full view of every hotkey (offered while hotkey use is recorded)
+    onFullView?: () => void;
 }
 
 const HOTKEY_COLOR = '#2a78d6';
@@ -30,12 +33,15 @@ function Figure({ label, value, title }: { label: string; value: string; title?:
 }
 
 // Hotkey actions against mouse actions, the hotkey share and the most used hotkeys of the scope.
-function KeyboardMouseCard({ figures, legacy, labels }: Props): JSX.Element {
+function KeyboardMouseCard({
+    figures, legacy, labels, onFullView,
+}: Props): JSX.Element {
     let body: JSX.Element;
     // a scope without shape-tagged operations after deployment (navigation or review only) still has
     // recorded input: only a legacy period with nothing counted says it was not recorded
     const counted = !!figures && figures.hotkey_actions + figures.mouse_actions + figures.canvas_clicks > 0;
-    if (!figures || (legacy && !counted)) {
+    const recorded = !(!figures || (legacy && !counted));
+    if (!figures || !recorded) {
         body = (
             <div className='cvat-team-analytics-keyboard-not-recorded'>
                 <Text strong>Hotkey use was not recorded in this period</Text>
@@ -115,6 +121,9 @@ function KeyboardMouseCard({ figures, legacy, labels }: Props): JSX.Element {
                             <span>{formatCount(figures.rest.actions)}</span>
                         </div>
                     ) : null}
+                    {figures.rest.count > 0 ? (
+                        <ShowAllButton count={figures.top_hotkeys.length + figures.rest.count} onClick={onFullView} />
+                    ) : null}
                 </div>
             </div>
         );
@@ -123,6 +132,7 @@ function KeyboardMouseCard({ figures, legacy, labels }: Props): JSX.Element {
         <section className='cvat-team-analytics-card cvat-team-analytics-keyboard'>
             <div className='cvat-team-analytics-card-header'>
                 <Text strong>Keyboard and mouse</Text>
+                {recorded ? <FullViewButton onClick={onFullView} /> : null}
             </div>
             <Text type='secondary'>Hotkey actions against mouse actions on controls</Text>
             {body}

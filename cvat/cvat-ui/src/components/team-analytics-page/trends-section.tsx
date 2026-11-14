@@ -23,16 +23,42 @@ interface Props {
     projectNames?: ProjectNames;
     // changes as history is processed (status `history`), so withheld weeks are asked for again
     historyProgress?: string;
+    // the selection kept by the page, so that it survives opening a chart's full view and coming back
+    selection?: TrendsSelection;
+    // the metric key of the chart shown alone in its full view
+    full?: string | null;
+    onOpenFull?: (metric: string) => void;
+}
+
+export interface TrendsSelection {
+    step: TrendStep;
+    setStep: (step: TrendStep) => void;
+    kind: CompareKind;
+    setKind: (kind: CompareKind) => void;
+    compared: Compared[];
+    setCompared: React.Dispatch<React.SetStateAction<Compared[]>>;
+}
+
+// Weeks or months and what is compared; held by whoever must keep it (the page, or the section itself).
+export function useTrendsSelection(): TrendsSelection {
+    const [step, setStep] = useState<TrendStep>('week');
+    const [kind, setKind] = useState<CompareKind>('annotators');
+    const [compared, setCompared] = useState<Compared[]>([]);
+    return {
+        step, setStep, kind, setKind, compared, setCompared,
+    };
 }
 
 // The trends card with its own selection (weeks or months, what is compared) and its own request: trends
 // follow the organization, the filters and the shape switch, never the selected period.
 export default function TrendsSection({
     organization, timeZone, project, annotator, shapes, scopeLabel, projectNames = {}, historyProgress = '',
+    selection, full = null, onOpenFull,
 }: Props): JSX.Element {
-    const [step, setStep] = useState<TrendStep>('week');
-    const [kind, setKind] = useState<CompareKind>('annotators');
-    const [compared, setCompared] = useState<Compared[]>([]);
+    const own = useTrendsSelection();
+    const {
+        step, setStep, kind, setKind, compared, setCompared,
+    } = selection ?? own;
     const [query, setQuery] = useState('');
     const [trends, setTrends] = useState<Trends | null>(null);
     const [failed, setFailed] = useState(false);
@@ -104,6 +130,8 @@ export default function TrendsSection({
             scopeLabel={scopeLabel}
             projectNames={known}
             annotatorNames={annotatorNames}
+            full={full}
+            onOpenFull={onOpenFull}
         />
     );
 }

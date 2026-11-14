@@ -14,12 +14,14 @@ import {
 import { METHOD_NAMES, MODEL_COLOR, MODEL_NAME } from '../creation-methods';
 import { OPERATION_LOOKS } from '../operations';
 import { shapeWording } from '../shapes';
+import { FullViewButton } from '../full-view-button';
 
 interface Props {
     methods: CreationMethods;
     // a legacy period: saved boxes are the one box figure it has
     legacy?: boolean;
     savedBoxes?: SavedBoxes;
+    onFullView?: () => void;
 }
 
 // What Model is, next to its figure: 'Model: boxes saved by 2 technical accounts or made with the built-in
@@ -34,7 +36,9 @@ function modelNote(nouns: string, technicalAccounts: number): string {
 // How objects are created: drawn, pasted and propagated, each with a bar, its count, share and average time,
 // then the three together with the Creation operation's average. Model, when the response has it, is a fourth
 // row with a count and a share and no time, outside the three's total, with a note on what it counts.
-function CreationMethodsCard({ methods, legacy = false, savedBoxes }: Props): JSX.Element {
+function CreationMethodsCard({
+    methods, legacy = false, savedBoxes, onFullView,
+}: Props): JSX.Element {
     const { nouns } = shapeWording(methods);
     const { model } = methods;
     const largest = Math.max(1, ...methods.rows.map((row) => row.objects), model?.objects ?? 0);
@@ -42,6 +46,7 @@ function CreationMethodsCard({ methods, legacy = false, savedBoxes }: Props): JS
         <section className='cvat-team-analytics-card cvat-team-analytics-creation-methods'>
             <div className='cvat-team-analytics-card-header'>
                 <Text strong>{`How ${nouns.toLowerCase()} are created`}</Text>
+                <FullViewButton onClick={onFullView} />
             </div>
             <Text type='secondary'>Each creation method counted on its own</Text>
             <div className='cvat-team-analytics-table-scroll'>

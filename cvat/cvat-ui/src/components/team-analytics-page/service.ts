@@ -364,6 +364,79 @@ export async function loadTrends(query: TrendsQuery, fetch: FetchService = fetch
     }
 }
 
+// --- full view lists (GET list): every row of one chart ----------------------------------------------------
+
+export type ListKind = 'annotators' | 'projects' | 'hotkeys';
+
+export interface ListFigures {
+    objects: number;
+    timed_objects: number;
+    time_ms: number;
+    // time per object with a measured time; null when none was measured
+    average_ms: number | null;
+}
+
+// One annotator or project of a full view
+export interface ListRow {
+    id: number; // project 0 = No project
+    user_name: string | null; // annotators only
+    working_time_ms: number;
+    // of all rows' working time; null when there is none
+    share: number | null;
+    operations: Record<'creation' | 'alignment' | 'class_change' | 'deletion', ListFigures> & {
+        other: { time_ms: number };
+    };
+    methods: Record<CreationMethodName, ListFigures>;
+    // objects no person drew: detector boxes, and for a project also what technical accounts saved
+    model: number;
+}
+
+export interface HotkeyListRow {
+    action: string;
+    actions: number;
+    share: number; // of all hotkey actions
+}
+
+export interface RowsList {
+    by: 'annotators' | 'projects';
+    period?: Period;
+    // false: the period is not wholly processed, so the figures are partial and are not shown
+    processed?: boolean;
+    legacy: boolean;
+    shapes: 'bounding_boxes' | 'all';
+    total: { count: number; working_time_ms: number };
+    rows: ListRow[];
+}
+
+export interface HotkeysList {
+    by: 'hotkeys';
+    period?: Period;
+    processed?: boolean;
+    hotkey_actions: number;
+    rows: HotkeyListRow[];
+}
+
+export type FullList = RowsList | HotkeysList;
+
+// Every row of one chart for a full view, or null when the list cannot be read (the full view says so).
+export async function loadList(
+    query: OverviewQuery & { by: ListKind }, fetch: FetchService = fetchService,
+): Promise<FullList | null> {
+    const params = serviceParams(query);
+    params.set('by', query.by);
+    try {
+        const response = await fetch(`${SERVICE_PREFIX}list?${params}`, {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' },
+        });
+        const data = await body(response);
+        const readable = response.ok && !!data && data.by === query.by && Array.isArray(data.rows);
+        return readable ? data as FullList : null;
+    } catch {
+        return null;
+    }
+}
+
 // --- details (GET details): the paged, searchable table by annotator or by project ------------------------------
 
 export type DetailsKind = 'annotators' | 'projects';

@@ -7,14 +7,21 @@ import Text from 'antd/lib/typography/Text';
 
 import { TimeSeries } from '../service';
 import { dayLabel, exactHours } from '../format';
+import { FullViewButton } from '../full-view-button';
 
 interface Props {
     series: TimeSeries;
+    // opens the chart's full view
+    onFullView?: () => void;
+    // the chart alone in its full view: taller, values on more bars
+    large?: boolean;
 }
 
 const HOUR_MS = 3600000;
 // Up to this many bars each shows its value; more bars keep it in the hover text only.
 const MAX_CAPTIONED_BARS = 14;
+// the same in the full view
+const MAX_CAPTIONED_BARS_LARGE = 31;
 // About this many axis labels at most, counted back from the last bar (today).
 const MAX_AXIS_LABELS = 7;
 
@@ -27,21 +34,27 @@ function scaleTop(max: number): number {
 
 // Working time per day of the period, or per week for Year. Bars are plain divs in the style of
 // the task progress widget.
-function WorkingTimeOverPeriodCard({ series }: Props): JSX.Element {
+function WorkingTimeOverPeriodCard({ series, onFullView, large = false }: Props): JSX.Element {
     const weekly = series.unit === 'week';
     const { buckets } = series;
     const hours = buckets.map((bucket) => bucket.working_time_ms / HOUR_MS);
     const top = scaleTop(Math.max(0, ...hours));
-    const captioned = buckets.length <= MAX_CAPTIONED_BARS;
+    const captioned = buckets.length <= (large ? MAX_CAPTIONED_BARS_LARGE : MAX_CAPTIONED_BARS);
     const labelEvery = Math.max(1, Math.ceil(buckets.length / MAX_AXIS_LABELS));
     const last = buckets.length - 1;
 
     return (
-        <section className='cvat-team-analytics-card cvat-team-analytics-time-chart'>
-            <div className='cvat-team-analytics-card-header'>
-                <Text strong>{weekly ? 'Working time by week' : 'Working time by day'}</Text>
-                <Text type='secondary'>Hours as the server counts working time</Text>
-            </div>
+        <section
+            className={`cvat-team-analytics-card cvat-team-analytics-time-chart${
+                large ? ' cvat-team-analytics-time-chart-large' : ''}`}
+        >
+            {large ? null : (
+                <div className='cvat-team-analytics-card-header'>
+                    <Text strong>{weekly ? 'Working time by week' : 'Working time by day'}</Text>
+                    <Text type='secondary'>Hours as the server counts working time</Text>
+                    <FullViewButton onClick={onFullView} />
+                </div>
+            )}
             <div className='cvat-team-analytics-time-plot'>
                 <div className='cvat-team-analytics-time-scale' aria-hidden>
                     {[top, top / 2, 0].map((tick) => (
