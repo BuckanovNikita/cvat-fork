@@ -137,7 +137,9 @@ function DetailsTableCard({
                                         </th>
                                         <td>{formatCount((projects ? row.annotators : row.projects) ?? 0)}</td>
                                         <td>{formatCount(row.sessions)}</td>
-                                        <td title={exactHours(row.working_time_ms)}>{formatHours(row.working_time_ms)}</td>
+                                        <td title={exactHours(row.working_time_ms)}>
+                                            {formatHours(row.working_time_ms)}
+                                        </td>
                                         <td>{formatCount(row.drawn)}</td>
                                         <td>{formatCount(row.pasted)}</td>
                                         <td>{formatCount(row.propagated)}</td>
@@ -153,7 +155,9 @@ function DetailsTableCard({
                                         {legacy ? (
                                             <td className='cvat-team-analytics-not-recorded'>{NOT_RECORDED}</td>
                                         ) : (
-                                            <td>{row.hotkey_share === null ? MISSING : formatShare(row.hotkey_share)}</td>
+                                            <td>
+                                                {row.hotkey_share === null ? MISSING : formatShare(row.hotkey_share)}
+                                            </td>
                                         )}
                                     </tr>
                                 );

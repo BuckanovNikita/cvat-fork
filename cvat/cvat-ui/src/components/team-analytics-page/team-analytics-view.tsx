@@ -100,11 +100,13 @@ export default function TeamAnalyticsView({
 }: Props): JSX.Element {
     const filters: Filters = { project: address?.project ?? null, annotator: address?.annotator ?? null };
     // clicking a row sets it as the filter; clicking the selected row again removes it
-    const pick = (key: keyof Filters) => (onAddressChange ? (id: number): void => {
+    const pick = (key: keyof Filters): ((id: number) => void) | undefined => (onAddressChange ? (id: number): void => {
         onAddressChange({ [key]: filters[key] === id ? null : id });
     } : undefined);
     // a chart's Full view button and show all control open its full view (a new history entry)
-    const open = (view: FullViewKey) => (onAddressChange ? (): void => onAddressChange({ view }) : undefined);
+    const open = (view: FullViewKey): (() => void) | undefined => (
+        onAddressChange ? (): void => onAddressChange({ view }) : undefined
+    );
 
     if (state.kind === 'denied') {
         return (

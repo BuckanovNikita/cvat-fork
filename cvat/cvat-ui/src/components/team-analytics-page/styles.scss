@@ -8,6 +8,7 @@
     height: 100%;
     overflow: auto;
     padding: $grid-unit-size * 2 $grid-unit-size * 4;
+
     // CVAT keeps the app at least 1024 px wide (#root, header); in a narrower window the page
     // itself fits the window and stays in view, so its cards stack instead of scrolling with it
     box-sizing: border-box;
@@ -128,7 +129,7 @@
     &[aria-pressed='true'] {
         background: $background-color-1;
         font-weight: 600;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 15%);
     }
 
     &:disabled {

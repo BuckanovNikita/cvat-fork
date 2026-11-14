@@ -7,7 +7,9 @@
 // `readAddress` and write it in `addressSearch`. Keys this module does not know are left as they are.
 // A user's change is a new history entry; reading never rewrites the address (a bad value falls back).
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    useCallback, useEffect, useMemo, useState,
+} from 'react';
 
 import { Filters, filtersSearch, readFilters } from './filters';
 import { Shapes, readShapes, shapesSearch } from './shapes';
