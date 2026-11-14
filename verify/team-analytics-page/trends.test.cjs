@@ -158,9 +158,21 @@ test('a chart with nothing recorded at all says so instead of drawing', () => {
     assert.match(text(share), /Not recorded before the new logging/);
 });
 
+// A point of a week not wholly processed, as the service sends it: the flags, and every value null.
+const NO_FIGURES = {
+    working_time_ms: null, boxes: null, timed_boxes: null, box_time_ms: null, average_ms: null,
+    hotkey_actions: null, mouse_actions: null, hotkey_share: null,
+};
+
 test('weeks not processed yet are withheld', () => {
     const buckets = WEEKS.map((start, index) => ({ start, processed: index >= 9 }));
-    const [work] = charts(card({ trends: trends({ buckets }) }));
+    const lines = [line(null, null, (index) => (index >= 9 ? {} : NO_FIGURES))];
+    const html = card({ trends: trends({ buckets, lines }) });
+    const [work, boxes, average, share] = charts(html);
+    for (const chart of [boxes, average, share]) {
+        assert.deepEqual(valueRows(chart)[1][1], 'Not processed yet');
+    }
+    assert.doesNotMatch(html, /NaN/);
     assert.deepEqual(valueRows(work)[1], ['Week of Aug 24', 'Not processed yet']);
     assert.deepEqual(valueRows(work)[10], ['Week of Oct 26', '10.0 h']);
     assert.doesNotMatch(work, /week of Aug 24:/);

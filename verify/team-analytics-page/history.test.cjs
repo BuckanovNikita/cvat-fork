@@ -11,6 +11,28 @@ const View = loadPage('team-analytics-view.tsx').default;
 
 const FIGURES = { by_annotator: { rows: [{ user_id: 11, user_name: 'alice-figures', working_time_ms: 3600000 }] } };
 
+// An overview of a period not wholly processed, as the service sends it: the envelope, and every figure null.
+const NO_FIGURES = {
+    period: {
+        from: '2026-11-09T00:00:00+00:00', to: '2026-11-13T16:00:00+00:00', name: 'week', tz: 'UTC',
+        first_day: '2026-11-09', last_day: '2026-11-15', month: null, to_date: false, unit: 'day',
+    },
+    filters: { project: null, annotator: { user_id: 11, user_name: 'alice-echoed' } },
+    processed: false,
+    headline: null,
+    sessions: null,
+    by_annotator: null,
+    by_project: null,
+    time_series: null,
+    input: null,
+    creation_methods: null,
+    saved_boxes: null,
+    operations: {
+        legacy: false, partly_legacy: true, cutover: '2026-11-10T08:00:00+00:00', shapes: 'bounding_boxes',
+        working_time_ms: null, active_time_ms: null, rows: null,
+    },
+};
+
 // An administrator's history block; a maintainer's has no first day, day counts or ready-from moment.
 function history(overrides = {}) {
     return {
@@ -51,6 +73,12 @@ function buttons(html) {
         title: (attributes.match(/title="([^"]*)"/) || [])[1] || null,
     }));
 }
+
+test('an overview without figures shows only why, and the filter row still names the selected annotator', () => {
+    const shown = text(view({ overview: NO_FIGURES, address: { period: 'week', month: null, annotator: 11 } }));
+    assert.match(shown, /This period is not processed yet/);
+    assert.match(shown, /alice-echoed/);
+});
 
 test('while history is processed one progress bar shows the earliest ready date and how far it is', () => {
     const html = view();
@@ -136,7 +164,7 @@ test('an earlier month is offered only when all of it is processed', () => {
 });
 
 test('a period that is not wholly processed shows no figure, only why', () => {
-    const shown = text(view({ overview: { ...FIGURES, processed: false } }));
+    const shown = text(view({ overview: NO_FIGURES }));
     assert.doesNotMatch(shown, /alice-figures|1\.0 h/);
     assert.match(shown, /This period is not processed yet/);
 
@@ -163,7 +191,7 @@ test('an open page shows the figures once its period has been processed meanwhil
         if (url.includes('/status')) {
             return { body: { history: processed ? history({ complete: true }) : history({ periods: { week: false } }) } };
         }
-        return { body: { ...FIGURES, processed } };
+        return { body: processed ? { ...FIGURES, processed } : NO_FIGURES };
     });
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
@@ -193,7 +221,7 @@ test('an open page shows the figures once its period has been processed meanwhil
 test('the page asks for the status in the viewer time zone and shows the bar beside the notice', async () => {
     const { fetch, requests } = suppliedFetch((url) => (url.includes('/status') ?
         { body: { history: history() } } :
-        { body: { ...FIGURES, processed: false } }));
+        { body: NO_FIGURES }));
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
         'react-router': { useHistory: () => ({ push() {} }) },

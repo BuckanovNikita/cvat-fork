@@ -357,6 +357,8 @@ class AlignmentWindowTest(OperationsCase):
         ])
         self.stack.refresh(at("2026-11-13 09:20:00"))  # window 09:00 .. 10:00
         self.stack.refresh(at("2026-11-13 10:20:00"))  # window 10:00 .. 11:00
+        # the history step computes today's hours up to 10:00, so the period is processed (the edge stays)
+        self.stack.settle()
 
         status, body = self.stack.overview("lead", org="org7", shapes="all")
         self.assertEqual(status, 200, body)

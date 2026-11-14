@@ -9,7 +9,9 @@ Query `by` = `annotators` | `projects` | `hotkeys`, plus everything the overview
 - `hotkeys`: every hotkey action with its count and share (read/list_hotkeys.sql); both filters apply, the shape
   switch does not.
 
-Like the overview, `processed` says whether the whole period is processed; the page withholds partial figures.
+Like the overview, `processed` says whether the whole period is processed. When it is not, the answer keeps
+`period`, `processed`, `by` and the legacy flags, and every figure (`total`, `rows`, `hotkey_actions`) is null
+(withheld.py).
 """
 
 from __future__ import annotations
@@ -17,12 +19,14 @@ from __future__ import annotations
 from team_analytics.history import load_state
 from team_analytics.periods import BadRequest
 from team_analytics.service import Request
+from team_analytics.withheld import LEGACY_FLAGS, withhold
 
 PATH = "list"
 
 KINDS = ("annotators", "projects", "hotkeys")
 OPERATIONS = ("creation", "alignment", "class_change", "deletion")
 METHODS = ("drawn", "pasted", "propagated")
+ENVELOPE = frozenset({"period", "processed", "by"}) | LEGACY_FLAGS
 
 
 def _number(value) -> float | None:
@@ -89,9 +93,11 @@ def handle(request: Request) -> dict:
         raise BadRequest(f"by must be one of {', '.join(KINDS)}")
     span = request.span()
     body = _hotkeys(request) if by == "hotkeys" else _rows(request, by)
-    return {
+    answer = {
         "period": span.describe(),
         "processed": load_state(request.sql, request.now).covers(span.start),
         "by": by,
         **body,
     }
+    # no figures for a period not fully processed
+    return answer if answer["processed"] else withhold(answer, ENVELOPE)

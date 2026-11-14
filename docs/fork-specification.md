@@ -216,6 +216,11 @@ Behavior to preserve:
   for the caller's memberships once per reading role, so paging cannot hide
   one. A CVAT answer without the expected shape is a 503 refusal and is never
   cached. A 401 or 403 from any endpoint puts the open page into that refusal.
+- A read of a period that is not fully processed carries no figures, whoever
+  asks: the overview, the full-view list and the details table keep their
+  envelope (period, filter echo, `processed: false`, the legacy flags) and
+  every figure in them is null. A trend bucket that is not fully processed has
+  null values. The page shows that the period is being processed.
 - The page's project and annotator filters belong to the organization named
   by `org` in the page address. Filters of another organization, or of an
   address that names none while one is selected, are not applied. Requests to

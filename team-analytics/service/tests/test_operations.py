@@ -184,6 +184,9 @@ class TimePerOperationTest(OperationsCase):
             draw(at("2026-11-13 10:00:05")),
         ])
         self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))
+        # history up to the 14th first, so the week is processed; the refresh below then writes the hours read
+        self.stack.now = at("2026-11-15 09:20:00")
+        self.stack.settle()
         self.stack.refresh(at("2026-11-15 09:20:00"))  # window 2026-11-13 10:00 .. 2026-11-15 10:00
 
         status, body = self.stack.overview("lead", org="org7")

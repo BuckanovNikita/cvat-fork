@@ -299,15 +299,30 @@ class ProcessedTest(DetailsCase):
         ])
         self.stack.refresh()  # the trailing 48 h only
 
-        def processed() -> bool:
-            status, body = self.stack.get("/team-analytics-api/v1/details", "lead", org="org7", period="month")
+        def answer(**query) -> dict:
+            status, body = self.stack.get("/team-analytics-api/v1/details", "lead", org="org7", period="month",
+                                          **query)
             self.assertEqual(status, 200, body)
-            return body["processed"]
+            return body
 
-        self.assertFalse(processed())
+        for kind in ("annotators", "projects"):
+            body = answer(by=kind)
+            self.assertFalse(body["processed"])
+            # no figures, only the envelope: the kind of table, its page size and the legacy flags
+            self.assertEqual({key: body[key] for key in ("by", "page_size", "legacy", "partly_legacy", "cutover",
+                                                         "shapes")},
+                             {"by": kind, "page_size": 10, "legacy": True, "partly_legacy": False, "cutover": None,
+                              "shapes": "all"})
+            self.assertEqual((body["page"], body["total"], body["rows"]), (None, None, None))
+        self.assertIsNone(answer(by="projects")["project_ids"])
+
         for _ in range(20):  # history: one day per step
             self.stack.service.step()
-        self.assertTrue(processed())
+        body = answer()
+        self.assertTrue(body["processed"])
+        self.assertEqual((body["page"], body["total"]), (1, 1))
+        self.assertEqual(self.column(body, "working_time_ms"), [2 * HOUR])
+        self.assertEqual(answer(by="projects")["project_ids"], [1])
 
 
 class LegacyTest(DetailsCase):
