@@ -69,7 +69,7 @@ import { reviewActions } from 'actions/review-actions';
 
 import { filterAnnotations } from 'utils/filter-annotations';
 import {
-    alignmentFields, drawingEnded, drawingStarted, operationFields,
+    alignmentFields, drawingEnded, drawingStarted, groupMoved, operationFields,
 } from 'utils/team-analytics-logging';
 import { ImageFilter } from 'utils/image-processing';
 import { ShortcutScope } from 'utils/enums';
@@ -927,9 +927,10 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
         e: CustomEvent<{ duration: number; states: { state: ObjectState; points: number[] }[] }>,
     ): Promise<void> => {
         const {
-            selectedStatesID, onUpdateAnnotationsBatch, onSelectObjects,
+            jobInstance, selectedStatesID, onUpdateAnnotationsBatch, onSelectObjects,
         } = this.props;
         const { detail: { states } } = e;
+        groupMoved(jobInstance, e.detail);
 
         // Persist movable members as one undoable change, while retaining fixed members in the selection.
         const updatedStates = states.map((moved): ObjectState => {

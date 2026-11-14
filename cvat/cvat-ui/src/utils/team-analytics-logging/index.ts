@@ -9,6 +9,8 @@
 //   operationFields(job, objects) -> fields to spread into the payload of the existing draw, paste,
 //                                    propagate and delete events
 //   alignmentFields(job, object)  -> the same plus the object reference and frame, for drag and resize
+//                                    (and the group mark on the grabbed object's drag of a group move)
+//   groupMoved(job, move)         -> sends the group move event (group-move.ts)
 //   logRecord(job, name, payload, count?) -> sends one `debug:info` record named `name` (RECORD) through
 //                                    the job's logger, fire-and-forget (class change, model creation and
 //                                    input summary records build on it; record.ts)
@@ -20,6 +22,7 @@
 
 import { PAYLOAD } from './contract';
 import { guarded } from './guard';
+import { grabbedFields } from './group-move';
 import { inputMethodFields } from './input-method';
 import {
     Fields, LoggedObject, LoggingJob, instrumented, isInteger, shapeFields,
@@ -33,6 +36,9 @@ export {
     hotkeyUsed, inputEvent, trackInputJob, untrackInputJob,
 } from './input-summary';
 export { drawingEnded, drawingStarted, currentInputMethod } from './input-method';
+// Group move event (group-move.ts): call when the canvas reports a group move, before it is saved.
+export { groupMoved } from './group-move';
+export type { GroupMove } from './group-move';
 // Writing a record, and what the module reads of a job and an object (record.ts).
 export { logRecord, objectShapeFields } from './record';
 export type { LoggedObject, LoggingJob } from './record';
@@ -56,7 +62,7 @@ export function alignmentFields(job: LoggingJob | null | undefined, object: Logg
         const fields: Fields = { ...shapeFields([object]) };
         if (isInteger(object.clientID)) fields[PAYLOAD.objectRef] = object.clientID;
         if (isInteger(object.frame)) fields[PAYLOAD.frame] = object.frame;
-        return { ...fields, ...inputMethodFields('alignment') };
+        return { ...fields, ...grabbedFields(object), ...inputMethodFields('alignment') };
     });
 }
 
