@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 (First lint run on the fork's UI code).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Test first, through the service's read interface: for a period that is not fully processed, the overview, the full-view list and the details table answer with their envelope, `processed: false` and every figure-bearing field null. The existing tests that expect figures there are changed and seen to fail before the fix.
 - [x] A trend bucket that is not fully processed has a null value; processed buckets beside it are unaffected.
@@ -27,3 +27,5 @@ How each criterion was shown:
 - Fork specification: a stated check. It listed no such limit at the base of this branch or after the last merge (searched for "partial", "processed" and "direct call"); it now states the rule.
 
 The whole seam 1 suite was not run, by instruction; it is left for the integration branch.
+
+2026-11-14: Merged into `feat/team-analytics-page` as `35f820d0`, after tickets 22 (`50895e77`) and 15 (`5fae08e9`). One conflict, in `verify/team-analytics-page/history.test.cjs`, kept both sides: this ticket's `NO_FIGURES` answer and ticket 15's note on the administrator's history block. On the merged tree `node --test verify/team_analytics_logging.cjs` ran 70 tests and `node --test verify/team_analytics_page.cjs` 217, 0 failed and 0 skipped each; the skip-gate grep finds nothing; `prek run --all-files` passed all nine hooks. The service suite was not run by the merger. Evidence: `docs/evidence/2026-11-14-unprocessed-periods-carry-no-figures.md`.
