@@ -52,4 +52,4 @@ stock)
 esac
 
 docker run --rm --network none --cpus=1 --memory=256m "${mounts[@]}" "$image" \
-    test -v "${args[@]}"
+    test -v --timeout 60s "${args[@]}"
