@@ -367,6 +367,12 @@ class RefreshPriorityTest(HistoryCase):
 
     def test_a_due_refresh_comes_before_the_next_day_of_history(self):
         self.step()
+        for _ in range(20):  # history back to this week, so its figures are read; older days still to do
+            if self.overview()["processed"]:
+                break
+            self.step()
+        else:
+            self.fail("this week was never processed")
         ready = [self.history()["ready_from"]]
         bob = []
         for n in range(1, 13):  # a step every four minutes, from 15:24

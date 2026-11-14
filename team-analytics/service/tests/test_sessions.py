@@ -147,6 +147,9 @@ class RefreshEdgeTest(SessionsCase):
 
     def test_a_session_crossing_the_window_start_is_counted_once_with_its_full_length(self):
         self.stack.add_events(self.session_from_15_50(range(0, 31, 2)))
+        # history up to the 12th first, so the week is processed; the refreshes below then write the hours read
+        self.stack.now = at("2026-11-13 15:20:00")
+        self.stack.settle()
         self.stack.refresh(at("2026-11-11 16:30:00"))
         self.stack.refresh(at("2026-11-13 15:20:00"))
 
@@ -154,6 +157,9 @@ class RefreshEdgeTest(SessionsCase):
 
     def test_a_session_still_going_on_at_one_refresh_is_stored_once_by_the_next(self):
         self.stack.add_events(self.session_from_15_50(range(0, 15, 2)))
+        # history up to the 12th first, so the week is processed; the refreshes below then write the hours read
+        self.stack.now = at("2026-11-13 15:20:00")
+        self.stack.settle()
         self.stack.refresh(at("2026-11-11 16:05:00"))
         self.stack.add_events(self.session_from_15_50(range(16, 31, 2)))
         self.stack.refresh(at("2026-11-13 15:20:00"))
@@ -163,6 +169,9 @@ class RefreshEdgeTest(SessionsCase):
     def test_a_window_that_ends_inside_a_session_leaves_it_to_the_window_holding_its_end(self):
         # A window can end before the latest events (a refresh whose clock is behind, a history fill).
         self.stack.add_events(self.session_from_15_50(range(0, 31, 2)))
+        # history up to the 12th first, so the week is processed; the refreshes below then write the hours read
+        self.stack.now = at("2026-11-13 15:20:00")
+        self.stack.settle()
         self.stack.refresh(at("2026-11-11 15:58:00"))  # window ends at 16:00, the session goes on
         self.stack.refresh(at("2026-11-13 15:20:00"))  # window starts at 16:00
 
