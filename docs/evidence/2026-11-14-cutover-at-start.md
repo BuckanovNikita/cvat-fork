@@ -112,3 +112,16 @@ image (4 tests, OK), 67 after, none new. The 67 were there before and were left 
 - A search that fails at start for a reason other than a missing `events` table.
 - A search that fails inside the daily check. By the code it is tried again by the next
   daily check and the check stays recorded; no test makes it fail.
+
+## After the independent review
+
+The independent review of tickets 17, 18 and 20, and what its follow-up changed, are
+recorded in "Independent review" in
+[`2026-11-14-refresh-lease-two-minutes.md`](2026-11-14-refresh-lease-two-minutes.md). For
+this ticket: the search at start and in the daily check now runs within the limits
+committed here, enforced by ClickHouse; a search that fails inside the daily check now
+ends the step without it and is exercised by a test; the first answer is shown on the
+service started as `python -m team_analytics`. The statement now reads the events in
+order and stops at the first match, so the figures of
+[`2026-11-14-cutover-search-cost.md`](2026-11-14-cutover-search-cost.md) were measured on
+the earlier aggregate; the new statement's cost at that scale was not measured.

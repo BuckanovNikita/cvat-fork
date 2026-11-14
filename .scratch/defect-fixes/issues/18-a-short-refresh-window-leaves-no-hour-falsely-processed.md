@@ -35,3 +35,5 @@ Three things a reader should know:
 For the merge: ticket 17 works in `team_analytics/history.py` too. The new tests and the first `FillTest` test count the service's steps, with the daily check as the step after history; a ticket that adds a step changes those counts.
 
 2026-11-14: Merged into `feat/team-analytics-page` as `2fc75b4d`. On the merged tree, seam 1 `tests.test_history tests.test_status tests.test_details_table` ran 52 tests, OK. Evidence: `docs/evidence/2026-11-14-short-refresh-window.md`.
+
+2026-11-14: The independent review of tickets 17, 18 and 20 (recorded in `docs/evidence/2026-11-14-refresh-lease-two-minutes.md`, "Independent review") found the two behaviours this ticket disclosed missing from the fork specification, and the header of `schema/041_history_today.sql` wrong about replicas whose clocks straddle midnight. The follow-up on branch `fix/refresh-review` adds both behaviours to the fork specification's known limits, corrects the header, and adds two tests from the reviewer's probes: midnight with a one-hour window, and two replicas whose clocks straddle midnight. The behaviour did not change.

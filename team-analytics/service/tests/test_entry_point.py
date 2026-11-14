@@ -1,4 +1,5 @@
-"""The service as deployed: `python -m team_analytics` configured by environment, refreshing on its own."""
+"""The service as deployed: `python -m team_analytics` configured by environment, refreshing on its own, and knowing
+the cutover from its first answer."""
 
 import json
 import os
@@ -6,12 +7,14 @@ import socket
 import subprocess
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from tests.support import FakeUser, StackTestCase, working_time
+from tests.test_bounding_boxes import BOX
+from tests.test_operations import client, draw
 
 SERVICE_DIR = Path(__file__).resolve().parent.parent
 ORG = 7
@@ -23,10 +26,16 @@ def free_port() -> int:
         return probe.getsockname()[1]
 
 
-class EntryPointTest(StackTestCase):
+class RunningServiceCase(StackTestCase):
+    """Starts `python -m team_analytics` on the stack's databases, after the events of `recorded_before_start`."""
+
+    def recorded_before_start(self) -> list[dict]:
+        return []
+
     def setUp(self) -> None:
         super().setUp()
         self.stack.cvat.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "maintainer", True)}))
+        self.stack.add_events(self.recorded_before_start())
         self.port = free_port()
         env = {
             **os.environ,
@@ -52,14 +61,19 @@ class EntryPointTest(StackTestCase):
             self.process.kill()
             self.process.wait()
 
-    def overview_rows(self):
-        request = Request(f"http://127.0.0.1:{self.port}/team-analytics-api/v1/overview?org=org7",
+    def read(self, endpoint: str) -> dict | None:
+        """The answer of an endpoint for the maintainer of org7, or None while the service does not answer."""
+        request = Request(f"http://127.0.0.1:{self.port}/team-analytics-api/v1/{endpoint}?org=org7",
                           headers={"Cookie": "sessionid=lead"})
         try:
             with urlopen(request, timeout=5) as response:
-                section = json.loads(response.read())["by_annotator"]
+                return json.loads(response.read())
         except (URLError, ConnectionError):
             return None
+
+    def overview_rows(self):
+        overview = self.read("overview")
+        section = None if overview is None else overview["by_annotator"]
         # null until the week reads as processed (before the first refresh, or while one lands mid-request)
         return None if section is None else section["rows"]
 
@@ -71,6 +85,9 @@ class EntryPointTest(StackTestCase):
                 return rows
             time.sleep(0.5)
         self.fail(f"not observed within {timeout} s; last answer: {self.overview_rows()}")
+
+
+class EntryPointTest(RunningServiceCase):
 
     def test_the_running_service_refreshes_on_its_interval_without_being_asked(self):
         now = datetime.now(UTC)
@@ -85,3 +102,25 @@ class EntryPointTest(StackTestCase):
         self.stack.add_events([working_time(datetime.now(UTC), 50_000, user=(11, "alice"), org=ORG)])
         rows = self.wait_for(lambda rows: rows and rows[0]["working_time_ms"] == 150_000)
         self.assertEqual(len(rows), 1)
+
+
+class CutoverOnTheFirstAnswerTest(RunningServiceCase):
+    """The running service knows the cutover from its first answer: it looks for it when it starts, before it opens
+    its port, while its loop would reach the day of the first shape-tagged event only after hundreds of days."""
+
+    DAYS = 300
+
+    def recorded_before_start(self) -> list[dict]:
+        now = datetime.now(UTC)
+        self.tagged = now - timedelta(days=self.DAYS)
+        # untagged work every day since, which history computes newest first, one day per step
+        return [client("load:job", self.tagged, org=ORG), draw(self.tagged, input_method="mouse", org=ORG, **BOX)] + [
+            working_time(now - timedelta(days=day), 60_000, user=(11, "alice"), org=ORG) for day in range(self.DAYS)]
+
+    def test_the_first_answer_of_the_running_service_has_the_cutover(self):
+        deadline = time.monotonic() + 60
+        while (first := self.read("status")) is None:
+            self.assertLess(time.monotonic(), deadline, "the service never answered")
+            time.sleep(0.2)
+        cutover = self.tagged.replace(minute=0, second=0, microsecond=0)
+        self.assertEqual(first["cutover"], {"at": cutover.isoformat()})

@@ -137,3 +137,13 @@ of a day or longer.
 `sql/control/history_record_today.sql`, and `tests/test_history.py`, all under
 `team-analytics/service/`. `docs/fork-specification.md` is not changed: it did
 not list this limit, at `e1d92b8` or in its history.
+
+## After the independent review
+
+The independent review of tickets 17, 18 and 20, and what its follow-up changed, are
+recorded in "Independent review" in
+[`2026-11-14-refresh-lease-two-minutes.md`](2026-11-14-refresh-lease-two-minutes.md). For
+this ticket: the two behaviours listed above under what a reader should know are now
+known limits in `docs/fork-specification.md`; the header of
+`sql/schema/041_history_today.sql` now says that replicas whose clocks straddle midnight
+can answer differently for a short time; and two tests cross midnight and use two clocks.
