@@ -12,8 +12,8 @@
 //   logRecord(job, name, payload, count?) -> sends one `debug:info` record named `name` (RECORD) through
 //                                    the job's logger, fire-and-forget (class change, model creation and
 //                                    input summary records build on it; record.ts)
-//   trackInputJob / untrackInputJob / hotkeyUsed / inputEvent -> hotkey and mouse counting and the input
-//                                    summary record (input-summary.ts)
+//   trackInputJob / untrackInputJob / hotkeyUsed / inputEvent / frameRequested / frameShown -> hotkey
+//                                    and mouse counting and the input summary record (input-summary.ts)
 //   drawingStarted / drawingEnded / currentInputMethod -> the input method of actions (input-method.ts)
 //   recordClassChange(job, objects, label, inputMethod) -> class change record (class-change.ts)
 //   recordModelCreation(job, objects) -> model creation record of a detector run (model-creation.ts)
@@ -30,7 +30,7 @@ export {
 } from './contract';
 export type { InputMethod, RecordName } from './contract';
 export {
-    hotkeyUsed, inputEvent, trackInputJob, untrackInputJob,
+    frameRequested, frameShown, hotkeyUsed, inputEvent, trackInputJob, untrackInputJob,
 } from './input-summary';
 export { drawingEnded, drawingStarted, currentInputMethod } from './input-method';
 // Writing a record, and what the module reads of a job and an object (record.ts).
