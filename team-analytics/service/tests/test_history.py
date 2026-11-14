@@ -131,6 +131,25 @@ class FillTest(HistoryCase):
         self.assertTrue(self.overview(period="month", month="2026-10")["processed"])
         self.assertTrue(self.overview(period="year")["processed"])
 
+    def test_a_period_not_wholly_processed_carries_no_figures_only_its_envelope(self):
+        self.step()  # the last 48 hours only: this week is not wholly processed
+        body = self.overview(annotator=str(ALICE[0]))
+        self.assertFalse(body["processed"])
+        self.assertEqual(body["period"]["first_day"], "2026-11-09")
+        self.assertEqual(body["filters"], {"project": None, "annotator": {"user_id": ALICE[0], "user_name": "alice"}})
+        for section in ("headline", "sessions", "by_annotator", "by_project", "time_series", "input",
+                        "creation_methods", "saved_boxes"):
+            self.assertIsNone(body[section], section)
+        # the legacy flags stay (no cutover yet: a legacy period); every figure beside them is null
+        self.assertEqual(body["operations"], {"legacy": True, "partly_legacy": False, "cutover": None,
+                                              "shapes": "all", "working_time_ms": None,
+                                              "active_time_ms": None, "rows": None})
+
+        self.step(6)  # processed from 2026-11-06: this week now is, with its figures
+        body = self.overview()
+        self.assertTrue(body["processed"])
+        self.assertEqual(self.alice_ms(), 28 * MINUTE)
+
 
     def test_a_new_day_does_not_take_any_period_away(self):
         self.fill()

@@ -219,3 +219,23 @@ class ProcessedTest(FullViewCase):
         self.assertEqual(status, 200, body)
         self.assertFalse(body["processed"])
         self.assertEqual(body["processed"], self.overview(period="year")["processed"])
+        # no figures, only the envelope: the period, the kind of list and the legacy flags
+        self.assertEqual(body["period"]["first_day"], "2026-01-01")
+        self.assertEqual({key: body[key] for key in ("by", "legacy", "partly_legacy", "cutover", "shapes")},
+                         {"by": "annotators", "legacy": False, "partly_legacy": False, "cutover": None,
+                          "shapes": "all"})
+        self.assertEqual((body["total"], body["rows"]), (None, None))
+
+        status, body = self.stack.get(LIST, "lead", org="org7", by="hotkeys", period="year")
+        self.assertEqual(status, 200, body)
+        self.assertFalse(body["processed"])
+        self.assertEqual((body["hotkey_actions"], body["rows"]), (None, None))
+
+    def test_a_wholly_processed_period_keeps_its_figures(self):
+        self.stack.add_events([working_time(at("2026-11-12 10:00:00"), HOUR, user=ALICE, org=ORG)])
+        self.stack.refresh()  # every event inside the trailing hours: all of history is processed
+        status, body = self.stack.get(LIST, "lead", org="org7", by="annotators")
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body["processed"])
+        self.assertEqual(body["total"], {"count": 1, "working_time_ms": HOUR})
+        self.assertEqual([(row["id"], row["working_time_ms"]) for row in body["rows"]], [(ALICE[0], HOUR)])
