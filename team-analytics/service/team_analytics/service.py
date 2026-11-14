@@ -12,6 +12,7 @@ import pkgutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import cache
 from types import ModuleType
 from typing import Any
 
@@ -37,9 +38,11 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def discover(package: ModuleType) -> list[ModuleType]:
-    return [importlib.import_module(f"{package.__name__}.{info.name}")
-            for info in sorted(pkgutil.iter_modules(package.__path__), key=lambda info: info.name)]
+@cache
+def discover(package: ModuleType) -> tuple[ModuleType, ...]:
+    """The modules of `package` (endpoints, overview or status sections), found once."""
+    return tuple(importlib.import_module(f"{package.__name__}.{info.name}")
+                 for info in sorted(pkgutil.iter_modules(package.__path__), key=lambda info: info.name))
 
 
 @dataclass
