@@ -49,10 +49,11 @@ Node, prek, uv and Docker themselves are host prerequisites and are not pinned.
 Outstanding:
 
 - Formatting is not gated. `ruff format --check` would reformat 45 of the
-  fork's 69 Python files, and that sweep was not done here.
+  fork's 69 Python files, 43 of them in the service and its tests, and that
+  sweep was not done here.
 - ruff's rule set is held at `E4`, `E7`, `E9` and `F`. The larger default of
-  ruff 0.16 and later finds 51 issues, mostly in service tests that other
-  tickets are editing.
+  ruff 0.16 and later finds 50 issues with the locked ruff: 5 in the service,
+  22 in its tests and 23 in `verify/`.
 - A fresh clone was not tried. The import tag is local only (section 1 of the
   upgrade procedure), so a fresh clone must recreate it before the UI linters
   and the stock policy test can run.

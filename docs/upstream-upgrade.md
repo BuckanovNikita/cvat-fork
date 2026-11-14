@@ -173,7 +173,7 @@ files under `cvat/` whose content differs from the import tag
 (`tools/gate/ui-lint.sh`), so a new file is checked once it is tracked; after
 an upgrade, change the script's default tag (`IMPORT_TAG` overrides it) with
 the policy test's `STOCK_TAG`. ruff never reads `cvat/` (`ruff.toml`), and
-formatting is not checked: the fork's Python was never formatted with ruff.
+formatting is not checked: most of the service's Python is not in ruff's format.
 Run the pipeline by its command; do not install it as git hooks.
 
 Prerequisites on a fresh checkout:

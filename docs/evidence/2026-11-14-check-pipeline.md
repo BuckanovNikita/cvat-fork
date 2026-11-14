@@ -25,29 +25,38 @@ no git configuration was changed.
 | `task-progress`, `ta-logging`, `ta-page` | `node --test verify/<suite>.cjs` | the three fast frontend suites |
 
 Every hook passes no file names from prek and runs on every invocation. No
-hook takes `--fix` or writes a file. The hooks run one after another (shown
-with two sleeping hooks before the real configuration was written); ruff runs
-with `RAYON_NUM_THREADS=1`.
+hook takes `--fix` or writes a file. The hooks run one after another: a
+configuration of two hooks that each print the time, sleep two seconds and
+print it again, run with `prek run -c`, showed the second start after the
+first ended. ruff runs with `RAYON_NUM_THREADS=1`.
 
 ## Choices
 
 - **ruff's version** is declared in a dependency group of a root
   `pyproject.toml` (`ruff==0.17.3`) and locked with hashes in `uv.lock`; the
   hook runs it through `uv run --locked`, which fails when the lock is out of
-  date. 0.17.3 is the newest release older than two weeks. `ruff.toml` keeps
-  its settings.
+  date. 0.17.3 is the newest release older than two weeks (`uv lock
+  --exclude-newer 2026-10-31`). The `[project]` table only declares the Python
+  range (`>=3.10`) the lock is resolved for; without it uv took the host's
+  Python (3.13) as the lower bound, and `uv lock --check --python 3.12` failed.
+  With it the check passes for 3.10, 3.12, 3.13 and 3.14. `ruff.toml` keeps
+  ruff's settings, `target-version` among them.
 - **ruff's rule set** is stated in `ruff.toml` (`E4`, `E7`, `E9`, `F`, ruff's
   default before 0.16). With no `select`, ruff 0.16 and later enable a larger
-  default: 51 findings on the fork's Python, against 3 with the stated set.
-  Those 51 are mostly in the service tests that other tickets edit now; they
-  were not taken on here.
+  default. Measured before the fixes below with ruff 0.14.5 and 0.15.0 (3
+  findings) and 0.16.0, 0.17.0 and 0.17.5 (51 findings); after the fixes, the
+  locked 0.17.3 with its default finds 50: 5 in the service, 22 in its tests
+  and 23 in `verify/` (17 of them in `opa_issues_check.py`). They were not
+  taken on here; the service and its tests are being edited by other tickets.
 - **The three findings** of the stated set were fixed with `ruff check --fix`
   in a commit of their own (`c4171a0`): one unused import, two lines with
   several imports.
-- **Formatting is not checked.** `ruff format --check` would reformat 45 of
-  the fork's 69 Python files (about 3,300 changed lines, most in the service).
-  The fork's Python was never formatted with ruff; a sweep is a decision of its
-  own, and would conflict with the tickets editing the service now.
+- **Formatting is not checked.** With the locked ruff, `ruff format --check`
+  would reformat 45 of the fork's 69 Python files (3,315 changed lines): 20
+  files of the service, 23 of its tests, one in `verify/` and one in
+  `docs/evidence/`. The four `verify/` scripts formatted in `dab9d18` are
+  among the 24 already in ruff's format. A sweep is a decision of its own, and
+  would conflict with the tickets editing the service now.
 - **`cvat/` is excluded in `ruff.toml`** with `force-exclude`, so a ruff run by
   hand on a path under `cvat/` skips it too: the widened import proof records
   that a formatter run once rewrote the import's ClickHouse setup file.
@@ -86,7 +95,22 @@ style files, the policy test passed 27 of 27 on each side, and the suites
 reported 20 pass and 1 skipped (the browser check, no `BROWSER_BIN`), 63 pass
 and 209 pass, with no failure.
 
+The ruff fixes (`c4171a0`): `verify/team_analytics_service.sh
+tests.test_full_view` passed (13 tests, default ClickHouse image) after the
+unused import was removed. `verify/mkimg.py` and `verify/seed.py` only had
+their imports split; they were parsed, not run.
+
+The final all-files run, on the commit that declares the Python range, exited
+0 with every hook passing and `git status` clean apart from these documents.
+
+`IMPORT_TAG=no-such-tag tools/gate/ui-lint.sh eslint` exits 2 and names the
+missing tag. The script keeps each git call's output in a variable before using
+it, so a failing git call stops it rather than leaving an empty file list.
+
 ## Not verified
+
+- prek versions other than 0.5.10, which `minimum_prek_version` names for
+  that reason.
 
 - A fresh clone. The run created `.venv` from nothing and installed ruff from
   the lock, but `cvat/node_modules` and `verify/node_modules` were links to
