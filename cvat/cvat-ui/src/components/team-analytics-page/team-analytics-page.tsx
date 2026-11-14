@@ -20,6 +20,7 @@ import { monthAvailable, periodAvailable } from './history';
 import { lookupProjectNames } from './project-names';
 import { hotkeyLabels } from './hotkeys';
 import TeamAnalyticsView from './team-analytics-view';
+import TrendsSection from './trends-section';
 
 // The status (last refresh) is read again this often while the page is open.
 const STATUS_INTERVAL_MS = 60000;
@@ -130,6 +131,19 @@ export default function TeamAnalyticsPage(): JSX.Element {
             timeZone={timeZone}
             projectNames={projectNames}
             hotkeyLabels={labels}
+            renderTrends={(scopeLabel) => (
+                <TrendsSection
+                    organization={organization}
+                    timeZone={timeZone}
+                    project={address.project}
+                    annotator={address.annotator}
+                    shapes={address.shapes}
+                    scopeLabel={scopeLabel}
+                    projectNames={projectNames}
+                    historyProgress={status?.history ?
+                        `${status.history.complete}|${status.history.ready_from}` : ''}
+                />
+            )}
         />
     );
 }

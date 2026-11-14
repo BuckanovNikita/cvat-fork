@@ -53,6 +53,8 @@ interface Props {
     projectNames?: ProjectNames;
     // the viewer's keymap: hotkey action -> name and keys
     hotkeyLabels?: HotkeyLabels;
+    // the trends card (loads on its own); gets who and where the scope's line covers
+    renderTrends?: (scopeLabel: string) => React.ReactNode;
 }
 
 const WEEK: Address = {
@@ -84,7 +86,7 @@ function scopeLabel(organization: string | null, state: PageState): string {
 export default function TeamAnalyticsView({
     organization, state, onBackToTasks, address, onAddressChange, pending = false, status = null,
     timeZone = 'UTC', currentMonth: latestMonth = currentMonth(), projectNames = {},
-    hotkeyLabels,
+    hotkeyLabels, renderTrends,
 }: Props): JSX.Element {
     const filters: Filters = { project: address?.project ?? null, annotator: address?.annotator ?? null };
     // clicking a row sets it as the filter; clicking the selected row again removes it
@@ -197,7 +199,12 @@ export default function TeamAnalyticsView({
                         labels={hotkeyLabels}
                     />
                 ) : null}
-                <TrendsGate history={status?.history} />
+                <TrendsGate history={status?.history}>
+                    {renderTrends?.([
+                        filters.annotator === null ? 'All annotators' : annotatorLabel(filters.annotator, overview),
+                        filters.project === null ? 'All projects' : projectName(filters.project, projectNames),
+                    ].join(' · '))}
+                </TrendsGate>
             </div>
         );
     }

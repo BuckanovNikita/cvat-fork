@@ -269,3 +269,82 @@ export async function loadOverview(query: OverviewQuery, fetch: FetchService = f
     }
     return { kind: 'error' };
 }
+
+// --- trends (GET trends): twelve weeks or months, independent of the period --------------------------------
+
+export type TrendStep = 'week' | 'month';
+export type CompareKind = 'annotators' | 'projects';
+
+// One week or month of one line. Creation figures are null where the shapes cannot be told apart (a bucket
+// before the new logging under Bounding boxes); hotkey share is null when there were no actions to share.
+export interface TrendPoint {
+    working_time_ms: number;
+    // the line had job work in the bucket and none of it was shape-tagged
+    legacy: boolean;
+    boxes: number | null;
+    timed_boxes: number | null;
+    box_time_ms: number | null;
+    average_ms: number | null;
+    // false: before the new logging, hotkey use was not recorded
+    hotkey_recorded: boolean;
+    hotkey_actions: number;
+    mouse_actions: number;
+    hotkey_share: number | null;
+}
+
+export interface TrendLine {
+    // null for the scope's own line; otherwise the compared annotator's or project's id
+    id: number | null;
+    user_name: string | null;
+    points: TrendPoint[]; // one per bucket
+}
+
+export interface Trends {
+    step: TrendStep;
+    shapes: 'bounding_boxes' | 'all';
+    compare: CompareKind;
+    // first day of each week (Monday) or month; an unprocessed bucket's figures are partial and not shown
+    buckets: { start: string; processed: boolean }[];
+    lines: TrendLine[];
+    // everyone of the compared kind with work in the twelve buckets (most working time first)
+    candidates: { id: number; user_name: string | null; working_time_ms: number }[];
+}
+
+export interface TrendsQuery {
+    organization: string | null;
+    timeZone: string;
+    project: number | null;
+    annotator: number | null;
+    shapes: 'bounding_boxes' | 'all';
+    step: TrendStep;
+    compare: CompareKind;
+    ids: number[];
+}
+
+// The trends, or null when they cannot be read (the trends card then says so).
+export async function loadTrends(query: TrendsQuery, fetch: FetchService = fetchService): Promise<Trends | null> {
+    const params = new URLSearchParams({
+        org: query.organization ?? '',
+        tz: query.timeZone,
+        shapes: query.shapes,
+        step: query.step,
+        compare: query.compare,
+    });
+    if (query.project !== null) params.set('project', String(query.project));
+    if (query.annotator !== null) params.set('annotator', String(query.annotator));
+    if (query.ids.length) params.set('ids', query.ids.join(','));
+    try {
+        const response = await fetch(`${SERVICE_PREFIX}trends?${params}`, {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' },
+        });
+        const data = await body(response);
+        const readable = response.ok && !!data && Array.isArray(data.buckets) && Array.isArray(data.lines) &&
+            Array.isArray(data.candidates) && data.lines.every(
+                (line: TrendLine) => Array.isArray(line?.points) && line.points.length === data.buckets.length,
+            );
+        return readable ? data as Trends : null;
+    } catch {
+        return null;
+    }
+}

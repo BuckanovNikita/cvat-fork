@@ -1,0 +1,273 @@
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+@import 'base';
+
+$trend-control-border: $player-slider-color;
+
+// Trends and comparison (cards/trends-card.tsx)
+.cvat-team-analytics-trends {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: $grid-unit-size * 2;
+}
+
+.cvat-team-analytics-trends-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $grid-unit-size $grid-unit-size * 2;
+
+    > :first-child {
+        margin-right: auto;
+    }
+}
+
+.cvat-team-analytics-trends-subtitle,
+.cvat-team-analytics-trend-unit,
+.cvat-team-analytics-compare-label,
+.cvat-team-analytics-compare-hint,
+.cvat-team-analytics-trend-note {
+    color: $text-color-secondary;
+    font-size: 13px;
+}
+
+.cvat-team-analytics-trends-segments {
+    display: inline-flex;
+    gap: 2px;
+    padding: 4px;
+    border-radius: $border-radius-base;
+    background: $border-color-1;
+
+    button {
+        min-height: 32px;
+        padding: 0 $grid-unit-size * 2;
+        border: 0;
+        border-radius: $border-radius-base;
+        background: transparent;
+        font: inherit;
+        cursor: pointer;
+    }
+
+    button[aria-pressed='true'] {
+        background: $background-color-1;
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    }
+}
+
+.cvat-team-analytics-compare {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $grid-unit-size;
+}
+
+.cvat-team-analytics-compare-chip,
+.cvat-team-analytics-compare-offer {
+    display: inline-flex;
+    align-items: center;
+    gap: $grid-unit-size;
+    min-height: 32px;
+    max-width: 230px;
+    padding: 0 $grid-unit-size * 1.5;
+    border-radius: 16px;
+    background: $background-color-1;
+    font: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cvat-team-analytics-compare-chip {
+    border: 1px solid $text-color;
+    font-weight: 600;
+}
+
+.cvat-team-analytics-compare-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cvat-team-analytics-compare-offer {
+    border: 1px dashed $trend-control-border;
+
+    &:disabled {
+        color: $text-color-secondary;
+        cursor: not-allowed;
+    }
+}
+
+.cvat-team-analytics-compare-swatch,
+.cvat-team-analytics-trend-swatch {
+    flex: none;
+    width: 14px;
+    height: 4px;
+    border-radius: 2px;
+}
+
+.cvat-team-analytics-compare-search {
+    width: 190px;
+    min-height: 32px;
+    padding: 0 $grid-unit-size * 1.5;
+    border: 1px solid $trend-control-border;
+    border-radius: 16px;
+    font: inherit;
+}
+
+.cvat-team-analytics-trend-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    gap: $grid-unit-size * 3 $grid-unit-size * 4;
+}
+
+.cvat-team-analytics-trend-chart {
+    min-width: 0;
+    margin: 0;
+
+    figcaption {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: $grid-unit-size;
+    }
+}
+
+.cvat-team-analytics-trend-title {
+    font-weight: 600;
+}
+
+.cvat-team-analytics-trend-plot {
+    display: flex;
+    gap: $grid-unit-size;
+    height: 150px;
+}
+
+.cvat-team-analytics-trend-scale {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-width: 40px;
+    color: $text-color-secondary;
+    font-size: 12px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.cvat-team-analytics-trend-area {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    margin-right: $grid-unit-size;
+    border-bottom: 1px solid $border-color-1;
+    border-top: 1px solid $border-color-1;
+
+    svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+    }
+}
+
+.cvat-team-analytics-trend-dot {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    margin: 0 0 -3px -3px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px $background-color-1;
+}
+
+.cvat-team-analytics-trend-dot-last {
+    width: 9px;
+    height: 9px;
+    margin: 0 0 -4.5px -4.5px;
+}
+
+.cvat-team-analytics-trend-axis {
+    position: relative;
+    height: 18px;
+    margin: 4px $grid-unit-size 0 calc(40px + #{$grid-unit-size});
+    color: $text-color-secondary;
+    font-size: 12px;
+
+    span {
+        position: absolute;
+        transform: translateX(-50%);
+        white-space: nowrap;
+    }
+}
+
+.cvat-team-analytics-trend-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 174px;
+    padding: $grid-unit-size * 1.5;
+    border: 1px dashed $trend-control-border;
+    border-radius: $border-radius-base;
+    color: $text-color-secondary;
+    text-align: center;
+}
+
+.cvat-team-analytics-trend-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: $grid-unit-size 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 13px;
+}
+
+.cvat-team-analytics-trend-legend-item {
+    display: flex;
+    align-items: center;
+    gap: $grid-unit-size;
+    min-width: 0;
+}
+
+.cvat-team-analytics-trend-legend-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cvat-team-analytics-trend-legend-value {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.cvat-team-analytics-trend-values {
+    margin-top: $grid-unit-size;
+    font-size: 13px;
+
+    summary {
+        cursor: pointer;
+        color: $text-color-secondary;
+    }
+
+    table {
+        width: 100%;
+        margin-top: $grid-unit-size;
+        border-collapse: collapse;
+    }
+
+    th,
+    td {
+        padding: 2px $grid-unit-size;
+        text-align: right;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+
+    th[scope='row'],
+    thead th:first-child {
+        text-align: left;
+    }
+}
