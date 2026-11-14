@@ -12,7 +12,7 @@ import { useHistory } from 'react-router';
 
 import { CombinedState } from 'reducers';
 import {
-    PageState, ProjectNames, Status, fetchService, loadOverview, loadStatus, viewerTimeZone,
+    PageState, ProjectNames, Status, fetchService, loadOverview, loadStatus, onRefusal, viewerTimeZone,
 } from './service';
 import { currentMonth, useAddress } from './address';
 import { agedStatus } from './freshness';
@@ -72,6 +72,13 @@ export default function TeamAnalyticsPage(): JSX.Element {
         });
         return () => { current = false; };
     }, [organization, address.period, address.month, address.project, address.annotator, address.shapes, reloads]);
+
+    // a refusal of any other request (trends, details, a full view's list, the status poll) means the caller
+    // may no longer read: the whole page shows that refusal instead of the figures it already has
+    useEffect(() => onRefusal((refusal) => {
+        setState(refusal);
+        setPending(false);
+    }), []);
 
     // the shown period was not wholly processed; once a status read says it is, its figures are loaded
     const waitingForHistory = state.kind === 'ready' && state.overview.processed === false;

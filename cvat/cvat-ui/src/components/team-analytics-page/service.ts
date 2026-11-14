@@ -243,6 +243,32 @@ function serviceParams(query: OverviewQuery): URLSearchParams {
     return params;
 }
 
+// --- refusals: the page state for a 401 or 403 from any endpoint ---------------------------------------------
+
+export type RefusedState = { kind: 'denied' } | { kind: 'select-organization' } | { kind: 'signed-out' };
+
+export function refusalOf(response: ServiceResponse, data: any): RefusedState | null {
+    if (response.status === 403 && data?.error === 'organization_required') return { kind: 'select-organization' };
+    if (response.status === 401) return { kind: 'signed-out' };
+    if (response.status === 403) return { kind: 'denied' };
+    return null;
+}
+
+type RefusalListener = (state: RefusedState) => void;
+const refusalListeners = new Set<RefusalListener>();
+
+// The page listens here: a refusal of the trends, details, list or status request (a loader then answers
+// null, like a failure) replaces the whole page with the refusal, as one of the overview does.
+export function onRefusal(listener: RefusalListener): () => void {
+    refusalListeners.add(listener);
+    return () => { refusalListeners.delete(listener); };
+}
+
+function reportRefusal(response: ServiceResponse, data: any): void {
+    const refusal = refusalOf(response, data);
+    if (refusal) refusalListeners.forEach((listener) => listener(refusal));
+}
+
 // The status of the figures, or null when it cannot be read (the page then shows no freshness).
 export async function loadStatus(query: OverviewQuery, fetch: FetchService = fetchService): Promise<Status | null> {
     const params = new URLSearchParams({ org: query.organization ?? '', tz: query.timeZone });
@@ -252,6 +278,7 @@ export async function loadStatus(query: OverviewQuery, fetch: FetchService = fet
             headers: { Accept: 'application/json' },
         });
         const data = await body(response);
+        reportRefusal(response, data);
         return response.ok && data ? data as Status : null;
     } catch {
         return null;
@@ -273,16 +300,7 @@ export async function loadOverview(query: OverviewQuery, fetch: FetchService = f
     if (response.ok && data && data.by_annotator) {
         return { kind: 'ready', overview: data as Overview };
     }
-    if (response.status === 403 && data?.error === 'organization_required') {
-        return { kind: 'select-organization' };
-    }
-    if (response.status === 401) {
-        return { kind: 'signed-out' };
-    }
-    if (response.status === 403) {
-        return { kind: 'denied' };
-    }
-    return { kind: 'error' };
+    return refusalOf(response, data) ?? { kind: 'error' };
 }
 
 // --- trends (GET trends): twelve weeks or months, independent of the period --------------------------------
@@ -354,6 +372,7 @@ export async function loadTrends(query: TrendsQuery, fetch: FetchService = fetch
             headers: { Accept: 'application/json' },
         });
         const data = await body(response);
+        reportRefusal(response, data);
         const readable = response.ok && !!data && Array.isArray(data.buckets) && Array.isArray(data.lines) &&
             Array.isArray(data.candidates) && data.lines.every(
                 (line: TrendLine) => Array.isArray(line?.points) && line.points.length === data.buckets.length,
@@ -430,6 +449,7 @@ export async function loadList(
             headers: { Accept: 'application/json' },
         });
         const data = await body(response);
+        reportRefusal(response, data);
         const readable = response.ok && !!data && data.by === query.by && Array.isArray(data.rows);
         return readable ? data as FullList : null;
     } catch {
@@ -499,6 +519,7 @@ export async function loadDetails(query: DetailsQuery, fetch: FetchService = fet
             headers: { Accept: 'application/json' },
         });
         const data = await body(response);
+        reportRefusal(response, data);
         const readable = response.ok && !!data && Array.isArray(data.rows) && typeof data.total === 'number';
         return readable ? data as Details : null;
     } catch {
