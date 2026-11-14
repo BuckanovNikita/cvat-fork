@@ -6,11 +6,16 @@
 
 **Status:** ready-for-agent
 
-- [ ] Test first: the policy test gains cases for a caller with no global role, one who is staff of the issue and one who is not. For each, the patched policies must decide as the stock ones for every action and for the list filter. These cases fail against the patch as it is today.
-- [ ] Both imported policies carry the patch. The added member rule and the added branch of the list filter require the `worker` global role, and the stock member branch of the list filter is restored after the patched one.
-- [ ] The existing expectations still hold: workers and supervisors are unrestricted inside their organization; non-members, removed members and other organizations are refused; sandbox behaviour is stock.
-- [ ] The policy test reads the policies and their helper policies from the import. It passes against the stock release tag with the stock expectations and against the patched tree with the patched ones. No outside checkout is used.
-- [ ] The difference between the patched policies and the stock ones, taken against the import's tag, is exactly the patch.
-- [ ] The fork specification's section on issue and comment permissions states the floor and the invariant.
-- [ ] The copied policy directory is not edited; it is removed in ticket 12.
+- [x] Test first: the policy test gains cases for a caller with no global role, one who is staff of the issue and one who is not. For each, the patched policies must decide as the stock ones for every action and for the list filter. These cases fail against the patch as it is today.
+- [x] Both imported policies carry the patch. The added member rule and the added branch of the list filter require the `worker` global role, and the stock member branch of the list filter is restored after the patched one.
+- [x] The existing expectations still hold: workers and supervisors are unrestricted inside their organization; non-members, removed members and other organizations are refused; sandbox behaviour is stock.
+- [x] The policy test reads the policies and their helper policies from the import. It passes against the stock release tag with the stock expectations and against the patched tree with the patched ones. No outside checkout is used.
+- [x] The difference between the patched policies and the stock ones, taken against the import's tag, is exactly the patch.
+- [x] The fork specification's section on issue and comment permissions states the floor and the invariant.
+- [x] The copied policy directory is not edited; it is removed in ticket 12.
 - [ ] The policy change gets an independent review.
+
+## Comments
+
+- 2026-11-14: Shown in `docs/evidence/2026-11-14-policies-role-floor.md`. The new cases were run on the stock tag (pass), against the old copies under `opa/rules/` (3 fail), then on the patched tree and the stock tag (all pass). Commands: `verify/policy_test.sh` (patched) and `verify/policy_test.sh stock`, from the repository root. The marker in each patched policy is the comment text `Local patch (role floor)`.
+- 2026-11-14: The independent review is not the implementer's; it follows the merge, so that criterion stays unticked.
