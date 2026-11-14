@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Before the change is adopted, the cost of the long-range search is measured, in time and memory, on data of the scale of the design measurements (about 36 million event rows, built with the benchmark fixture under `docs/evidence/`), and recorded. The test stack's few thousand rows are not a measurement. If it is too costly, the fallback of the spec is used and this ticket says so.
 - [x] Test first, through the service's read interface: a service started on stored shape-tagged events knows the cutover on its first answer, before any refresh.
@@ -41,3 +41,5 @@ Notes on single criteria:
 Not run: the whole seam 1 suite, and nothing on the stack. Eleven modules ran on the default image, last at `5ff847f` after merging `feat/team-analytics-page` (111 tests, OK); `test_cutover` ran on the second image before that merge only. No hook configuration exists on the branch yet, so none was run. The change adds a search and a write without the lease at service start; it has had no independent review.
 
 Found on the way: `verify/team_analytics_service.sh` removed its ClickHouse container without its anonymous volumes, so every run on `clickhouse/clickhouse-server:23.11-alpine` left two unused volumes behind. Fixed at the coordinator's request in `b7cb367` and shown in the evidence (67 unused volumes before a run on that image, 67 after). The legacy rule of the fork specification, which still said the stored cutover never moves, was rewritten in `a2bc853`.
+
+2026-11-14: Merged into `feat/team-analytics-page` as `8eda4153`, after ticket 20 (`f5d1f6a5`). On the merged tree, seam 1 `tests.test_lease tests.test_cutover tests.test_history tests.test_refresh tests.test_shutdown tests.test_status tests.test_entry_point tests.test_concurrency` ran 65 tests on the default image, OK. Evidence: `docs/evidence/2026-11-14-cutover-at-start.md` and `docs/evidence/2026-11-14-cutover-search-cost.md`.
