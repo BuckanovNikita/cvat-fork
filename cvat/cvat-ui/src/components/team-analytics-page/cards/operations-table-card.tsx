@@ -13,9 +13,11 @@ import {
     InputSplit, OPERATION_LOOKS, inputSplit, isRecorded,
 } from '../operations';
 import { shapeWording } from '../shapes';
+import { FullViewButton } from '../full-view-button';
 
 interface Props {
     figures: OperationsFigures;
+    onFullView?: () => void;
 }
 
 const HOTKEY_COLOR = '#2a78d6';
@@ -43,13 +45,14 @@ function InputSplitCell({ name, split }: { name: string; split: InputSplit }): J
 }
 
 // The four operations: objects, average time per object, total time and share of working time.
-function OperationsTableCard({ figures }: Props): JSX.Element {
+function OperationsTableCard({ figures, onFullView }: Props): JSX.Element {
     const rows = figures.rows.filter((row) => row.operation !== 'other');
     const wording = shapeWording(figures);
     return (
         <section className='cvat-team-analytics-card cvat-team-analytics-operations'>
             <div className='cvat-team-analytics-card-header'>
                 <Text strong>{wording.operations}</Text>
+                <FullViewButton onClick={onFullView} />
             </div>
             <Text type='secondary'>
                 {`Counts and average time per ${wording.noun} · ${wording.label.toLowerCase()}`}

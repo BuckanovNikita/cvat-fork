@@ -7,6 +7,7 @@ import Text from 'antd/lib/typography/Text';
 
 import { Rest } from '../service';
 import { exactHours, formatHours } from '../format';
+import { FullViewButton, ShowAllButton } from '../full-view-button';
 
 export interface BreakdownRow {
     id: number;
@@ -25,13 +26,15 @@ interface Props {
     selected?: number | null;
     // clicking a row sets it as the filter, clicking the selected row again removes it
     onPick?: (id: number) => void;
+    // opens the chart's full view with every row
+    onFullView?: () => void;
 }
 
 // Working time per annotator or project, in the order the service gives (largest first), with the
 // rows not shown as one line. Bars are plain divs in the style of the task progress widget; the
 // legend sits inside the card.
 export default function WorkingTimeBreakdown({
-    kind, title, subtitle, rows, rest, selected = null, onPick,
+    kind, title, subtitle, rows, rest, selected = null, onPick, onFullView,
 }: Props): JSX.Element {
     const largest = rows.reduce((max, row) => Math.max(max, row.working_time_ms), 0);
     return (
@@ -39,6 +42,7 @@ export default function WorkingTimeBreakdown({
             <div className='cvat-team-analytics-card-header'>
                 <Text strong>{title}</Text>
                 <Text type='secondary'>{subtitle}</Text>
+                <FullViewButton onClick={onFullView} />
             </div>
             <div className='cvat-team-analytics-legend'>
                 <span className='cvat-team-analytics-legend-item'>
@@ -75,6 +79,7 @@ export default function WorkingTimeBreakdown({
                     <span className='cvat-team-analytics-value'>{formatHours(rest.working_time_ms)}</span>
                 </div>
             ) : null}
+            {rest && rest.count > 0 ? <ShowAllButton count={rows.length + rest.count} onClick={onFullView} /> : null}
         </section>
     );
 }

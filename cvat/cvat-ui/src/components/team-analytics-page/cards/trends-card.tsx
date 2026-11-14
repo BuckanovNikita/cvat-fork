@@ -9,6 +9,7 @@ import {
     CompareKind, ProjectNames, TrendLine, TrendStep, Trends,
 } from '../service';
 import { MISSING, dayLabel, projectName } from '../format';
+import { FullViewButton } from '../full-view-button';
 import {
     Cell, Compared, LINE_COLORS, MAX_COMPARED, NOT_PROCESSED, NOT_RECORDED, TrendMetric, cellOf, scaleTop,
     trendMetrics,
@@ -36,6 +37,10 @@ interface Props {
     projectNames?: ProjectNames;
     // names of annotators the page has seen (kept for compared people who left the candidates)
     annotatorNames?: Record<number, string>;
+    // opens the full view of one chart (by its metric key)
+    onOpenFull?: (metric: string) => void;
+    // the metric key of the chart shown alone in its full view; the card shows only that chart then
+    full?: string | null;
 }
 
 // offered candidates shown at once; the rest are reached by typing
@@ -86,9 +91,22 @@ function Segmented<T extends string>({
     );
 }
 
+// the values table: folded away on the overview, shown in the full view
+function Values({ open, children }: { open: boolean; children: React.ReactNode }): JSX.Element {
+    if (open) return <div className='cvat-team-analytics-trend-values cvat-team-analytics-trend-values-open'>{children}</div>;
+    return (
+        <details className='cvat-team-analytics-trend-values'>
+            <summary>Values</summary>
+            {children}
+        </details>
+    );
+}
+
 function TrendChart({
-    metric, lines, trends,
-}: { metric: TrendMetric; lines: ShownLine[]; trends: Trends }): JSX.Element {
+    metric, lines, trends, full = false, onOpenFull,
+}: {
+    metric: TrendMetric; lines: ShownLine[]; trends: Trends; full?: boolean; onOpenFull?: () => void;
+}): JSX.Element {
     const monthly = trends.step === 'month';
     const count = trends.buckets.length;
     const cells = lines.map((shown) => shown.line.points.map(
@@ -105,13 +123,30 @@ function TrendChart({
     const withheld = (kind: Cell['kind']): number => trends.buckets
         .filter((_, index) => cells.some((line) => line[index].kind === kind)).length;
     const unitName = monthly ? 'months' : 'weeks';
+    // the legend: under the chart on the overview, at the top (names whole) in the full view
+    const legend = (
+        <ul className='cvat-team-analytics-trend-legend'>
+            {lines.map((shown, lineIndex) => (
+                <li key={shown.key} className='cvat-team-analytics-trend-legend-item'>
+                    <span className='cvat-team-analytics-trend-swatch' style={{ background: shown.color }} aria-hidden />
+                    <span className='cvat-team-analytics-trend-legend-name' title={shown.name}>{shown.name}</span>
+                    <span className='cvat-team-analytics-trend-legend-value'>
+                        {cellText(metric, cells[lineIndex][count - 1])}
+                    </span>
+                </li>
+            ))}
+        </ul>
+    );
 
     return (
-        <figure className='cvat-team-analytics-trend-chart'>
-            <figcaption>
-                <span className='cvat-team-analytics-trend-title'>{metric.title}</span>
-                <span className='cvat-team-analytics-trend-unit'>{metric.unit}</span>
-            </figcaption>
+        <figure className={`cvat-team-analytics-trend-chart${full ? ' cvat-team-analytics-trend-chart-large' : ''}`}>
+            {full ? legend : (
+                <figcaption>
+                    <span className='cvat-team-analytics-trend-title'>{metric.title}</span>
+                    <span className='cvat-team-analytics-trend-unit'>{metric.unit}</span>
+                    <FullViewButton onClick={onOpenFull} />
+                </figcaption>
+            )}
             {values.length === 0 && notRecorded ? (
                 <div className='cvat-team-analytics-trend-empty'>Not recorded before the new logging</div>
             ) : (
@@ -181,19 +216,8 @@ function TrendChart({
                     {`${NOT_PROCESSED}: ${withheld('not-processed')} of ${count} ${unitName}`}
                 </div>
             ) : null}
-            <ul className='cvat-team-analytics-trend-legend'>
-                {lines.map((shown, lineIndex) => (
-                    <li key={shown.key} className='cvat-team-analytics-trend-legend-item'>
-                        <span className='cvat-team-analytics-trend-swatch' style={{ background: shown.color }} aria-hidden />
-                        <span className='cvat-team-analytics-trend-legend-name' title={shown.name}>{shown.name}</span>
-                        <span className='cvat-team-analytics-trend-legend-value'>
-                            {cellText(metric, cells[lineIndex][count - 1])}
-                        </span>
-                    </li>
-                ))}
-            </ul>
-            <details className='cvat-team-analytics-trend-values'>
-                <summary>Values</summary>
+            {full ? null : legend}
+            <Values open={full}>
                 <table>
                     <thead>
                         <tr>
@@ -212,7 +236,7 @@ function TrendChart({
                         ))}
                     </tbody>
                 </table>
-            </details>
+            </Values>
         </figure>
     );
 }
@@ -222,7 +246,7 @@ function TrendChart({
 // compared line keeps the colour of its slot until it is removed.
 function TrendsCard({
     trends, failed = false, pending = false, step, onStep, kind, onKind, compared, onAdd, onRemove, query, onQuery,
-    scopeLabel, projectNames = {}, annotatorNames = {},
+    scopeLabel, projectNames = {}, annotatorNames = {}, onOpenFull, full = null,
 }: Props): JSX.Element {
     const projects = kind === 'projects';
     const candidates = trends && trends.compare === kind ? trends.candidates : [];
@@ -251,6 +275,27 @@ function TrendsCard({
         };
     });
 
+    if (full) {
+        // one chart alone, large, in its full view; the selection stays as it was on the overview
+        const metric = trends ? trendMetrics(trends).find((item) => item.key === full) : undefined;
+        if (!trends || !metric) {
+            return (
+                <div className='cvat-team-analytics-trend-failed' role='status'>
+                    {failed ? 'Trends could not be loaded.' : 'Loading trends…'}
+                </div>
+            );
+        }
+        return (
+            <div className={`cvat-team-analytics-trend-full${pending ? ' cvat-team-analytics-pending' : ''}`}>
+                <h2 className='cvat-team-analytics-full-title'>{metric.title}</h2>
+                <div className='cvat-team-analytics-full-subtitle'>
+                    {`${metric.unit} · last 12 ${step === 'month' ? 'months' : 'weeks'}`}
+                </div>
+                <TrendChart metric={metric} lines={lines} trends={trends} full />
+            </div>
+        );
+    }
+
     let body: JSX.Element;
     if (trends) {
         body = (
@@ -262,7 +307,13 @@ function TrendsCard({
                 ) : null}
                 <div className='cvat-team-analytics-trend-charts'>
                     {trendMetrics(trends).map((metric) => (
-                        <TrendChart key={metric.key} metric={metric} lines={lines} trends={trends} />
+                        <TrendChart
+                            key={metric.key}
+                            metric={metric}
+                            lines={lines}
+                            trends={trends}
+                            onOpenFull={onOpenFull ? () => onOpenFull(metric.key) : undefined}
+                        />
                     ))}
                 </div>
             </>
