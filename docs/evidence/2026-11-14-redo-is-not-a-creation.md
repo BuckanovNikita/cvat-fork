@@ -103,3 +103,13 @@ untouched.
 - An upgrade of a deployment that holds stored totals.
 - Whether any deployment holds rows stored as `redone`. The read queries still
   count them as Drawn; they were not changed and not exercised here.
+
+## Independent review, 2026-11-15
+
+An independent review of the counting changes of tickets 19, 21 and 22 found the
+redo rule sound: a redo across a refresh window edge gives 2 alignments and 0
+creations, a redo is no operation, and a redo of created objects inside a job
+still ends a run and nothing else. None of its five findings concerns this
+ticket. The review, its findings and what was done about them are recorded in
+`docs/evidence/2026-11-14-frame-navigation-hotkeys.md` ("Independent review,
+2026-11-15").

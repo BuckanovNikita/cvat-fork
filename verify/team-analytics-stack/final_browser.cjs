@@ -4,7 +4,10 @@
 //   node final_browser.cjs annotate STATE   ta-worker-c annotates the prepared job with the real UI:
 //                                           draw (mouse, then the draw-mode hotkey), drag twice, copy
 //                                           and paste, propagate, change a class by hotkey, delete,
-//                                           frame hotkeys, save, leave the job. Writes what it did
+//                                           run the detector twice from the AI tools (its model
+//                                           list and answers supplied in the browser, see
+//                                           superviseDetector), frame hotkeys, save, leave the
+//                                           job. Writes what it did
 //                                           into STATE (key "did") for final_run.py.
 //   node final_browser.cjs page CONTEXT     the page: loads, period, both filters, a full view and
 //                                           back, trends comparing two annotators, the overview's
@@ -89,21 +92,172 @@ const rectOf = (page, selector) => page.evaluate(`(() => {
 const shapeCount = (page) => page.evaluate('document.querySelectorAll(".cvat_canvas_shape").length');
 const activated = (page) => page.evaluate('document.querySelector(".cvat_canvas_shape_activated")?.id || null');
 
-// every POST /api/events the page makes, with its status
+const MODEL_RECORD = 'team_analytics:model_creation';
+
+// every POST /api/events the page makes, with its status and the detector records in its body
 function watchEventPosts(browser, page) {
     const posts = [];
     const requests = new Map();
+    const recordsIn = (body) => {
+        try {
+            return (JSON.parse(body).events || []).filter((e) => e.obj_name === MODEL_RECORD)
+                .map((e) => ({ count: e.count, payload: JSON.parse(e.payload || '{}'), job_id: e.job_id }));
+        } catch { return null; }
+    };
     browser.listeners.add((message) => {
         if (message.sessionId !== page.sessionId) return;
         if (message.method === 'Network.requestWillBeSent' && message.params.request.method === 'POST'
             && new URL(message.params.request.url).pathname === '/api/events') {
-            requests.set(message.params.requestId, message.params.request.url);
+            const { requestId, request } = message.params;
+            // a long body is left out of the event; it is fetched once the response is in
+            requests.set(requestId, { url: request.url, body: request.postData ?? null });
         }
         if (message.method === 'Network.responseReceived' && requests.has(message.params.requestId)) {
-            posts.push({ url: requests.get(message.params.requestId), status: message.params.response.status });
+            const { requestId } = message.params;
+            const { url, body } = requests.get(requestId);
+            const post = { url, status: message.params.response.status, model_records: body === null ? null : recordsIn(body) };
+            if (body === null) {
+                page.send('Network.getRequestPostData', { requestId })
+                    .then(({ postData }) => { post.model_records = recordsIn(postData); })
+                    .catch(() => { /* stays null: unknown */ });
+            }
+            posts.push(post);
         }
     });
     return posts;
+}
+
+// ---------------------------------------------------------------- detector
+
+// The stack has no model function (nuclio is off; the server answers 503 for the model list). The
+// browser's requests for the model list and for the model's answer are answered here, at the HTTP
+// boundary; everything else (the AI tools control, the detector runner, the create thunk, the
+// record and its POST /api/events) is the real UI against the real server. cvat-core makes exactly
+// these requests for a detector run from the annotation view (server-proxy.ts):
+//   HEAD /api/lambda/functions, GET /api/lambda/functions   the model list, once per page load
+//   POST /api/lambda/functions/<id>                          the model's answer for one frame
+// Any other /api/lambda/ request goes on to the server and is reported.
+const MODEL = {
+    id: 'ta-supplied-detector',
+    name: 'Supplied detector',
+    kind: 'detector',
+    type: 'detector',
+    description: 'model list entry supplied by the stack run',
+    framework: 'none',
+    labels_v2: [
+        { name: 'box', type: 'any', attributes: [] },
+        { name: 'other', type: 'any', attributes: [] },
+    ],
+};
+
+// The model's answers, in the order the runs ask: first nothing, then two rectangles and a polygon.
+// The frames are 8 x 8 px (stack_api.py tiny_png); label ids are the job's.
+function detectorAnswers(labelIds) {
+    const { box, other } = labelIds;
+    const shape = (type, labelId, points) => ({
+        type, label_id: labelId, points, attributes: [], occluded: false, rotation: 0, elements: [],
+    });
+    return [
+        { shapes: [], tags: [] },
+        {
+            shapes: [
+                shape('rectangle', box, [1, 1, 3, 3]),
+                shape('rectangle', other, [4, 4, 7, 7]),
+                shape('polygon', box, [1, 5, 3, 5, 2, 7]),
+            ],
+            tags: [],
+        },
+    ];
+}
+
+function superviseDetector(browser, page, labelIds) {
+    const answers = detectorAnswers(labelIds);
+    const seen = { supplied: [], passed: [], calls: [] };
+    const json = (value) => Buffer.from(JSON.stringify(value)).toString('base64');
+    browser.listeners.add((message) => {
+        if (message.sessionId !== page.sessionId || message.method !== 'Fetch.requestPaused') return;
+        const { requestId, request } = message.params;
+        const { pathname } = new URL(request.url);
+        const fulfil = (body) => {
+            seen.supplied.push({ method: request.method, path: pathname });
+            return page.send('Fetch.fulfillRequest', {
+                requestId,
+                responseCode: 200,
+                responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+                ...(body === undefined ? {} : { body: json(body) }),
+            });
+        };
+        let done;
+        if (pathname === '/api/lambda/functions' && request.method === 'HEAD') done = fulfil(undefined);
+        else if (pathname === '/api/lambda/functions' && request.method === 'GET') done = fulfil([MODEL]);
+        else if (pathname === `/api/lambda/functions/${MODEL.id}` && request.method === 'POST') {
+            const answer = answers[Math.min(seen.calls.length, answers.length - 1)];
+            let sent = null;
+            try { sent = JSON.parse(request.postData || 'null'); } catch { /* reported as null */ }
+            seen.calls.push({ request: sent, answered: answer.shapes.length + answer.tags.length });
+            done = fulfil(answer);
+        } else {
+            seen.passed.push({ method: request.method, path: pathname });
+            done = page.send('Fetch.continueRequest', { requestId });
+        }
+        done.catch((error) => { seen.passed.push({ method: request.method, path: pathname, error: error.message }); });
+    });
+    return seen;
+}
+
+const visible = (selector) => `[...document.querySelectorAll(${JSON.stringify(selector)})].some((e) => e.checkVisibility())`;
+const TOOLS_POPOVER = '.cvat-tools-control-popover:not(.ant-popover-hidden)';
+
+// The annotator opens the AI tools, the Auto-labeling tab, picks the model (once) and clicks Annotate.
+async function runDetector(page, keys, seen) {
+    const calls = seen.calls.length;
+    const before = await shapeCount(page);
+    if (!await page.evaluate(visible(TOOLS_POPOVER))) {
+        const control = await rectOf(page, '.cvat-tools-control');
+        await keys.click(control.cx, control.cy);
+        await page.waitFor(visible(TOOLS_POPOVER), 'the AI tools popover');
+    }
+    const tab = await page.evaluate(`(() => {
+        const t = [...document.querySelectorAll("${TOOLS_POPOVER} .ant-tabs-tab")].find((e) => e.textContent.trim() === "Auto-labeling");
+        if (!t) return null;
+        const r = t.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2, active: t.classList.contains("ant-tabs-tab-active") };
+    })()`);
+    check(tab, 'no Auto-labeling tab in the AI tools');
+    if (!tab.active) {
+        await keys.click(tab.x, tab.y);
+        await sleep(500);
+    }
+    const runner = `${TOOLS_POPOVER} .cvat-run-model-content`;
+    const chosen = await textOf(page, `${runner} .ant-select-selection-item`);
+    if (chosen !== MODEL.name) {
+        const select = await rectOf(page, `${runner} .ant-select-selector`);
+        await keys.click(select.cx, select.cy);
+        await page.waitFor(`[...document.querySelectorAll(".ant-select-item-option")].some((e) => e.textContent.trim() === ${JSON.stringify(MODEL.name)} && e.checkVisibility())`, 'the supplied model in the model list');
+        const option = await page.evaluate(`(() => {
+            const r = [...document.querySelectorAll(".ant-select-item-option")].find((e) => e.textContent.trim() === ${JSON.stringify(MODEL.name)} && e.checkVisibility()).getBoundingClientRect();
+            return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        })()`);
+        await keys.click(option.x, option.y);
+        await page.waitFor(`document.querySelector("${runner} .ant-select-selection-item")?.textContent.trim() === ${JSON.stringify(MODEL.name)}`, 'the model chosen');
+    }
+    // the label mapper maps the model's labels to the job's labels of the same name on its own
+    await page.waitFor(`document.querySelector("${runner} .cvat-inference-run-button") && !document.querySelector("${runner} .cvat-inference-run-button").disabled`, 'the Annotate button enabled');
+    const mapped = await count(page, `${runner} .cvat-runner-label-mapping-row`);
+    const button = await rectOf(page, `${runner} .cvat-inference-run-button`);
+    await keys.click(button.cx, button.cy);
+    const until = Date.now() + 30000;
+    while (seen.calls.length === calls && Date.now() < until) await sleep(250);
+    check(seen.calls.length === calls + 1, `Annotate made ${seen.calls.length - calls} model calls`);
+    // the "Making a server request" modal closes once the objects are created
+    await page.waitFor('![...document.querySelectorAll(".ant-modal-title")].some((e) => e.textContent.includes("Making a server request") && e.checkVisibility())', 'the detector to finish');
+    const { answered } = seen.calls[calls];
+    await page.waitFor(`document.querySelectorAll(".cvat_canvas_shape").length === ${before + answered}`, `${answered} detector objects on the canvas`);
+    await sleep(1500);
+    const after = await shapeCount(page);
+    const errors = await count(page, '.ant-notification-notice-error');
+    check(after === before + answered && errors === 0, `detector run: ${before} -> ${after} shapes for ${answered} answered, ${errors} error notices`);
+    return { answered, shapes_before: before, shapes_after: after, mapped_labels: mapped };
 }
 
 async function openJob(page, ids) {
@@ -144,6 +298,9 @@ async function annotate(stateFile) {
         const page = await signIn(browser, state.worker, state.org);
         await page.send('Network.enable', {});
         const posts = watchEventPosts(browser, page);
+        // before the job opens: the page load there fetches the model list
+        const detector = superviseDetector(browser, page, state.ui.label_ids);
+        await page.send('Fetch.enable', { patterns: [{ urlPattern: '*/api/lambda/*', requestStage: 'Request' }] });
         await openJob(page, state.ui);
         const keys = input(page);
         const bg = await rectOf(page, '#cvat_canvas_background');
@@ -208,6 +365,15 @@ async function annotate(stateFile) {
         did.deleted += 1; did.deleted_objects += 1;
         log('deleted the pasted box');
 
+        // the detector from the AI tools, by mouse only: first the model answers nothing, then
+        // three objects (two rectangles and a polygon) on this frame
+        const runs = [];
+        for (let i = 0; i < 2; i++) runs.push(await runDetector(page, keys, detector));
+        const tools = await rectOf(page, '.cvat-tools-control');
+        await keys.click(tools.cx, tools.cy); // the click trigger closes the popover again
+        await sleep(500);
+        log(`detector: ran twice; answered ${runs.map((r) => r.answered).join(', ')} objects; shapes ${runs.map((r) => `${r.shapes_before} -> ${r.shapes_after}`).join(', ')}`);
+
         // frame hotkeys, then save
         await keys.move(bg.x - 150, bg.y + 20);
         for (const k of ['f', 'f', 'f', 'd', 'd']) await keys.press(k);
@@ -215,7 +381,13 @@ async function annotate(stateFile) {
         await keys.press('s', { ctrl: true }); hotkey('SAVE_JOB');
         await page.waitFor(`fetch("/api/jobs/${state.ui.job_id}/annotations").then((r) => r.json()).then((j) => j.shapes.length > 0)`, 'the saved annotations');
         did.boxes_in_job_after_save = await page.evaluate(`fetch("/api/jobs/${state.ui.job_id}/annotations").then((r) => r.json()).then((j) => j.shapes.filter((s) => s.type === "rectangle").length)`);
-        log(`F x3, D x2, Ctrl+S: ${did.boxes_in_job_after_save} boxes saved in the job`);
+        // what the detector created, as the server stored it: objects with source "auto"
+        const auto = await page.evaluate(`fetch("/api/jobs/${state.ui.job_id}/annotations").then((r) => r.json()).then((j) => {
+            const shapes = j.shapes.filter((s) => s.source === "auto");
+            return { objects: shapes.length + j.tags.filter((t) => t.source === "auto").length + j.tracks.filter((t) => t.source === "auto").length,
+                rectangles: shapes.filter((s) => s.type === "rectangle").length };
+        })`);
+        log(`F x3, D x2, Ctrl+S: ${did.boxes_in_job_after_save} boxes saved in the job; detector objects saved ${JSON.stringify(auto)}`);
         await page.screenshot('final-annotation');
 
         // leave the job through the header: the view writes its last input summary
@@ -227,6 +399,10 @@ async function annotate(stateFile) {
         // closing the tab would, and check-ui-records then looks for the summary.
         await sleep(5000);
         did.event_posts = posts;
+        did.detector = {
+            model: MODEL.id, runs, calls: detector.calls, supplied: detector.supplied, passed: detector.passed,
+            created: auto,
+        };
         log(`left the job; ${posts.length} POST /api/events: ${JSON.stringify(posts.map((p) => p.status))}`);
     } finally {
         await browser?.close();

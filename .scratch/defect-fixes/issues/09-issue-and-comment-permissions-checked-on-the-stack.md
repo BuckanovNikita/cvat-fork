@@ -4,14 +4,14 @@
 
 **Blocked by:** 08 (The stack runs on the fork server image and the in-tree chart).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The stack seeds an organization with an owner, a maintainer, a supervisor, workers, a member with no global role, a non-member and a member of another organization, and an issue with comments on a job none of the workers is assigned to.
 - [x] Through the real API, an unassigned worker and an unassigned supervisor create, view, update and delete issues and comments of their organization, and list all of them.
 - [x] The member with no global role gets what stock CVAT gives: it cannot act on issues it is not staff of, and its list holds only its own.
 - [x] The non-member and the member of another organization are refused, and nothing crosses organizations.
 - [x] The run judges the matrix itself, pass or fail; it is not left for reading.
-- [ ] The existing seed and check scripts are reused where they fit.
+- [x] The existing seed and check scripts are reused where they fit.
 - [x] The matrix is kept in a dated evidence file.
 
 ## Comments
@@ -86,3 +86,4 @@ passed all 124 rows, exit 0, with the same ids and the same statuses. Outcome:
   are not called; their rows and techniques were carried over instead. That leaves those two
   scripts with no caller when the Compose files are removed (plan row 1.4). The orchestrator or
   reviewer decides.
+- 2026-11-15: Merged into `feat/team-analytics-page` as `3cd590eb`, with no conflict. On the merged tree `py_compile` on `issue_matrix.py` passed; no launcher command was run by the merger. Criterion 6 is ticked by the orchestrator's decision, not by a run: it is met. The stack's own `seed_users.py` and `stack_api.py` are reused. The Compose-era `verify/opa_issues_seed.py` and `verify/opa_issues_check.py` do not fit a Kubernetes stack (they rely on `docker exec`, a superuser and state in a temporary directory); their rows and techniques were carried over, and they go with the Compose removal in ticket 12. The ticket is resolved. Evidence: `docs/evidence/2026-11-14-stack-issue-matrix.md`.

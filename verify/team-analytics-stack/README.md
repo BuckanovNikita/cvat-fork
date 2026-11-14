@@ -16,7 +16,7 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
 Это теги по умолчанию (`TA_SERVER_IMAGE`, `TA_UI_IMAGE`, `TA_SERVICE_IMAGE` в `stack.env`);
 образы должны быть собраны из проверяемой версии, иначе проверки политик и страницы не
 пройдут. Остальные подкоманды (`seed`, `check-event`, `check-tracer`, `check-task-progress`, `check-final`,
-`check-policies`, `check-issues`, `check-issue-policies`, `forward`, `status`, `preflight`, `build-chart`, `render`, `check-render`,
+`check-final-ui`, `check-policies`, `check-issues`, `check-issue-policies`, `forward`, `status`, `preflight`, `build-chart`, `render`, `check-render`,
 `check-bundle`, `render-ingress`, `check-ingress`, `seed-access`, `check-access`,
 `check-ingress-gone`) описаны в шапке `run.sh`; `preflight` выполняет всё, что `up` делает до
 первого изменения в кластере, и ничего не создаёт и не скачивает. Ручных шагов нет.
@@ -115,8 +115,11 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
   техническая учётная запись `ta-bot`, `TA_TECHNICAL_ACCOUNTS`). На каждом запуске
   создаётся новый проект, и `ta-worker-c` в headless Chrome работает в его задании:
   рисует, перетаскивает, вставляет, размножает, меняет класс, удаляет, листает кадры и
-  сохраняет. Каждая новая запись ищется в ClickHouse. Запись детектора отправляется
-  через API (функции модели на стенде нет). `ta-bot` сохраняет рамки через API.
+  сохраняет. Ещё он дважды запускает детектор из AI tools: сначала модель ничего не
+  возвращает, затем две рамки и полигон. Функции модели на стенде нет, поэтому в браузере
+  подставляются только список моделей (`HEAD` и `GET /api/lambda/functions`) и ответ модели
+  (`POST /api/lambda/functions/<id>`); запись детектора отправляет сам UI. Каждая новая
+  запись ищется в ClickHouse. `ta-bot` сохраняет рамки через API.
   Затем сверяются цифры сервиса и страницы. В `ta-org-v` (`ta-owner-v`) один раз
   загружаются синтетические события: 100 исполнителей, 40 проектов с длинными
   именами, десять недель истории. По ним сверяются цифры, тренды и длина страницы,

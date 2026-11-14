@@ -6,13 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] The service's Ingress manifest is applied in the stack's namespace beside the proxy, under the cluster's Ingress class, and adds no cluster-wide object.
-- [ ] One status request through the Ingress with a real session is answered; the same request without a session is refused as signed out.
-- [ ] A member removed from the organization is refused once the service's identity cache has expired.
-- [ ] An administrator by group who is not a superuser reads instance scope and a named organization.
-- [ ] Job work done in a personal workspace appears under instance scope and under no organization.
-- [ ] Credentials sent as an authorization header get the same decisions as a session cookie.
-- [ ] The run judges each case itself, and the results are kept in a dated evidence file.
+- [x] The service's Ingress manifest is applied in the stack's namespace beside the proxy, under the cluster's Ingress class, and adds no cluster-wide object.
+- [x] One status request through the Ingress with a real session is answered; the same request without a session is refused as signed out.
+- [x] A member removed from the organization is refused once the service's identity cache has expired.
+- [x] An administrator by group who is not a superuser reads instance scope and a named organization.
+- [x] Job work done in a personal workspace appears under instance scope and under no organization.
+- [x] Credentials sent as an authorization header get the same decisions as a session cookie.
+- [x] The run judges each case itself, and the results are kept in a dated evidence file.
 - [ ] Teardown removes the Ingress with the namespace.
 
 ## Comments
@@ -32,3 +32,12 @@ Part two runs later, with a stack running (`verify/team-analytics-stack/run.sh u
 8. `run.sh down`, then `run.sh check-ingress-gone`. The namespace must be gone, no Ingress anywhere may name the host, and the controller must answer 404 for it. Criterion 8.
 
 2026-11-14: Merged into `feat/team-analytics-page` as `f273549f`, after ticket 10 (`3aa2b78b`). Git merged `run.sh` and `README.md` without a conflict; the merged `up` calls `apply_ingress` after `apply_proxy`, `check_ingress` after `seed`, and `check_access_cases` last, after ticket 10's `check_task_progress` and `check_final`. On the merged tree `bash -n` on `run.sh` and `py_compile` on `access_cases.py` and `seed_access.py` passed; no launcher command was run. The ticket stays open: part two, the live run above, is outstanding. Evidence: `docs/evidence/2026-11-14-stack-ingress-and-access-cases.md`.
+
+2026-11-15, part two: steps 1 to 7 ran live on the stack ticket 08 brought up, using only this ticket's own subcommands and read-only commands. Every case passed: `ingress`, `removed-member`, `group-admin`, `personal-workspace`, and `header-credentials` (Basic and Bearer, judged separately). The outcome is in "Live outcome, 2026-11-15" of `docs/evidence/2026-11-14-stack-ingress-and-access-cases.md`.
+
+Both points left open in part one are settled. CVAT accepts a read-only Bearer access token for the three identity reads. It answers 401 to a wrong Basic password and to an unknown token, and the service passes that on as 401 `not_authenticated`.
+
+The stack is shared with other tickets, so `access_cases.py` now reads a compared pair of service reads again, up to 4 times, before it judges a difference (`same_reads`).
+
+Criterion 8 stays unticked. The stack stays up for further tickets, so step 8 (`run.sh down`, then `run.sh check-ingress-gone`) runs at the end of the live work.
+- 2026-11-15: The live run merged into `feat/team-analytics-page` as `aa03acae`, with no conflict. On the merged tree `py_compile` on `access_cases.py` passed; no launcher command was run by the merger. The ticket stays open for criterion 8 (teardown removes the Ingress), shown when the stack comes down. Evidence: `docs/evidence/2026-11-14-stack-ingress-and-access-cases.md`.
