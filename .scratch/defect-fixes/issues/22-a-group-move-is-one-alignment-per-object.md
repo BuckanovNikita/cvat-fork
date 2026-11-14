@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 (First lint run on the fork's UI code), 19 (A redo is not a creation).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] First, the event is fixed in the logging contract: one drag event for the gesture, carrying the number of objects moved, how many of them are bounding boxes, and a mark that it is a group. No new event type.
 - [x] Test first, at the boundary where the UI sends events: a group drag of three boxes sends one group event for three objects. CVAT's own log of the grabbed shape is still sent and is not counted a second time. Moving the selection box sends the same group event.
@@ -29,3 +29,5 @@ day is computed again. Recent hours follow the new rule from the next
 refresh, and an older day only once its raw event count, or a neighbour's,
 changes. The fork specification says the same (TA-1, "Known limit of the
 stored totals"). Not shown here: a group drag in a real browser (ticket 27).
+
+2026-11-14: Merged into `feat/team-analytics-page` as `50895e77`, without conflicts. On the merged tree `node --test verify/team_analytics_logging.cjs` ran 70 tests and `node --test verify/team_analytics_page.cjs` 209, 0 failed and 0 skipped each; the skip-gate grep finds nothing. The service suite was not run by the merger. Evidence: `docs/evidence/2026-11-14-group-move.md`.
