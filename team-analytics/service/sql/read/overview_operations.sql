@@ -1,10 +1,11 @@
 -- The four operations and Other for [from, to) in the displayed scope, in a fixed order.
 -- Shape switch: with {bounding_boxes} = 1 only bounding box rows count (shape 'bounding_box'), unless the
--- scope has no shape-tagged row (a legacy period shows all shapes); `all_shapes` says what was applied.
+-- period is legacy ({legacy_period} = 1: it ends before the cutover to the new logging, see cutover.py),
+-- which shows all shapes; `all_shapes` says what was applied.
 -- Other = working time - operation time over the whole displayed scope, never below zero, so that the
 -- operations and Other add up to their own total (`active_ms`) and the shares to 100 %.
--- `legacy` = 1 when the scope (filters included) has job work in the period and no shape-tagged
--- operation; a period with no job work is empty, not legacy.
+-- `legacy` = 1 when the period is legacy and the scope (filters included) has job work in it; a period
+-- with no job work is empty, not legacy.
 -- hotkey_objects / mouse_objects: objects of operations started by hotkey / by mouse (neither when the
 -- input method was not recorded).
 -- Technical accounts are left out of both operation time and working time.
@@ -25,13 +26,11 @@ WITH
     ),
     -- job work = working time or an operation; with none, the period is empty, not legacy
     (SELECT count() FROM in_scope) AS operation_rows,
-    (SELECT countIf(shape != 'untagged') FROM in_scope) AS tagged_rows,
-    {bounding_boxes:UInt8} = 0 OR tagged_rows = 0 AS all_shapes,
+    {bounding_boxes:UInt8} = 0 OR {legacy_period:UInt8} = 1 AS all_shapes,
     scoped AS (
         SELECT operation, shape, objects, timed_objects, time_ms, hotkey_objects, mouse_objects
         FROM in_scope
-        WHERE ({bounding_boxes:UInt8} = 0 OR shape = 'bounding_box'
-            OR (SELECT countIf(shape != 'untagged') FROM in_scope) = 0)
+        WHERE ({bounding_boxes:UInt8} = 0 OR shape = 'bounding_box' OR {legacy_period:UInt8} = 1)
     ),
     (
         SELECT toInt64(sum(working_ms))
@@ -50,7 +49,7 @@ WITH
     (SELECT toInt64(sum(time_ms)) FROM scoped) AS operations_ms,
     greatest(working_ms - operations_ms, toInt64(0)) AS other_ms,
     operations_ms + other_ms AS active_ms,
-    (operation_rows > 0 OR working_ms > 0) AND tagged_rows = 0 AS legacy
+    (operation_rows > 0 OR working_ms > 0) AND {legacy_period:UInt8} = 1 AS legacy
 SELECT
     names.name AS operation,
     if(names.name = 'other', toUInt64(0), totals.objects) AS objects,

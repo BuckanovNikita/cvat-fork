@@ -70,8 +70,13 @@ export interface InputFigures {
 }
 
 export interface OperationsFigures {
-    // the scope has no shape-tagged event in the period
+    // the period ends before the cutover to the new activity logging (the first shape-tagged event on the
+    // instance, or none yet) and the scope has job work in it
     legacy: boolean;
+    // the cutover falls inside the period: bounding box figures, class changes and hotkey use cover the days since
+    partly_legacy?: boolean;
+    // the cutover (ISO), or null before there is one
+    cutover?: string | null;
     // the shapes the figures cover: the switch asked for, or all shapes in a legacy period
     shapes?: 'bounding_boxes' | 'all';
     working_time_ms: number;
@@ -173,6 +178,8 @@ export interface HistoryStatus {
 // GET status; each key is one status section of the service.
 export interface Status {
     history?: HistoryStatus | null;
+    // the cutover to the new activity logging: the first shape-tagged event on the instance (ISO), or null
+    cutover?: { at: string | null } | null;
     refresh?: {
         last_success_at: string | null; // ISO time of the last successful refresh
         now: string; // the service's time
@@ -312,7 +319,7 @@ export type CompareKind = 'annotators' | 'projects';
 // before the new logging under Bounding boxes); hotkey share is null when there were no actions to share.
 export interface TrendPoint {
     working_time_ms: number;
-    // the line had job work in the bucket and none of it was shape-tagged
+    // the line had job work in the bucket and the bucket ends before the cutover to the new logging
     legacy: boolean;
     boxes: number | null;
     timed_boxes: number | null;
@@ -422,6 +429,9 @@ export interface RowsList {
     // false: the period is not wholly processed, so the figures are partial and are not shown
     processed?: boolean;
     legacy: boolean;
+    // as OperationsFigures: the cutover falls inside the period, and when it is
+    partly_legacy?: boolean;
+    cutover?: string | null;
     shapes: 'bounding_boxes' | 'all';
     total: { count: number; working_time_ms: number };
     rows: ListRow[];
@@ -489,6 +499,8 @@ export interface Details {
     page_size: number;
     total: number; // rows matching the search
     legacy: boolean;
+    partly_legacy?: boolean; // as OperationsFigures
+    cutover?: string | null;
     shapes: 'bounding_boxes' | 'all';
     processed?: boolean;
     technical_accounts?: number;

@@ -39,16 +39,21 @@ def _figures(row: dict, name: str) -> dict:
 
 
 def _rows(request: Request, by: str) -> dict:
-    params = {**request.span().params(), **request.scope_params(), "by_project": 1 if by == "projects" else 0}
+    span = request.span()
+    legacy = request.legacy(span.start, span.end)
+    scope = request.scope_params()
+    params = {**span.params(), **scope, **legacy.params(), "by_project": 1 if by == "projects" else 0}
     # the row dimension's own filter does not narrow its rows
     if by == "projects":
         params.update(has_project=0, project=0)
     else:
         params.update(has_annotator=0, annotator=0)
     rows = request.sql.rows("read/list_rows.sql", params)
-    first = rows[0] if rows else {"all_shapes": True, "legacy": False, "all_working_ms": 0}
+    all_shapes = not scope["bounding_boxes"] or legacy.legacy_period
+    first = rows[0] if rows else {"all_shapes": all_shapes, "legacy": False, "all_working_ms": 0}
     return {
         "legacy": bool(first["legacy"]),
+        **legacy.describe(),
         "shapes": "all" if first["all_shapes"] else "bounding_boxes",
         "total": {"count": len(rows), "working_time_ms": int(first["all_working_ms"] or 0)},
         "rows": [

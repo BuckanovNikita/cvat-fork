@@ -60,7 +60,8 @@ def handle(request: Request) -> dict:
         scope.update(has_annotator=0, annotator=0)
     else:
         scope.update(has_project=0, project=0)
-    params = {**span.params(), **scope}
+    legacy = request.legacy(span.start, span.end)
+    params = {**span.params(), **scope, **legacy.params()}
 
     summary = request.sql.rows("read/details_scope.sql", params)[0]
     rows = request.sql.rows("read/details.sql", {
@@ -76,6 +77,7 @@ def handle(request: Request) -> dict:
         "page_size": PAGE_SIZE,
         "total": total,
         "legacy": bool(summary["legacy"]),
+        **legacy.describe(),
         "shapes": "all" if summary["all_shapes"] else "bounding_boxes",
         "processed": load_state(request.sql, request.now).covers(span.start),
         "technical_accounts": len(request.config.technical_accounts),

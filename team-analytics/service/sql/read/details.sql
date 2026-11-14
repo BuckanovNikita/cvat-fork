@@ -14,7 +14,7 @@
 --
 -- The shape switch is applied once over the table's whole scope (before search), as in
 -- read/overview_operations.sql and read/overview_creation_methods.sql: with {bounding_boxes} = 1 only bounding
--- box rows count unless nothing in the scope is shape-tagged (read/details_scope.sql says so to the page).
+-- box rows count unless the period is legacy ({legacy_period}; read/details_scope.sql says so to the page).
 --
 -- Search: annotators whose name contains {search} (case-insensitive); projects in {ids} when {has_ids} = 1
 -- (the page matches project names, which only it knows). Paging: {page_size} rows from row {offset}, moved
@@ -71,7 +71,7 @@ WITH
             sumIf(objects, operation = 'deletion') AS deletions
         FROM ops_in
         WHERE {bounding_boxes:UInt8} = 0 OR shape = 'bounding_box'
-            OR (SELECT countIf(shape != 'untagged') FROM ops_in) = 0
+            OR {legacy_period:UInt8} = 1
         GROUP BY key
     ),
     worked AS (
@@ -128,9 +128,9 @@ WITH
                     (source = 'detector' AND user_name NOT IN {technical_accounts:Array(String)})
                     OR ({by:String} = 'projects' AND source = 'saved' AND {has_annotator:UInt8} = 0
                         AND user_name IN {technical_accounts:Array(String)}))
-                -- all shapes when asked for or when people's operations are all untagged (legacy)
+                -- all shapes when asked for or in a legacy period
                 AND ({bounding_boxes:UInt8} = 0
-                    OR ((SELECT count() FROM ops_in) > 0 AND (SELECT countIf(shape != 'untagged') FROM ops_in) = 0)
+                    OR {legacy_period:UInt8} = 1
                     OR (resource = 'shapes' AND shape_type = 'rectangle'))) AS model,
             sumIf(objects, source = 'saved' AND action = 'create' AND resource = 'shapes'
                 AND shape_type = 'rectangle'

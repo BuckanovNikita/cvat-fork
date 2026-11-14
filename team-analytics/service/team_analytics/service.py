@@ -19,6 +19,7 @@ from typing import Any
 from team_analytics import endpoints
 from team_analytics.access import Access, Refused, Scope
 from team_analytics.config import Config
+from team_analytics.cutover import Legacy, load_cutover
 from team_analytics.history import History
 from team_analytics.periods import BadRequest, Span, decimal, period_span
 from team_analytics.refresh import Refresher, RefreshResult
@@ -60,6 +61,16 @@ class Request:
         return period_span(self.now, self.query.get("period", "week"), self.query.get("tz", "UTC"),
                            self.query.get("month"))
 
+    def cutover(self) -> datetime | None:
+        """The cutover to the new activity logging (cutover.py), read once per request."""
+        if "cutover" not in self.cache:
+            self.cache["cutover"] = load_cutover(self.sql)
+        return self.cache["cutover"]
+
+    def legacy(self, start: datetime, end: datetime) -> Legacy:
+        """What the cutover makes of [start, end): pass `.params()` to read files, `.describe()` to responses."""
+        return Legacy(self.cutover(), start, end)
+
     def filter_id(self, key: str) -> int | None:
         """The page's `project` or `annotator` filter: an id (project 0 = No project) or None when not set."""
         value = self.query.get(key, "")
@@ -93,7 +104,7 @@ class Request:
             "has_annotator": 0 if annotator is None else 1,
             "annotator": annotator or 0,
             # shape switch: a read file of an operation figure keeps `shape = 'bounding_box'` rows when 1
-            # (unless the period is legacy); see read/overview_operations.sql
+            # (unless the period is legacy: pass request.legacy(...).params() too); see read/overview_operations.sql
             "bounding_boxes": 1 if self.shapes() == SHAPES_BOUNDING_BOXES else 0,
         }
 

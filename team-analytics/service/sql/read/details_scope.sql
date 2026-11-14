@@ -1,7 +1,7 @@
 -- The details table's whole scope for [from, to) (search left out), one row:
---   legacy      job work (working time or an operation) and no shape-tagged operation, as in
---               read/overview_operations.sql; an empty scope is not legacy;
---   all_shapes  the switch says All shapes, or nothing in the scope is shape-tagged;
+--   legacy      a legacy period ({legacy_period}, see cutover.py) with job work (working time or an
+--               operation), as in read/overview_operations.sql; an empty scope is not legacy;
+--   all_shapes  the switch says All shapes, or the period is legacy;
 --   project_ids every project with job work in the table's order (0 = No project), for the page's project name
 --               search, which pages the matching projects itself (one page of ids per request).
 -- Filters as read/details.sql gets them (the table's own dimension cleared by the caller).
@@ -35,11 +35,10 @@ WITH
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     ),
     (SELECT count() FROM ops_in) AS operation_rows,
-    (SELECT countIf(shape != 'untagged') FROM ops_in) AS tagged_rows,
     (SELECT sum(working_ms) FROM wt) AS working_all
 SELECT
-    (operation_rows > 0 OR working_all > 0) AND tagged_rows = 0 AS legacy,
-    {bounding_boxes:UInt8} = 0 OR tagged_rows = 0 AS all_shapes,
+    (operation_rows > 0 OR working_all > 0) AND {legacy_period:UInt8} = 1 AS legacy,
+    {bounding_boxes:UInt8} = 0 OR {legacy_period:UInt8} = 1 AS all_shapes,
     (
         -- the rows of read/details.sql by project, in its order: working time (most first), then id
         SELECT arrayMap(row -> row.2, arraySort(row -> (-row.1, row.2), groupArray((working, project_id))))

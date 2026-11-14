@@ -9,8 +9,8 @@
 -- (a stored 'redone' counts as drawn, as in read/overview_creation_methods.sql); Model (counts only):
 -- detector records of the row's annotators, and for a project also what technical accounts saved there
 -- (only without an annotator filter).
--- Shape switch: decided once for the whole list as on the overview (bounding box rows only, unless no
--- row in the list's scope is shape-tagged); `legacy` = job work in the scope and none of it shape-tagged.
+-- Shape switch: decided once for the whole list as on the overview (bounding box rows only, unless the
+-- period is legacy, {legacy_period}); `legacy` = a legacy period with job work in the scope.
 WITH
     work AS (
         SELECT if({by_project:UInt8} = 1, project_id, user_id) AS id,
@@ -44,10 +44,9 @@ WITH
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     ),
     (SELECT count() FROM in_scope) AS operation_rows,
-    (SELECT countIf(shape != 'untagged') FROM in_scope) AS tagged_rows,
-    {bounding_boxes:UInt8} = 0 OR tagged_rows = 0 AS all_shapes,
+    {bounding_boxes:UInt8} = 0 OR {legacy_period:UInt8} = 1 AS all_shapes,
     (SELECT sum(working_ms) FROM work) AS all_working_ms,
-    (operation_rows > 0 OR all_working_ms > 0) AND tagged_rows = 0 AS legacy,
+    (operation_rows > 0 OR all_working_ms > 0) AND {legacy_period:UInt8} = 1 AS legacy,
     ops AS (
         SELECT id, argMax(user_name, hour) AS ops_name,
             sumIf(objects, operation = 'creation') AS creation_objects,
@@ -95,9 +94,9 @@ WITH
                 OR (source = 'detector' AND user_name NOT IN {technical_accounts:Array(String)}
                     AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64}))
             )
-            -- as read/overview_creation_methods.sql: all objects under All shapes or when people's operations
-            -- in scope are all untagged (legacy); otherwise single-frame rectangles only
-            AND ({bounding_boxes:UInt8} = 0 OR (operation_rows > 0 AND tagged_rows = 0)
+            -- as read/overview_creation_methods.sql: all objects under All shapes or in a legacy period;
+            -- otherwise single-frame rectangles only
+            AND ({bounding_boxes:UInt8} = 0 OR {legacy_period:UInt8} = 1
                 OR (resource = 'shapes' AND shape_type = 'rectangle'))
         GROUP BY id
         HAVING model_objects > 0

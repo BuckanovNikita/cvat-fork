@@ -149,7 +149,9 @@ class FiguresTest(TrendsCase):
         self.assertEqual(everything[7]["boxes"], 2)
         self.assertFalse(everything[7]["hotkey_recorded"])
 
-    def test_twelve_weeks_all_before_the_new_logging_show_all_shapes(self):
+    def test_a_line_with_only_work_before_the_cutover_has_no_box_figure_for_those_weeks(self):
+        # the cutover is the first tagged event (Alice, week of Oct 19); Bob worked only before it. A trend is all
+        # shapes only when every bucket is before the cutover (tests/test_cutover.py), not because of its lines.
         legacy = "2026-10-13 10:00:00"
         self.stack.add_events([
             working_time(at(legacy), HOUR, user=BOB, org=ORG),
@@ -160,15 +162,16 @@ class FiguresTest(TrendsCase):
         self.stack.refresh()
 
         body = self.trends(shapes="bounding_boxes", annotator=BOB[0])
-        compared = self.trends(shapes="bounding_boxes", compare="annotators", ids=f"{BOB[0]},{ALICE[0]}")
+        everything = self.trends(shapes="all", annotator=BOB[0])
 
-        self.assertEqual(body["shapes"], "all")
-        self.assertEqual((body["lines"][0]["points"][7]["boxes"], body["lines"][0]["points"][7]["average_ms"]),
-                         (2, 15000))
-        self.assertFalse(body["lines"][0]["points"][7]["hotkey_recorded"])
-        # beside lines with shape-tagged work, a box line has no box figure for old weeks
-        self.assertEqual(compared["shapes"], "bounding_boxes")
-        self.assertIsNone(compared["lines"][0]["points"][7]["boxes"])
+        self.assertEqual(body["shapes"], "bounding_boxes")
+        point = body["lines"][0]["points"][7]
+        self.assertTrue(point["legacy"])
+        self.assertEqual((point["boxes"], point["average_ms"]), (None, None))
+        self.assertFalse(point["hotkey_recorded"])
+        # under All shapes the old weeks count every object
+        old = everything["lines"][0]["points"][7]
+        self.assertEqual((everything["shapes"], old["boxes"], old["average_ms"]), ("all", 2, 15000))
 
     def test_hotkey_share_of_hotkey_and_mouse_actions(self):
         points = self.trends()["lines"][0]["points"]
