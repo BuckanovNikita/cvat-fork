@@ -9,9 +9,10 @@ use (ClickHouse may not be up when the service starts) and has no session: a ses
 queries and refuse concurrent ones, while a session-less client only shares its connection pool, which
 is safe across threads. File texts are read once.
 
-A statement run with a `Limit` gets that limit as ClickHouse settings, so the server stops it, and is sent
-through a second client of the same kind whose wait for an answer ends a few seconds after the limit. The
-shared client keeps the library's wait (300 s between two reads of the answer).
+A statement run with a `Limit` gets that limit as ClickHouse settings, so the server stops it there; that is
+the bound. It is sent through a second client of the same kind, which gives up only after hearing nothing from
+the server for a few seconds longer than the limit. Neither client's wait bounds a whole statement: the client
+asks for progress headers, which reset its read timeout. The shared client keeps the library's wait (300 s).
 """
 
 from __future__ import annotations
@@ -35,8 +36,9 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SETTINGS = {"query_plan_execute_functions_after_sorting": 0}
 # Connections kept open for the threads that query at the same time.
 POOL_SIZE = 16
-# Seconds the service waits for the answer to a limited statement beyond its limit: ClickHouse stops the
-# statement at its limit and answers with an error, so the service never gives up on one that still runs.
+# Seconds beyond a statement's limit that the client waits without hearing from the server before it gives
+# up: ClickHouse stops the statement at its limit and answers with an error, so the client does not give up
+# on a statement that still runs.
 LIMIT_ANSWER_MARGIN_S = 5
 
 
@@ -53,7 +55,8 @@ class Limit:
                 "max_memory_usage": self.memory_bytes}
 
     def answer_wait_s(self) -> int:
-        """How long the service waits for the server's answer (whole seconds, as the client takes them)."""
+        """The client's read timeout for this statement: how long it waits without hearing from the server
+        (whole seconds, as the client takes them)."""
         return math.ceil(self.seconds) + LIMIT_ANSWER_MARGIN_S
 
 

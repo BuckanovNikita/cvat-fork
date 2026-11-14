@@ -104,7 +104,7 @@ production lease clock with a 6 s lease (p6: refused from 1.0 to 5.1 s, lease ta
 
 ### Findings and what was done
 
-The follow-up is on branch `fix/refresh-review`, `0d2661d6..c3edcd58`.
+The follow-up is on branch `fix/refresh-review`, from `0d2661d6` on.
 
 1. **Medium: a slow cutover search at start could crash-loop the pod, and the limits of
    ticket 17 were enforced nowhere.** The search ran before the port opened with no
@@ -113,8 +113,8 @@ The follow-up is on branch `fix/refresh-review`, `0d2661d6..c3edcd58`.
    Done (`e4da0c70`, tests corrected in `57dda6d7` and `4e2127eb`): the search at start
    and in the daily check runs with ticket 17's limits as settings of the statement
    (`max_execution_time` 23 s at start and 60 s in the daily check, `max_memory_usage`
-   512 MiB, `timeout_overflow_mode` throw), through a second client that waits for the
-   answer the limit plus 5 s. A search stopped at start lets the service start without
+   512 MiB, `timeout_overflow_mode` throw), through a second client whose read timeout
+   is the limit plus 5 s. A search stopped at start lets the service start without
    it, as a failed one did; in the daily check the step now ends without it, and a lost
    lease still stops the step. The refresh's own search (`find_cutover`) keeps no
    limit, since failing it would fail the refresh before its hours are offered.
@@ -137,11 +137,14 @@ The follow-up is on branch `fix/refresh-review`, `0d2661d6..c3edcd58`.
    - The client in the service's image is `clickhouse-connect` 1.3.0. Its default wait
      is `send_receive_timeout` 300 s, a read timeout between two reads of the answer,
      not a bound on the whole statement. It asks the server for progress headers every
-     `max(10, timeout − 5)` seconds (at most 120), and those reset the read timeout: a
-     client with a 12 s timeout waited the whole 20 s of a statement and got its answer.
-     With the service's default, a statement that runs on is waited for indefinitely
-     while progress headers arrive. The server's limit is therefore the bound; the
-     client's wait only has to be longer than it.
+     `max(10, timeout − 5)` seconds (at most 120), read in the client's source. Observed
+     once on each image: a client with a 12 s timeout waited the whole 20 s of a
+     statement and got its answer, which fits the headers resetting the read timeout.
+     Inferred, not observed: with the service's default, a statement that runs on is
+     waited for as long as progress headers keep arriving. The server's limit is
+     therefore the bound; the client's read timeout only has to be longer than it, so
+     that the client does not give up first. For the 23 s and 60 s limits the progress
+     interval equals the limit, shorter than the limit plus 5 s.
    - A client that gives up does not stop an `INSERT ... SELECT`: with a 2 s client
      timeout and no server limit, the statement was still in `system.processes` 8 s
      later.
@@ -158,7 +161,8 @@ The follow-up is on branch `fix/refresh-review`, `0d2661d6..c3edcd58`.
    tree `57dda6d7` with the statement replaced), and it was adopted in `c3edcd58`. Its
    cost at the benchmark's scale was not measured again. It saves reading only on a
    search while no cutover is stored: every search after that finds no match and reads
-   every row before the stored cutover, as the aggregate did.
+   every row before the stored cutover, as the aggregate did; whether reading them in
+   order takes longer at scale was not measured.
    The related low point, a stop signal during a long daily search leaving the lease
    held: not changed, recorded as a known limit in `docs/fork-specification.md`.
    Releasing the lease from the signal while the step's statement still runs in
@@ -204,7 +208,8 @@ The follow-up is on branch `fix/refresh-review`, `0d2661d6..c3edcd58`.
    The six guarding tests of ticket 20 still fail when their rule is broken, on
    `57dda6d7` (same mutations as above, default image): a failed claim check releases
    nothing, a failed release is not retried, no renewal, the lease always held, an
-   expired claim revived, an unbounded renewal join. Each failed.
+   expired claim revived, an unbounded renewal join. Each failed. `refresh.py` and the
+   lease's SQL files did not change after `57dda6d7`, so this holds for the head.
 5. **Nits.** Done: `sql.py` calls a parameter value only when it is wrapped in
    `AtRun`, which the lease clock uses (`0d2661d6`); the fork specification says the
    lease runs out at most 120 s after a kill and the next replica takes over at its next
@@ -228,8 +233,11 @@ Each run used a frozen copy of the named tree (`git archive`), through the share
 | `57dda6d7` with the in-order search | `tests.test_cutover` | 22 tests, OK | not run |
 | `c3edcd58` | `tests.test_lease`, `test_cutover`, `test_history`, `test_refresh`, `test_shutdown`, `test_entry_point`, `test_status` | 73 tests, OK | not run |
 | `c3edcd58` | `tests.test_lease`, `tests.test_cutover` | 33 tests, OK | 33 tests, OK |
+| `ea7ed078` (merge of `feat/team-analytics-page`, `6a442e9a`) | the seven modules above | 73 tests, OK | not run |
+| `ea7ed078` | `tests.test_lease` | 11 tests, OK | 11 tests, OK |
+| `ea7ed078` with the limit not sent (the in-order statement) | the two slow-search tests | **2 failures**: a cutover was stored | not run |
 
-`nice -n19 prek run --all-files` passed (ruff among its hooks).
+`nice -n19 prek run --all-files` passed after the last commit (ruff among its hooks).
 
 ### What held, by the reviewer's account
 

@@ -217,8 +217,8 @@ Behavior to preserve:
   id.
 - One ClickHouse client without a session serves the HTTP threads and the
   refresh loop; the cutover search at start and in the daily check goes
-  through a second one, which waits for an answer only a few seconds longer
-  than the search's limit. A request body is read and dropped, or the
+  through a second one, which gives up after hearing nothing from ClickHouse
+  for a few seconds longer than the search's limit. A request body is read and dropped, or the
   connection is closed
   after the answer, so a body is never answered as a request.
 - Its routes are under `/team-analytics-api/v1/`. Every request is checked
@@ -327,9 +327,10 @@ Behavior to preserve:
   measurements is in `docs/evidence/2026-11-14-cutover-search-cost.md`. The
   search at start and in the daily check runs with limits that ClickHouse
   enforces on the statement: 23 s at start, 60 s in the daily check, and
-  512 MiB of memory in both. ClickHouse stops a search that reaches one, and
-  the service waits for its answer a few seconds longer than the limit, so it
-  never gives up on a statement that is still running. A search that fails or
+  512 MiB of memory in both. ClickHouse stops a search that reaches one; that
+  is the bound. The service's client gives up only after hearing nothing for
+  a few seconds longer than the limit, so it does not give up first; a client
+  that gives up does not stop the statement in ClickHouse. A search that fails or
   is stopped at start lets the service start without it; in the daily check
   the step ends without it. Either way the cutover is looked for again at the
   next daily check or start, so on an instance whose history before the
