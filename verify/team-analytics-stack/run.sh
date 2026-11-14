@@ -33,10 +33,33 @@ PF_STATE="$STATE_DIR/port-forward"
 BASE_URL="http://localhost:$TA_HOST_PORT"
 
 K=(kubectl --context "$TA_KUBE_CONTEXT")
-H=(helm --kube-context "$TA_KUBE_CONTEXT")
+H=(helm_run --kube-context "$TA_KUBE_CONTEXT")
 
 log() { printf '[ta-stack] %s\n' "$*" >&2; }
 die() { log "error: $*"; exit 1; }
+
+# Every helm call goes through helm_run. Whenever helm reads the chart it notes the chart's
+# analytics symlink and prints the chart's full local path; that line is dropped so that no
+# captured log carries the path, and every other message is kept. nice is here because it
+# cannot run a shell function.
+helm_run() { nice -n19 helm "$@" 2> >(grep -v 'found symbolic link in path' >&2); }
+
+# Every path the launcher prints goes through show_path, so that no captured output names
+# the machine's own directories: a path inside the repository is shown relative to the
+# repository root, a path under the home directory with ~ for it, any other path as it is.
+# Paths are compared resolved, so another name of the same directory is recognised too.
+show_path() {
+    local p root home
+    p="$(realpath -m -- "$1")"
+    root="$(realpath -m -- "$HERE/../..")"
+    home="$(realpath -m -- "${HOME:-/}")"
+    if [ "$p" = "$root" ]; then printf '.\n'
+    elif [ "${p#"$root"/}" != "$p" ]; then printf '%s\n' "${p#"$root"/}"
+    elif [ "$home" != / ] && [ "$p" = "$home" ]; then printf '~\n'
+    elif [ "$home" != / ] && [ "${p#"$home"/}" != "$p" ]; then printf '~/%s\n' "${p#"$home"/}"
+    else printf '%s\n' "$1"
+    fi
+}
 
 case "$TA_NAMESPACE" in
     *[!a-z0-9-]* | -* | *- | "") die "TA_NAMESPACE '$TA_NAMESPACE' is not a DNS label" ;;
@@ -75,9 +98,9 @@ build_chart() {
         i=0
         for url in $(awk '/repository:/{print $2}' "$HERE/Chart.lock" | sort -u); do
             i=$((i + 1))
-            helm repo add "ta-dep-$i" "$url" --force-update >&2
+            helm_run repo add "ta-dep-$i" "$url" --force-update >&2
         done
-        nice -n19 helm dependency build "$tmp/helm-chart" >&2
+        helm_run dependency build "$tmp/helm-chart" >&2
     ) || die "chart dependency build failed"
     rm -f "$tmp/repositories.yaml" "$tmp/repositories.lock"
     # Every locked dependency must be exactly the archive recorded in the dated evidence.
@@ -101,8 +124,7 @@ helm_args() {
 render() {
     local args
     mapfile -t args < <(helm_args)
-    # helm notes the chart's analytics symlink on every call; keep only real messages
-    nice -n19 "${H[@]}" template "${args[@]}" 2> >(grep -v 'found symbolic link in path' >&2)
+    "${H[@]}" template "${args[@]}"
 }
 
 # Refuses a render that would create cluster-wide objects, pull from outside the approved
@@ -192,7 +214,7 @@ install_chart() {
     local args
     mapfile -t args < <(helm_args)
     log "installing chart release $TA_RELEASE"
-    nice -n19 "${H[@]}" upgrade --install "${args[@]}" --timeout 20m >&2
+    "${H[@]}" upgrade --install "${args[@]}" --timeout 20m >&2
 }
 
 # Waits for what the checks need; Grafana is not among them (it downloads a plugin at start).
@@ -464,6 +486,6 @@ case "${1:-}" in
     check-final) check_final ;;
     forward) start_port_forward ;;
     status) status ;;
-    fetch-chart) build_chart; echo "$CHART_DIR" ;;
+    fetch-chart) build_chart; show_path "$CHART_DIR" ;;
     *) sed -n '5,18p' "$0" >&2; exit 2 ;;
 esac
