@@ -20,6 +20,7 @@ const ANNOTATION_ACTIONS = 'cvat-ui/src/actions/annotation-actions.ts';
 const PAGE = `<!doctype html><html><body>
   <div class="cvat-annotation-header">
     <span id="next-button" class="anticon" role="img"></span><span id="prev-button" class="anticon" role="img"></span>
+    <span id="search-button" class="anticon" role="img"></span>
     <div id="slider" class="ant-slider"><div id="slider-handle" class="ant-slider-handle" role="slider"></div></div>
   </div>
   <div class="cvat-objects-sidebar"><button id="sidebar-lock" class="ant-btn">Lock</button></div>
@@ -28,6 +29,7 @@ const PAGE = `<!doctype html><html><body>
 const KEY_MAP = {
     NEXT_FRAME: { name: 'Next frame', sequences: ['f'] },
     PREV_FRAME: { name: 'Previous frame', sequences: ['d'] },
+    SEARCH_FORWARD: { name: 'Search forward', sequences: ['v'] },
     UNDO: { name: 'Undo', sequences: ['ctrl+z'] },
 };
 
@@ -46,6 +48,8 @@ const REDUCERS = withStubs({
 function annotationPage({ frame = 3, job: jobOptions = {} } = {}) {
     const core = coreLogger();
     const loading = [];
+    // what the annotation search finds: a frame number, or null; `searching` holds a search the test answers
+    const search = { finds: null, slow: false, searching: [] };
     const job = {
         ...openJob(core, jobOptions),
         startFrame: 0,
@@ -56,7 +60,13 @@ function annotationPage({ frame = 3, job: jobOptions = {} } = {}) {
             // no deleted frames: the search starts and ends where it is asked to
             search: async (filters, from) => from,
         },
-        annotations: { get: async () => [] },
+        annotations: {
+            get: async () => [],
+            search: (from, to) => {
+                if (!search.slow) return Promise.resolve(search.finds);
+                return new Promise((resolve) => { search.searching.push(() => resolve(search.finds)); });
+            },
+        },
         actions: { get: async () => ({ undo: [], redo: [] }), recordSelection: async () => {} },
     };
     const state = {
@@ -70,7 +80,11 @@ function annotationPage({ frame = 3, job: jobOptions = {} } = {}) {
             statistics: { visible: false },
             workspace: 'Standard',
         },
-        settings: { workspace: { showAllInterpolationTracks: false }, shapes: { showGroundTruth: false }, player: { frameSpeed: 1 } },
+        settings: {
+            workspace: { showAllInterpolationTracks: false },
+            shapes: { showGroundTruth: false },
+            player: { frameSpeed: 1, showDeletedFrames: false },
+        },
     };
     const store = { getState: () => state };
     const pending = [];
@@ -118,7 +132,11 @@ function annotationPage({ frame = 3, job: jobOptions = {} } = {}) {
         navigationType: 'regular',
         frameStep: 10,
         onSwitchPlay() {},
-        onChangeFrame: (number) => dispatch(actions.changeFrameAsync(number)),
+        // top-bar.tsx mapDispatchToProps: the frame change and the annotation search, as the container wires them
+        onChangeFrame: (number, fillBuffer) => dispatch(actions.changeFrameAsync(number, fillBuffer)),
+        searchAnnotations: (session, from, to, filters) => dispatch(
+            actions.searchAnnotationsAsync(session, from, to, filters),
+        ),
     };
     Object.defineProperty(props, 'frameNumber', { get: () => state.annotation.player.frame.number });
     const topBar = new TopBar(props);
@@ -144,12 +162,14 @@ function annotationPage({ frame = 3, job: jobOptions = {} } = {}) {
         handlers: {
             NEXT_FRAME: () => { pending.push(topBar.onNextFrame()); },
             PREV_FRAME: () => { pending.push(topBar.onPrevFrame()); },
+            SEARCH_FORWARD: () => { topBar.searchAnnotations('forward'); },
             UNDO: () => {},
         },
     });
     const window = domWindow(PAGE);
     window.document.getElementById('next-button').addEventListener('click', () => pending.push(topBar.onNextFrame()));
     window.document.getElementById('prev-button').addEventListener('click', () => pending.push(topBar.onPrevFrame()));
+    window.document.getElementById('search-button').addEventListener('click', () => topBar.searchAnnotations('forward'));
     // the player slider (antd Slider) changes the frame as soon as the button goes down on it
     window.document.getElementById('slider').addEventListener('mousedown', () => {
         pending.push(topBar.onChangePlayerSliderValue(0));
@@ -169,7 +189,23 @@ function annotationPage({ frame = 3, job: jobOptions = {} } = {}) {
         job,
         logging,
         state,
+        search,
         get frame() { return state.annotation.player.frame.number; },
+        /** A playback tick (top-bar.tsx handlePlayIfNecessary): the next frame, asked for with no input. */
+        async tick() {
+            props.onChangeFrame(state.annotation.player.frame.number + 1, true);
+            await settle();
+        },
+        /** The frame number field (top-bar.tsx onChangePlayerInputValue), after the number is typed in. */
+        async enterFrame(number) {
+            pending.push(topBar.onChangePlayerInputValue(number));
+            await settle();
+        },
+        /** The slow search answers. */
+        async answerSearch() {
+            search.searching.splice(0).forEach((resolve) => resolve());
+            await settle();
+        },
         /** A key press: the keydown reaches the window, then Mousetrap runs the shortcut bound to `sequence`. */
         async press(sequence, { repeat = false } = {}) {
             const event = new window.KeyboardEvent('keydown', { key: sequence, repeat, bubbles: true });
@@ -361,4 +397,87 @@ test('a failure in counting the frame shown never reaches the frame change', asy
 
     const changes = (await page.core.sent()).filter((event) => event.scope === 'change:frame');
     assert.deepEqual(changes.map((event) => [event.payload.from, event.payload.to, event.count]), [[3, 4, 1]]);
+});
+
+// Review of 2026-11-15, finding 1: a key counts only a frame change its own handler starts.
+
+test('a key that moves nothing is not credited with the next playback step', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-15T10:00:00Z') });
+    const page = annotationPage({ frame: 3 });
+    page.logging.trackInputJob(page.job);
+    page.state.annotation.player.navigationBlocked = true;
+    await page.press('f');
+    await page.load();
+    page.state.annotation.player.navigationBlocked = false;
+    await page.tick();
+    await page.load();
+    assert.equal(page.frame, 4);
+
+    const { hotkeys } = await page.summary();
+    assert.deepEqual(hotkeys, {});
+});
+
+test('a search key that finds nothing during playback is not credited with the playback steps after it', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-15T10:00:00Z') });
+    const page = annotationPage({ frame: 3 });
+    page.logging.trackInputJob(page.job);
+    page.search.finds = null;
+    await page.press('v');
+    await page.tick();
+    await page.load();
+    await page.tick();
+    await page.load();
+    assert.equal(page.frame, 5);
+
+    const { hotkeys } = await page.summary();
+    assert.deepEqual(hotkeys, {});
+});
+
+test('a key at the last frame is not credited with a frame entered in the frame number field', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-15T10:00:00Z') });
+    const page = annotationPage({ frame: 7 });
+    page.logging.trackInputJob(page.job);
+    await page.press('f');
+    await page.load();
+    assert.equal(page.frame, 7);
+    await page.enterFrame(2);
+    await page.load();
+    assert.equal(page.frame, 2);
+
+    const { hotkeys } = await page.summary();
+    assert.deepEqual(hotkeys, {});
+});
+
+test('a key that moves nothing is not credited with the frame change of a search already running', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-15T10:00:00Z') });
+    const page = annotationPage({ frame: 3 });
+    page.logging.trackInputJob(page.job);
+    page.search.slow = true;
+    page.search.finds = 6;
+    await page.click('search-button'); // the search runs until the test answers it
+    page.state.annotation.player.navigationBlocked = true;
+    await page.press('f');
+    page.state.annotation.player.navigationBlocked = false;
+    await page.answerSearch();
+    await page.load();
+    assert.equal(page.frame, 6);
+
+    const { hotkeys, mouse } = await page.summary();
+    assert.deepEqual(hotkeys, {});
+    assert.deepEqual(mouse, { header: 1 });
+});
+
+test('a search key counts the frame it found, and a key pressed while that frame loads counts its own', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-15T10:00:00Z') });
+    const page = annotationPage({ frame: 3 });
+    page.logging.trackInputJob(page.job);
+    page.search.finds = 6;
+    await page.press('v'); // the search finds frame 6 and its frame change starts: frame 6 is loading
+    await page.press('d'); // asks for frame 2 while frame 6 loads
+    await page.load();
+
+    const changes = (await page.core.sent()).filter((event) => event.scope === 'change:frame');
+    assert.deepEqual(changes.map((event) => [event.payload.from, event.payload.to]), [[3, 6], [3, 2]]);
+    const { hotkeys } = await page.summary();
+    assert.deepEqual(hotkeys, { SEARCH_FORWARD: 1, PREV_FRAME: 1 });
 });
