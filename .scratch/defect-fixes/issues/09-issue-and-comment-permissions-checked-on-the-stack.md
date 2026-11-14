@@ -59,3 +59,5 @@ on a running seeded stack); what each step must show:
    `issue-matrix.json`); the printed matrix, the refusal codes, the image tag and chart
    revision go into the evidence file under "Live outcome" (criterion 7). Criterion 6 is
    ticked then on the evidence's reuse section if the reviewer accepts it.
+
+2026-11-14: Merged into `feat/team-analytics-page` as `7f304201`, after tickets 10 (`3aa2b78b`) and 11 (`f273549f`). Conflicts in `verify/team-analytics-stack/run.sh` (usage lines, functions, the end of `up`) and `README.md` (the subcommand list and the description of `up`) kept both sides; in `up`, `check_issues` comes right after `check_final` and ticket 11's `check_access_cases` stays last. On the merged tree `bash -n` on `run.sh` and `py_compile` on `issue_matrix.py` passed, and `run.sh check-issue-policies patched` and `run.sh check-issue-policies stock` each reported 124 of 124 expectations matching and exited 0; no other launcher command was run. The ticket stays open: part two, the live run above, is outstanding. Evidence: `docs/evidence/2026-11-14-stack-issue-matrix.md`.
