@@ -140,6 +140,14 @@ _Avoid_: Modal, popup, details, expanded view
 **Processed history**:
 The part of the past for which figures have been computed. A period is offered only when all of it is processed.
 
+**Cutover**:
+The moment of the first shape-tagged event on the instance, when the new activity logging began. Before it there is none.
+_Avoid_: Deployment date, rollout day
+
 **Legacy period**:
-A period recorded before shape tagging, class changes and hotkey use were logged. It has sessions, working time, projects, all-shape operations and saved boxes, and nothing else.
+A period that ends at or before the cutover, or any period while there is no cutover. It has sessions, working time, projects, all-shape operations and saved boxes, and nothing else. A period with no job work is empty instead.
 _Avoid_: Old data, pre-deployment period
+
+**Partly legacy period**:
+A period that begins before the cutover and ends after it. Its figures are complete for the days since the cutover; before it, operations count only under All shapes.
+_Avoid_: Mixed period, transition period

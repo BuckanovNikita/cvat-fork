@@ -18,8 +18,9 @@ def _number(value) -> float | None:
 
 
 def build(request: Request) -> dict:
+    span = request.span()
     rows = request.sql.rows("read/overview_creation_methods.sql",
-                            {**request.span().params(), **request.scope_params()})
+                            {**span.params(), **request.scope_params(), **request.legacy(span.start, span.end).params()})
     first = rows[0]
     return {
         "shapes": "all" if first["all_shapes"] else "bounding_boxes",

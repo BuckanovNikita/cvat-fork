@@ -1,6 +1,7 @@
 """Operations and Other for the period: count, average and total time, share of working time.
 
 The `shapes` query (bounding_boxes | all) narrows every operation figure; see read/overview_operations.sql.
+`legacy` / `partly_legacy` / `cutover`: what the cutover to the new logging makes of the period (cutover.py).
 """
 
 from __future__ import annotations
@@ -11,10 +12,15 @@ KEY = "operations"
 
 
 def build(request: Request) -> dict:
-    rows = request.sql.rows("read/overview_operations.sql", {**request.span().params(), **request.scope_params()})
+    span = request.span()
+    legacy = request.legacy(span.start, span.end)
+    rows = request.sql.rows("read/overview_operations.sql",
+                            {**span.params(), **request.scope_params(), **legacy.params()})
     first = rows[0]
     return {
         "legacy": bool(first["legacy"]),
+        # the period holds the cutover: bounding box figures, class changes and hotkey use cover the part after it
+        **legacy.describe(),
         # the shapes the figures cover: what was asked for, or all shapes in a legacy period
         "shapes": "all" if first["all_shapes"] else "bounding_boxes",
         "working_time_ms": int(first["working_ms"] or 0),

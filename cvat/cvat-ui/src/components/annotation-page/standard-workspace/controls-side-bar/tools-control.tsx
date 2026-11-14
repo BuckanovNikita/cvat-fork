@@ -102,7 +102,7 @@ interface StateToProps {
 
 interface DispatchToProps {
     updateAnnotations: (states: ObjectState[]) => Promise<void>;
-    createAnnotations: (states: ObjectState[]) => void;
+    createAnnotations: (states: ObjectState[]) => Promise<number[]>;
     fetchAnnotations: () => void;
     onInteractionStart: typeof interactWithCanvas;
     updateActiveControl: typeof updateActiveControl;
@@ -1512,8 +1512,10 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                             });
                         });
 
-                        createAnnotations([...tagStates, ...shapeStates]);
-                        recordModelCreation(jobInstance, [...tagStates, ...shapeStates]);
+                        const detected = [...tagStates, ...shapeStates];
+                        // the create thunk answers [] when it could not create the objects
+                        const createdIDs = await createAnnotations(detected);
+                        if (createdIDs.length) recordModelCreation(jobInstance, detected);
                     } catch (error: any) {
                         notification.error({
                             description: <CVATMarkdown>{error.message}</CVATMarkdown>,

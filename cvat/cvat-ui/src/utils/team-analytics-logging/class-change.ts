@@ -13,7 +13,7 @@
 import { InputMethod, PAYLOAD, RECORD } from './contract';
 import { guarded } from './guard';
 import {
-    LoggedObject, LoggingJob, logRecord, operationFields,
+    LoggedObject, LoggingJob, logRecord, objectShapeFields,
 } from './index';
 
 export interface LabelledObject extends LoggedObject {
@@ -32,7 +32,8 @@ export function recordClassChange(
         // cvat-core discards every change to a locked object, so its label stays as it was
         const changed = objects.filter((object) => !!object && !object.lock && object.label?.id !== label.id);
         if (!changed.length) return;
-        const fields = operationFields(job, changed);
+        // shape fields only: the input method is the call site's, and a drawing in progress keeps its own
+        const fields = objectShapeFields(job, changed);
         logRecord(job, RECORD.classChange, { ...fields, [PAYLOAD.inputMethod]: inputMethod }, changed.length);
     });
 }

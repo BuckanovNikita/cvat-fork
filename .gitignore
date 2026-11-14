@@ -4,3 +4,7 @@ cvat/.yarn/
 cvat/**/node_modules/
 cvat/cvat-ui/dist/*
 !cvat/cvat-ui/dist/favicon.ico
+
+# Python bytecode (seam 1 and stack scripts)
+__pycache__/
+*.pyc

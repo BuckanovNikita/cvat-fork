@@ -172,15 +172,36 @@ Behavior to preserve:
   `cvat/server` image with no added dependency (`team-analytics/Dockerfile`).
   Its Kubernetes manifests and environment are in `team-analytics/k8s/`.
   One refresh or history step runs at a time across replicas, under a lease in
-  ClickHouse. On SIGTERM the service finishes the step in progress and releases
-  the lease before exiting. A replica killed mid-step would block the others
-  until the lease expires.
+  ClickHouse. The lease is renewed while a step runs and released on every
+  failure path; a failed release is tried again. On SIGTERM the service
+  finishes the step in progress and releases the lease before exiting. A
+  replica killed mid-step would block the others until the lease expires.
+- One ClickHouse client without a session serves the HTTP threads and the
+  refresh loop. A request body is read and dropped, or the connection is closed
+  after the answer, so a body is never answered as a request.
 - Its routes are under `/team-analytics-api/v1/`. Every request is checked
   against CVAT with the caller's own cookie or token: `/api/users/self`,
   `/api/organizations`, `/api/memberships`. Admins (the `admin` group) see any
   organization, or the whole instance without one. Organization owners and
   maintainers see their organization. Everyone else is refused. A maintainer
-  with no organization selected is asked to select one.
+  with no organization selected is asked to select one; the service asks CVAT
+  for the caller's memberships once per reading role, so paging cannot hide
+  one. A CVAT answer without the expected shape is a 503 refusal and is never
+  cached. A 401 or 403 from any endpoint puts the open page into that refusal.
+- The page's project and annotator filters belong to the organization named
+  by `org` in the page address. Filters of another organization, or of an
+  address that names none while one is selected, are not applied. Requests to
+  CVAT for project names and the details project search stay bounded: names
+  go 100 ids per request, and the search sends one table page of ids.
+- Legacy rule: the cutover is the hour of the first shape-tagged operation on
+  the instance, read from the stored totals and reported by `status`. A
+  period that ends at or before it, or any period while there is none, is a
+  legacy period (all shapes, the legacy notice, class change and hotkey use
+  not recorded, saved boxes in place of Model). A period that begins at or
+  after it is never legacy. A period that holds it is partly legacy: figures
+  as usual, the shape switch stays, and the page names the cutover day. Trend
+  buckets follow the same rule; the bucket that holds the cutover is not
+  legacy. An empty period shows the empty state.
 - New measurements travel inside existing client event types (ADR 0002):
   payload fields on draw, paste, propagate, drag, resize and delete, plus three
   `debug:info` records (`team_analytics:class_change`,
@@ -194,6 +215,15 @@ Behavior to preserve:
 - The input summary written as a job closes must leave with the closing log
   save: `untrackInputJob()` settles once the record is logged, and the view
   saves after it.
+- Known limitation: hotkey and mouse counts since the last summary are lost
+  when the tab is closed or reloaded without leaving the job. cvat-core's only
+  page-exit path (`saveCriticalEvents`) sends a fixed bandwidth record with
+  `keepalive`; `logger.log` goes through the async plugin wrapper and
+  `logger.save` sends without `keepalive`, so the UI cannot deliver a summary
+  on `pagehide` without changing cvat-core. Upstream loses its own queued
+  events on tab close too. A summary is never written on a timer alone.
+- The model creation record is written only once the create thunk reports
+  created objects (it resolves to `[]` on failure).
 - The page fits a narrow window inside CVAT's 1024 px minimum app width: cards
   stack, and wide tables scroll inside their cards.
 - With the service unreachable, the page shows its error panel. Nothing else
@@ -220,7 +250,7 @@ table are under `cvat/cvat-ui/src/`.
 | `containers/annotation-page/standard-workspace/objects-side-bar/object-item.tsx` | Class change record for the sidebar label select |
 | `components/annotation-page/canvas/views/canvas2d/selection-context-menu.tsx` | Class change record for the selection context menu (selector gained the job) |
 | `components/annotation-page/attribute-annotation-workspace/attribute-annotation-sidebar/attribute-annotation-sidebar.tsx` | Class change record in attribute annotation mode (state gained the job) |
-| `components/annotation-page/standard-workspace/controls-side-bar/tools-control.tsx` | Model creation record after the built-in detector created objects |
+| `components/annotation-page/standard-workspace/controls-side-bar/tools-control.tsx` | Model creation record once the create thunk reports the detector's objects created (`createAnnotations` prop typed as returning the created ids) |
 
 Upstream behavior this feature depends on although the fork does not modify
 it:
@@ -233,8 +263,10 @@ it:
   `logger.save`), and the UI's 90 s periodic log save;
 - the server event names for saved annotations (`create:shapes` and the like,
   with the shape type in `obj_name`);
+- `createAnnotationsAsync` in `actions/annotation-actions.ts` resolving to the
+  created client ids, and to `[]` when creation failed;
 - `/api/server/plugins` (`ANALYTICS`), `MembershipRole`, and the memberships
-  policy that lists a user's own memberships;
+  policy that lists a user's own memberships, with its `role` filter;
 - the project list filter on `id` that the page uses for project names;
 - CVAT's `#root` minimum width and header layout;
 - the shortcut action names in the UI keymaps, which the page shows with the

@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from team_analytics.history import load_state
-from team_analytics.periods import BadRequest, hour_floor, midnight, monday, months_before, today, zone
+from team_analytics.periods import BadRequest, decimal, hour_floor, midnight, monday, months_before, today, zone
 from team_analytics.service import Request
 
 PATH = "trends"
@@ -37,10 +37,11 @@ def _choice(request: Request, key: str, options: tuple[str, ...]) -> str:
 def _ids(text: str) -> list[int]:
     ids: list[int] = []
     for part in filter(None, text.split(",")):
-        if not part.isdigit() or len(part) > 19:
+        number = decimal(part, 19)
+        if number is None:
             raise BadRequest("ids must be identifiers")
-        if int(part) not in ids:
-            ids.append(int(part))
+        if number not in ids:
+            ids.append(number)
     if len(ids) > MAX_COMPARED:
         raise BadRequest(f"at most {MAX_COMPARED} ids can be compared")
     return ids
@@ -75,10 +76,16 @@ def handle(request: Request) -> dict:
         "to": (hour_floor(request.now) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
     }
     scope = request.scope_params()
+    # a bucket is legacy as a period would be (cutover.py): it ends at or before the cutover, or none is known;
+    # the bucket that holds the cutover is not legacy (its figures are computed as usual)
+    ends = [midnight(start, tz) for start in starts[1:]] + [hour_floor(request.now) + timedelta(hours=1)]
+    legacy_buckets = [start.isoformat() for start, end in zip(starts, ends, strict=True)
+                      if request.legacy(midnight(start, tz), end).legacy_period]
     rows = request.sql.rows("read/trends.sql", {
         **span, **scope, "tz": tz_name, "monthly": 1 if step == "month" else 0,
         "first_bucket": starts[0].isoformat(), "buckets": [start.isoformat() for start in starts],
         "line_kind": kind if ids else "scope", "ids": ids,
+        "legacy_buckets": legacy_buckets, "all_legacy": 1 if len(legacy_buckets) == len(starts) else 0,
     })
     candidates = request.sql.rows("read/trends_candidates.sql", {**span, **scope, "kind": kind})
     names = {int(row["id"]): row["name"] for row in candidates}
@@ -109,7 +116,7 @@ def handle(request: Request) -> dict:
     return {
         "step": step,
         "tz": tz_name,
-        # the shapes the figures cover: all shapes when asked, or when nothing in the twelve buckets is shape-tagged
+        # the shapes the figures cover: all shapes when asked, or when all twelve buckets are before the cutover
         "shapes": "all" if rows[0]["all_shapes"] else "bounding_boxes",
         "compare": kind,
         "buckets": [{"start": start.isoformat(), "processed": state.covers(midnight(start, tz))} for start in starts],

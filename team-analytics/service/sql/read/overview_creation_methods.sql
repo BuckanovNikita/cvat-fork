@@ -1,6 +1,6 @@
 -- Creation methods for [from, to) in the displayed scope: drawn, pasted and propagated, always in that
 -- order, zeros included. The rows are the Creation operation's rows of read/overview_operations.sql split
--- by method, under the same shape switch rule (decided over all operations, so a legacy scope shows all
+-- by method, under the same shape switch rule ({legacy_period}, so a legacy period shows all
 -- shapes here exactly when the operations do), so the three add up to the Creation figures and the total
 -- average is the Creation average. Average = time / timed objects (null when none is timed). A stored
 -- 'redone' row (written before redone creations were attributed to a method) counts as drawn, the fallback
@@ -8,7 +8,7 @@
 -- Model (`model_objects`) is the fourth method, with a count and no time, never part of Creation: objects a
 -- technical account saved (create rows; only without an annotator filter, since a technical account is no
 -- annotator) plus objects the built-in detector made for annotators. Under bounding boxes only single-frame
--- rectangles count; under all shapes (or in a legacy scope) every object. Share = objects / (objects of the three + Model), null
+-- rectangles count; under all shapes (or in a legacy period) every object. Share = objects / (objects of the three + Model), null
 -- when there are none.
 WITH
     in_scope AS (
@@ -25,14 +25,12 @@ WITH
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     ),
-    (SELECT countIf(shape != 'untagged') FROM in_scope) AS tagged_rows,
-    {bounding_boxes:UInt8} = 0 OR tagged_rows = 0 AS all_shapes,
+    {bounding_boxes:UInt8} = 0 OR {legacy_period:UInt8} = 1 AS all_shapes,
     scoped AS (
         SELECT if(method = 'redone', 'drawn', method) AS method, objects, timed_objects, time_ms
         FROM in_scope
         WHERE operation = 'creation'
-            AND ({bounding_boxes:UInt8} = 0 OR shape = 'bounding_box'
-                OR (SELECT countIf(shape != 'untagged') FROM in_scope) = 0)
+            AND ({bounding_boxes:UInt8} = 0 OR shape = 'bounding_box' OR {legacy_period:UInt8} = 1)
     ),
     (SELECT sum(objects) FROM scoped) AS all_objects,
     (SELECT sum(timed_objects) FROM scoped) AS all_timed,
@@ -54,10 +52,8 @@ WITH
                 OR (source = 'detector' AND user_name NOT IN {technical_accounts:Array(String)}
                     AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64}))
             )
-            -- all shapes when asked for or when people's operations are all untagged (legacy); a scope without
-            -- operations by people keeps to boxes under the bounding boxes switch
-            AND ({bounding_boxes:UInt8} = 0
-                OR ((SELECT count() FROM in_scope) > 0 AND (SELECT countIf(shape != 'untagged') FROM in_scope) = 0)
+            -- all shapes when asked for or in a legacy period (before the cutover to the new logging)
+            AND ({bounding_boxes:UInt8} = 0 OR {legacy_period:UInt8} = 1
                 OR (resource = 'shapes' AND shape_type = 'rectangle'))
     ) AS model_objects,
     all_objects + model_objects AS every_object

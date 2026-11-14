@@ -64,3 +64,57 @@ domTest('when CVAT cannot be reached behind the service the page shows the error
     assert.match(text, /Team analytics could not be loaded/);
     assert.doesNotMatch(html, /cvat-team-analytics-annotator-row/);
 });
+
+// A refusal from any request of an open page, not only the overview, replaces the figures with the refusal.
+const READY = { by_annotator: { rows: [{ user_id: 11, user_name: 'alice', working_time_ms: 7200000 }] } };
+
+async function visitOpenPage(answers, search = '') {
+    const { fetch, requests } = suppliedFetch((url) => {
+        const endpoint = new URL(url, 'http://localhost').pathname.split('/').pop();
+        return answers[endpoint] ?? { status: 200, body: endpoint === 'overview' ? READY : {} };
+    });
+    const state = { organizations: { current: { slug: 'team-org' } } };
+    const history = { location: { pathname: '/team-analytics', search }, push() {} };
+    const Page = loadPage('team-analytics-page.tsx', {
+        'react-redux': { useSelector: (select) => select(state) },
+        'react-router': { useHistory: () => history },
+        './service': { ...loadPage('service.ts'), fetchService: fetch },
+    }).default;
+    const view = await mount(React.createElement(Page));
+    try {
+        await view.settle();
+        return {
+            text: view.container.textContent.replace(/\s+/g, ' '),
+            html: view.container.innerHTML,
+            endpoints: requests.map((request) => new URL(request.url, 'http://localhost').pathname.split('/').pop()),
+        };
+    } finally {
+        await view.unmount();
+    }
+}
+
+domTest('a refusal of the trends, details, list or status request takes the whole page to that refusal', async (t) => {
+    const cases = [
+        ['trends', { status: 403, body: { error: 'forbidden' } }, '', /Team analytics is not available/],
+        ['details', { status: 401, body: { error: 'not_authenticated' } }, '', /Sign in again/],
+        ['status', { status: 401, body: { error: 'not_authenticated' } }, '', /Sign in again/],
+        ['list', { status: 403, body: { error: 'forbidden' } }, '?view=annotators', /Team analytics is not available/],
+    ];
+    for (const [endpoint, answer, search, shown] of cases) {
+        // eslint-disable-next-line no-await-in-loop
+        await t.test(endpoint, async () => {
+            const page = await visitOpenPage({ [endpoint]: answer }, search);
+            assert.ok(page.endpoints.includes(endpoint), `the page asked ${endpoint}: ${page.endpoints}`);
+            assert.match(page.text, shown);
+            assert.doesNotMatch(page.text, /alice/);
+            assert.doesNotMatch(page.html, /cvat-team-analytics-annotator-row/);
+        });
+    }
+});
+
+domTest('a trends request that fails without a refusal keeps the figures shown', async () => {
+    const page = await visitOpenPage({ trends: { status: 503, body: { error: 'cvat_unavailable' } } });
+    assert.match(page.text, /alice/);
+    assert.match(page.text, /Trends could not be loaded/);
+    assert.doesNotMatch(page.text, /not available/);
+});

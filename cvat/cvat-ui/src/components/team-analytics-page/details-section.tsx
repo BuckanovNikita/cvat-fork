@@ -26,6 +26,9 @@ interface Props {
     onPick?: (kind: 'annotator' | 'project', id: number) => void;
 }
 
+// Rows of one table page (the service's page size).
+const PAGE_SIZE = 10;
+
 // The projects whose name, as the page shows it, contains the search text (CVAT's names are known only here).
 export function matchingProjects(ids: number[], names: ProjectNames, search: string): number[] {
     const wanted = search.trim().toLowerCase();
@@ -56,7 +59,12 @@ export default function DetailsSection({
 
     const known = { ...projectNames, ...names };
     const searching = search.trim() !== '';
-    const ids = by === 'projects' && searching ? matchingProjects(allProjects, known, search) : null;
+    // A project search is paged here: the service lists `project_ids` in the table's order, so the page
+    // asks for one page of matching projects at a time and the request stays small for any number of them.
+    const matches = by === 'projects' && searching ? matchingProjects(allProjects, known, search) : null;
+    const lastPage = matches === null ? page : Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
+    const shownPage = Math.min(page, lastPage);
+    const ids = matches === null ? null : matches.slice((shownPage - 1) * PAGE_SIZE, shownPage * PAGE_SIZE);
     const idsKey = ids === null ? '-' : ids.join(',');
     const text = by === 'annotators' ? search.trim() : '';
 
@@ -64,7 +72,16 @@ export default function DetailsSection({
         let current = true;
         setPending(true);
         loadDetails({
-            organization, timeZone, period, month, ...narrowing, shapes, by, page, search: text, ids,
+            organization,
+            timeZone,
+            period,
+            month,
+            ...narrowing,
+            shapes,
+            by,
+            page: matches === null ? page : 1,
+            search: text,
+            ids,
         }, fetchService).then((next) => {
             if (!current) return;
             setPending(false);
@@ -78,7 +95,7 @@ export default function DetailsSection({
             }
         });
         return () => { current = false; };
-    }, [scopeKey, timeZone, by, page, text, idsKey]);
+    }, [scopeKey, timeZone, by, matches === null ? page : 0, text, idsKey]);
 
     // names of the shown projects, and of every project while searching by name
     const wanted = by === 'projects' ? [...new Set([
@@ -96,7 +113,9 @@ export default function DetailsSection({
     }, [wantedKey]);
 
     // the table of the kind chosen; until its first answer arrives the previous one stays dimmed
-    const shown = details;
+    // (while a project search is paged here, its page and total are the page's own)
+    const shown = details && matches !== null && details.by === 'projects' ?
+        { ...details, page: shownPage, total: matches.length } : details;
     return (
         <DetailsTableCard
             details={shown}

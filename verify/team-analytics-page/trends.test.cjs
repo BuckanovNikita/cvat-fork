@@ -354,7 +354,7 @@ domTest('trends follow the filters and the shape switch but not the period', asy
         await page.settle();
         assert.equal(trendRequests().length, 1, 'a period change does not ask for trends again');
         assert.ok(page.container.querySelector('.cvat-team-analytics-trends'));
-        await act(async () => { history.push('/team-analytics?period=year&project=3&annotator=11&shapes=all'); });
+        await act(async () => { history.push('/team-analytics?period=year&project=3&annotator=11&org=team-org&shapes=all'); });
         await page.settle();
         const last = trendRequests()[trendRequests().length - 1];
         assert.equal(last.get('project'), '3');

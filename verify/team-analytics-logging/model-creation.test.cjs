@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-    ALLOWED_SCOPES, coreLogger, loadSource, openJob, uiBoundaries,
+    ALLOWED_SCOPES, annotationActions, coreLogger, loadSource, openJob, uiBoundaries,
 } = require('./helper.cjs');
 
 const RECORD = 'team_analytics:model_creation';
@@ -43,9 +43,23 @@ function detection(shapes = [], tags = []) {
  * Returns `run()` (runs inference as the detector runner does), the states handed to `createAnnotations`
  * and the error notifications shown.
  */
-function toolsControl(core, job, result, ObjectState = FakeObjectState) {
+function toolsControl(core, job, result, ObjectState = FakeObjectState, { createFails = false } = {}) {
     const notifications = [];
     const created = [];
+    // `createAnnotations` is the real thunk (annotation-actions.ts createAnnotationsAsync), as connect()
+    // binds it; the job's collection creates the objects or fails
+    const annotations = {
+        put: async (states) => {
+            if (createFails) throw new Error('could not create the objects');
+            created.push(...states);
+            return states.map((_, index) => 100 + index);
+        },
+        get: async () => [],
+    };
+    const jobWithAnnotations = { ...job, labels: [CAR], annotations };
+    const { actions, dispatch, dispatched } = annotationActions(core, jobWithAnnotations, {}, {
+        classes: { ObjectState },
+    });
     const module = loadSource(TOOLS_CONTROL, {
         ...uiBoundaries(core, {
             classes: { ObjectState },
@@ -59,7 +73,7 @@ function toolsControl(core, job, result, ObjectState = FakeObjectState) {
         'antd/lib/notification': { __esModule: true, default: { error: (args) => notifications.push(args) } },
     });
     const component = new module.ToolsControlComponent({
-        jobInstance: { ...job, labels: [CAR] },
+        jobInstance: jobWithAnnotations,
         labels: [CAR],
         interactors: [],
         detectors: [],
@@ -68,7 +82,7 @@ function toolsControl(core, job, result, ObjectState = FakeObjectState) {
         currentZOrder: 0,
         defaultApproxPolyAccuracy: 0.5,
         frameData: { width: 100, height: 100 },
-        createAnnotations(states) { created.push(...states); },
+        createAnnotations: (states) => dispatch(actions.createAnnotationsAsync(states)),
     });
     component.setState = () => {};
     const runner = component.renderDetectorBlock();
@@ -76,6 +90,7 @@ function toolsControl(core, job, result, ObjectState = FakeObjectState) {
         run: () => runner.props.runInference({ id: 'detector' }, { mapping: {} }),
         created,
         notifications,
+        dispatched,
     };
 }
 
@@ -117,6 +132,18 @@ test('a detector that fails records nothing and shows its error as before', asyn
 
     assert.deepEqual(records(await core.sent()), []);
     assert.equal(control.notifications.length, 1);
+});
+
+test('detected objects that could not be created are not recorded', async () => {
+    const core = coreLogger();
+    const control = toolsControl(core, openJob(core), detection(['rectangle', 'rectangle', 'polygon']),
+        FakeObjectState, { createFails: true });
+
+    await control.run();
+
+    assert.deepEqual(control.created, []);
+    assert.ok(control.dispatched.some((action) => action.type === 'CREATE_ANNOTATIONS_FAILED'));
+    assert.deepEqual(records(await core.sent()), []);
 });
 
 test('outside the 2D canvas nothing is recorded', async () => {

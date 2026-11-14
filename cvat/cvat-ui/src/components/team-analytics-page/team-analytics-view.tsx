@@ -30,7 +30,7 @@ import OperationsTableCard from './cards/operations-table-card';
 import KeyboardMouseCard from './cards/keyboard-mouse-card';
 import { HotkeyLabels } from './hotkeys';
 import CreationMethodsCard from './cards/creation-methods-card';
-import LegacyNotice from './legacy-notice';
+import { LegacyNotices } from './legacy-notice';
 import ShapeSwitch from './shape-switch';
 import { DEFAULT_SHAPES } from './shapes';
 import FullView from './full-view';
@@ -185,7 +185,7 @@ export default function TeamAnalyticsView({
         );
         content = (
             <div className={`cvat-team-analytics-full${pending ? ' cvat-team-analytics-pending' : ''}`} aria-busy={pending}>
-                {overview.operations?.legacy ? <LegacyNotice /> : null}
+                <LegacyNotices operations={overview.operations} timeZone={timeZone} />
                 {address.view.startsWith('trend-') ? <TrendsGate history={status?.history}>{full}</TrendsGate> : full}
             </div>
         );
@@ -198,7 +198,7 @@ export default function TeamAnalyticsView({
                 className={`cvat-team-analytics-cards${pending ? ' cvat-team-analytics-pending' : ''}`}
                 aria-busy={pending}
             >
-                {overview.operations?.legacy ? <LegacyNotice /> : null}
+                <LegacyNotices operations={overview.operations} timeZone={timeZone} />
                 {overview.headline ? (
                     <AnnotatorsCard
                         annotators={overview.headline.annotators}

@@ -299,7 +299,8 @@ async function pageChecks(contextFile) {
 
         // the real UI's work of this run, as the page shows it for its project (all shapes)
         const { ui, did, model } = context;
-        await small.goto(`${BASE}/team-analytics?period=week&project=${ui.project_id}&shapes=all`);
+        // filters are applied only in the organization the address names
+        await small.goto(`${BASE}/team-analytics?period=week&project=${ui.project_id}&org=${context.ui_org}&shapes=all`);
         await overviewReady(small, `the overview of project ${ui.project_id}`);
         const shown = await small.evaluate(`(() => {
             const cells = (selector) => [...document.querySelectorAll(selector)].map((r) => [...r.children].map((c) => c.textContent.trim()));

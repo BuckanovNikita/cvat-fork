@@ -3,11 +3,18 @@
 A file names databases with `$events_db` and `$totals_db` (validated identifiers from the
 configuration, substituted as text) and takes values as ClickHouse query parameters
 (`{name:Type}`), bound server side.
+
+One ClickHouse client serves every thread (HTTP requests and the refresh loop). It is created on first
+use (ClickHouse may not be up when the service starts) and has no session: a session would serialize
+queries and refuse concurrent ones, while a session-less client only shares its connection pool, which
+is safe across threads. File texts are read once.
 """
 
 from __future__ import annotations
 
 import re
+import threading
+from functools import cache
 from pathlib import Path
 from string import Template
 from typing import Any
@@ -19,6 +26,8 @@ from team_analytics.config import Config
 SQL_DIR = Path(__file__).resolve().parent.parent / "sql"
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SETTINGS = {"query_plan_execute_functions_after_sorting": 0}
+# Connections kept open for the threads that query at the same time.
+POOL_SIZE = 16
 
 
 def identifier(name: str) -> str:
@@ -27,21 +36,32 @@ def identifier(name: str) -> str:
     return name
 
 
+@cache
+def _file(name: str) -> Template:
+    return Template((SQL_DIR / name).read_text())
+
+
 class Sql:
     def __init__(self, config: Config) -> None:
         self._names = {"events_db": identifier(config.events_db), "totals_db": identifier(config.totals_db)}
         self._config = config
+        self._client = None
+        self._lock = threading.Lock()
 
-    def _client(self):
-        # One client per call: clickhouse_connect clients are not safe to share between threads.
-        return clickhouse_connect.get_client(
-            host=self._config.clickhouse_host, port=self._config.clickhouse_port,
-            username=self._config.clickhouse_user, password=self._config.clickhouse_password,
-        )
+    def _shared_client(self):
+        with self._lock:
+            if self._client is None:
+                self._client = clickhouse_connect.get_client(
+                    host=self._config.clickhouse_host, port=self._config.clickhouse_port,
+                    username=self._config.clickhouse_user, password=self._config.clickhouse_password,
+                    autogenerate_session_id=False,
+                    pool_mgr=clickhouse_connect.driver.httputil.get_pool_manager(maxsize=POOL_SIZE),
+                )
+            return self._client
 
     def text(self, name: str, **identifiers: str) -> str:
         names = {**self._names, **{key: identifier(value) for key, value in identifiers.items()}}
-        return Template((SQL_DIR / name).read_text()).substitute(names)
+        return _file(name).substitute(names)
 
     @staticmethod
     def files(directory: str) -> list[str]:
@@ -50,18 +70,12 @@ class Sql:
 
     def statements(self, name: str, params: dict[str, Any] | None = None, **identifiers: str) -> None:
         """Runs a file of `;`-separated statements (DDL, inserts, mutations)."""
-        client = self._client()
-        try:
-            for statement in self.text(name, **identifiers).split(";\n"):
-                if statement.strip():
-                    client.command(statement, parameters=params or None, settings=SETTINGS)
-        finally:
-            client.close()
+        client = self._shared_client()
+        for statement in self.text(name, **identifiers).split(";\n"):
+            if statement.strip():
+                client.command(statement, parameters=params or None, settings=SETTINGS)
 
     def rows(self, name: str, params: dict[str, Any] | None = None, **identifiers: str) -> list[dict[str, Any]]:
-        client = self._client()
-        try:
-            result = client.query(self.text(name, **identifiers), parameters=params or None, settings=SETTINGS)
-            return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
-        finally:
-            client.close()
+        result = self._shared_client().query(self.text(name, **identifiers), parameters=params or None,
+                                             settings=SETTINGS)
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]

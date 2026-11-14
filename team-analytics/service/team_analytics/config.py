@@ -26,6 +26,9 @@ class Config:
     refresh_window_hours: int = 48
     # How far before the refresh window the computation reads events.
     lookback_s: int = 300
+    # Length of the shared refresh lease; renewed while a step runs. Not read from the environment
+    # (tests shorten it).
+    refresh_lease_s: int = 1800
     listen_host: str = "0.0.0.0"  # noqa: S104 - a service in a pod listens on all interfaces
     listen_port: int = 8000
 

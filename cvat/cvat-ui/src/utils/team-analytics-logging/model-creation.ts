@@ -3,9 +3,10 @@
 // SPDX-License-Identifier: MIT
 
 // Model creation: objects the built-in detector made in the annotation view. CVAT logs nothing for them,
-// so the detector's call site calls `recordModelCreation` right after it hands the objects to the
-// annotations. One record per run: `count` = every object created, `rectangle_count` = the single-frame
-// rectangles among them (the Model boxes). Nothing is sent when the detector made nothing.
+// so the detector's call site calls `recordModelCreation` once the create thunk reports the objects
+// created (never for objects that could not be created). One record per run: `count` = every object
+// created, `rectangle_count` = the single-frame rectangles among them (the Model boxes). Nothing is sent
+// when the detector made nothing.
 
 import { PAYLOAD, RECORD } from './contract';
 import { guarded } from './guard';

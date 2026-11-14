@@ -1,0 +1,113 @@
+"""Organization isolation on the details table, the full view lists and the trends: a maintainer of one
+organization gets nothing of another organization or of personal workspaces, whatever identifiers the page
+sends; instance scope (every organization and personal workspaces) is for the admin group only."""
+
+from tests.support import FakeUser, StackTestCase, at, working_time
+from tests.test_bounding_boxes import BOX
+from tests.test_keyboard_mouse import summary
+from tests.test_operations import client, draw
+
+ORG_A, ORG_B = 7, 8
+ALICE = (11, "alice")  # organization A, project 1
+BRUNO = (21, "bruno")  # organization B, project 9
+PAUL = (31, "paul")  # personal workspace, project 5
+API = "/team-analytics-api/v1/"
+FOREIGN_NAMES = ("bruno", "paul")
+
+
+def work(user: tuple[int, str], org: int | None, project: int, hotkey: str) -> list[dict]:
+    """An hour of job work: working time, a bounding box drawn and an input summary with `hotkey`."""
+    where = {"user": user, "org": org, "project": project}
+    return [
+        working_time(at("2026-11-12 10:00:00"), 3_600_000, user=user, org=org, project=project),
+        client("load:job", at("2026-11-12 10:00:00"), **where),
+        draw(at("2026-11-12 10:00:10"), input_method="mouse", **BOX, **where),
+        summary(at("2026-11-12 10:01:00"), hotkeys={hotkey: 3}, mouse={"header": 1}, **where),
+    ]
+
+
+class IsolationTest(StackTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        cvat = self.stack.cvat
+        cvat.add_user("lead", FakeUser(2, "lead", memberships={"org-a": (ORG_A, "maintainer", True)}))
+        cvat.add_user("lead-b", FakeUser(3, "lead-b", memberships={"org-b": (ORG_B, "maintainer", True)}))
+        cvat.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
+        self.stack.add_events([
+            *work(ALICE, ORG_A, 1, "NEXT_FRAME"),
+            *work(BRUNO, ORG_B, 9, "ORG_B_ONLY"),
+            *work(PAUL, None, 5, "PERSONAL_ONLY"),
+        ])
+        self.stack.refresh()
+
+    def get(self, endpoint: str, session: str = "lead", **query) -> dict:
+        if session == "lead":
+            query.setdefault("org", "org-a")
+        status, body = self.stack.get(API + endpoint, session, **query)
+        self.assertEqual(status, 200, (endpoint, query, body))
+        return body
+
+    def assertNothingForeign(self, body: dict) -> None:
+        text = repr(body)
+        for name in FOREIGN_NAMES:
+            self.assertNotIn(name, text)
+        self.assertNotIn("ORG_B_ONLY", text)
+        self.assertNotIn("PERSONAL_ONLY", text)
+
+    def test_details_show_only_the_callers_organization(self):
+        annotators = self.get("details")
+        self.assertEqual([row["user_name"] for row in annotators["rows"]], ["alice"])
+        self.assertNothingForeign(annotators)
+        projects = self.get("details", by="projects")
+        self.assertEqual(([row["id"] for row in projects["rows"]], projects["project_ids"]), ([1], [1]))
+        # identifiers and names of another organization or a personal workspace find nothing
+        self.assertEqual(self.get("details", search="bru")["total"], 0)
+        self.assertEqual(self.get("details", by="projects", ids="9,5")["rows"], [])
+        self.assertEqual(self.get("details", project="9")["rows"], [])
+        self.assertEqual(self.get("details", by="projects", annotator="21")["rows"], [])
+
+    def test_full_view_lists_show_only_the_callers_organization(self):
+        for by in ("annotators", "projects", "hotkeys"):
+            with self.subTest(by=by):
+                listed = self.get("list", by=by)
+                self.assertNothingForeign(listed)
+                if by == "projects":
+                    self.assertEqual([row["id"] for row in listed["rows"]], [1])
+                if by == "hotkeys":
+                    self.assertEqual([row["action"] for row in listed["rows"]], ["NEXT_FRAME"])
+                # the other organization's project or annotator as the filter (a list ignores its own dimension)
+                foreign = {"annotator": "21"} if by == "projects" else {"project": "9"}
+                self.assertEqual(self.get("list", by=by, **foreign)["rows"], [])
+
+    def test_trends_compare_nobody_and_nothing_of_another_organization(self):
+        scope = self.get("trends")
+        self.assertEqual([row["user_name"] for row in scope["candidates"]], ["alice"])
+        compared = self.get("trends", compare="annotators", ids="21,31")
+        self.assertNothingForeign(compared)
+        for line in compared["lines"]:
+            self.assertEqual({point["working_time_ms"] for point in line["points"]}, {0})
+            self.assertEqual({point["boxes"] for point in line["points"]} - {None}, {0})
+        projects = self.get("trends", compare="projects", ids="9,5")
+        self.assertEqual({point["working_time_ms"] for line in projects["lines"] for point in line["points"]}, {0})
+        self.assertEqual([row["id"] for row in projects["candidates"]], [1])
+
+    def test_the_filter_echo_never_names_someone_of_another_organization(self):
+        self.assertEqual(self.get("overview", annotator="21")["filters"]["annotator"], {"user_id": 21, "user_name": None})
+        self.assertEqual(self.get("overview", annotator="31")["filters"]["annotator"], {"user_id": 31, "user_name": None})
+
+    def test_the_admin_group_reads_instance_scope_and_a_named_organization(self):
+        names = {row["user_name"] for row in self.get("details", "admin")["rows"]}
+        self.assertEqual(names, {"alice", "bruno", "paul"})
+        self.assertEqual({row["id"] for row in self.get("list", "admin", by="projects")["rows"]}, {1, 5, 9})
+        self.assertEqual({row["user_name"] for row in self.get("trends", "admin")["candidates"]},
+                         {"alice", "bruno", "paul"})
+        self.assertEqual([row["user_name"] for row in self.get("details", "admin", org="org-b")["rows"]], ["bruno"])
+
+    def test_instance_scope_is_refused_to_maintainers_on_every_endpoint(self):
+        for endpoint in ("details", "list?by=annotators", "trends", "status", "overview"):
+            path, _, by = endpoint.partition("?by=")
+            with self.subTest(endpoint=endpoint):
+                status, body = self.stack.get(API + path, "lead-b", **({"by": by} if by else {}))
+                self.assertEqual((status, body), (403, {"error": "organization_required"}))
+                status, body = self.stack.get(API + path, "lead-b", org="org-a", **({"by": by} if by else {}))
+                self.assertEqual((status, body), (403, {"error": "forbidden"}))

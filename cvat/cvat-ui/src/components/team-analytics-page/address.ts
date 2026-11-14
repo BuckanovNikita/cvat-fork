@@ -47,10 +47,11 @@ export function shiftMonth(month: string, delta: number): string {
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-export function readAddress(search: string, now: Date = new Date()): Address {
+// `organization` is the one CVAT has selected (null = none): filters of another one are not read.
+export function readAddress(search: string, now: Date = new Date(), organization: string | null = null): Address {
     const query = new URLSearchParams(search);
     const period = PERIODS.find(({ key }) => key === query.get('period'))?.key ?? 'week';
-    const filters = { ...readFilters(search), shapes: readShapes(search), ...readFullView(search) };
+    const filters = { ...readFilters(search, organization), shapes: readShapes(search), ...readFullView(search) };
     if (period !== 'month') return { period, month: null, ...filters };
     const latest = currentMonth(now);
     const month = query.get('month') ?? '';
@@ -59,9 +60,9 @@ export function readAddress(search: string, now: Date = new Date()): Address {
 }
 
 // The query string for `address`, keeping every key of `search` this module does not own.
-export function addressSearch(address: Address, search: string): string {
+export function addressSearch(address: Address, search: string, organization: string | null = null): string {
     const others = shapesSearch(address.shapes, fullViewSearch(address, search));
-    const query = new URLSearchParams(filtersSearch(address, others));
+    const query = new URLSearchParams(filtersSearch(address, others, organization));
     query.set('period', address.period);
     if (address.period === 'month' && address.month) query.set('month', address.month);
     else query.delete('month');
@@ -76,9 +77,13 @@ interface AddressHistory {
 }
 
 // The address as state: follows Back and Forward, and records a change as a new history entry.
-export function useAddress(history: AddressHistory): [Address, (change: Partial<Address>) => void] {    const [search, setSearch] = useState(history.location?.search ?? '');
+export function useAddress(
+    history: AddressHistory,
+    organization: string | null = null,
+): [Address, (change: Partial<Address>) => void] {
+    const [search, setSearch] = useState(history.location?.search ?? '');
     useEffect(() => (history.listen ? history.listen((location) => setSearch(location.search)) : undefined), [history]);
-    const address = useMemo(() => readAddress(search), [search]);
+    const address = useMemo(() => readAddress(search, new Date(), organization), [search, organization]);
     const change = useCallback((next: Partial<Address>): void => {
         const merged = { ...address, ...next };
         if (next.period === 'month' && !next.month) merged.month = currentMonth();
@@ -86,10 +91,10 @@ export function useAddress(history: AddressHistory): [Address, (change: Partial<
         const keys = Object.keys(merged) as (keyof Address)[];
         if (keys.every((key) => merged[key] === address[key])) return;
         const current = history.location?.search ?? search;
-        const nextSearch = addressSearch(merged, current);
+        const nextSearch = addressSearch(merged, current, organization);
         if (nextSearch === current) return;
         history.push({ ...(history.location ?? {}), search: nextSearch });
         if (!history.listen) setSearch(nextSearch);
-    }, [address, history, search]);
+    }, [address, history, search, organization]);
     return [address, change];
 }
