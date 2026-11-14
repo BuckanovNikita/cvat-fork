@@ -39,8 +39,11 @@ The privilege the policies see is the account's highest-priority group among the
 (`cvat/apps/iam/middleware.py`), `None` when it has none. Such an account is made by an
 administrator removing its groups. The supported means for that are the Django admin form
 (`groups` in the user's "Permissions" fieldset) and the REST API: `UserSerializer` has
-`groups` as a writable field, an administrator gets that serializer for any user, and the
-`groups` field maps to the `update:permissions` scope, which only an administrator is allowed.
+`groups` as a writable field and its `update` passes it on to the model serializer's (it only
+splits off the profile fields); a superuser gets that serializer for any user (others get it
+only for themselves); and the `groups` field maps to the `update:permissions` scope, which
+`users.rego` allows only an administrator. Saving the account again does not bring the group
+back: the signal adds it only on creation.
 No management command sets an account's groups: CVAT's own (listed from the image) are
 `deleteuser`, data and cache maintenance and Redis jobs, and Django's built-in ones create a
 superuser or change a password.
@@ -58,6 +61,15 @@ Source read for this: `cvat/apps/iam/{signals,middleware,permissions,admin}.py`,
 from the local image `cvat/server:v2.82.0` (copied out of a created, never started container,
 removed afterwards). The Python is not in the import.
 
+What `issue_matrix.py live` assumes about the API, read in the same source: a created issue
+or comment is answered with the read serializer (`IssueWriteSerializer` and
+`CommentWriteSerializer` override `to_representation`), so the answer carries `id`; opening an
+issue creates its first comment, owned by the issue's owner; the read serializers carry `job`,
+`position`, `resolved` and `owner.username` (issues) and `issue`, `message` (comments); `resolved`
+and a comment's `message` are writable on `PATCH` (only `frame`, `job`, the issue's `message`
+and the comment's `issue` are write-once); a job carries `start_frame`; the list filters
+`job_id` (issues), `issue_id` (comments) and `name` (tasks) exist.
+
 ## Layout
 
 | Key | What | Organization |
@@ -67,10 +79,11 @@ removed afterwards). The Python is not in the import.
 | JJ | job of task `ta-issue-matrix`, assigned to nobody | ta-org-j |
 | I1, I2, IJ | an issue opened by the organization's owner on J1, J2, JJ | as the job |
 | C1, C2, CJ | the first comment of each, which opening the issue creates | as the job |
+| (reply) | a second comment on each, by the owner | as the job |
 
 The tasks have no project and are owned by the organization's owner. The layout is found or
 created on each run (the task by name, the fixed issue by owner and position, its first
-comment by id); leftovers of an interrupted run are deleted and I1, I2, IJ are reset
+comment by id, the reply by its text); leftovers of an interrupted run are deleted and I1, I2, IJ are reset
 (unresolved, original comment text), so the matrix repeats on the same stack.
 
 ## The matrix
@@ -190,11 +203,16 @@ On a stack started by the orchestrator (`run.sh up`, which ends with `check_issu
    prints `groups=[]`, `ta-worker-i2` `groups=['worker']`. Both organizations' memberships
    print and match.
 3. Layout: J1, J2, JJ print with their assignees (J2: `ta-norole-i`), then I1, I2, IJ with
-   their first comments.
+   their first comments and a reply each.
 4. The 96 action rows and 28 list rows print as `ok`, each with its status; the last line is
    `issue matrix passed: 124 rows`, and `run.sh` returns 0. Any `FAIL` or `INCONSISTENT` row
    fails the run.
-5. A second `run.sh check-issues` on the same stack passes the same way and reuses the same
+5. Every refused row's status is reviewed. A refusal counts on any 4xx other than 401, so a
+   400 or 404 that comes from something other than the policy would pass as a refusal: any
+   code other than 403 is explained before the criteria on the no-role account and on other
+   organizations are ticked, and the codes seen are then pinned in the matrix.
+6. A second `run.sh check-issues` on the same stack passes the same way and reuses the same
    job, issue and comment ids (repeatability).
-6. The printed matrix and the status codes of the refusals are copied into this file under a
-   "Live outcome" heading, with the image tag and chart revision of the stack.
+7. The output is captured before `down`, which deletes the state directory holding
+   `issue-matrix.json`. The printed matrix and the refusal codes are copied into this file
+   under a "Live outcome" heading, with the image tag and chart revision of the stack.

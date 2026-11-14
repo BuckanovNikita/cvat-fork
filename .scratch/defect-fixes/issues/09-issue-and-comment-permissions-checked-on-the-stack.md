@@ -44,14 +44,18 @@ on a running seeded stack); what each step must show:
    `groups=['worker']`, the rest `['user']`; both organizations' memberships match the file.
    (Criterion 1.)
 3. Layout prints J1 and JJ assigned to nobody, J2 to `ta-norole-i`, and I1, I2, IJ with their
-   first comments. (Criterion 1.)
+   first comments and a second comment each by the owner. (Criterion 1.)
 4. Every row prints `ok` with its HTTP status, and the run ends `issue matrix passed: 124 rows`
    with exit status 0: the unassigned worker, the global-`worker` worker and the supervisor do
    all eight actions on I1 and list I1, I2 (criterion 2); `ta-norole-i` is refused all eight on
    I1, views I2 and C2 only, and lists only I2 (criterion 3); `ta-worker-j`, `ta-outsider-i`
    and the org-i members acting on IJ are refused, and no list shows the other organization's
    objects (criterion 4). A `FAIL` or `INCONSISTENT` row exits non-zero (criterion 5).
-5. A second `run.sh check-issues` passes the same way with the same ids.
-6. The printed matrix, the refusal codes, the image tag and chart revision go into the
-   evidence file under "Live outcome" (criterion 7); criterion 6 is ticked then on the
-   evidence's reuse section if the reviewer accepts it.
+5. Every refused row's status is reviewed: a refusal counts on any 4xx other than 401, so any
+   code other than 403 is explained before criteria 3 and 4 are ticked, and the codes seen are
+   then pinned in the matrix.
+6. A second `run.sh check-issues` passes the same way with the same ids.
+7. The output is captured before `down` (which deletes the state directory with
+   `issue-matrix.json`); the printed matrix, the refusal codes, the image tag and chart
+   revision go into the evidence file under "Live outcome" (criterion 7). Criterion 6 is
+   ticked then on the evidence's reuse section if the reviewer accepts it.

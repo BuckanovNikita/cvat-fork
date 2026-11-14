@@ -42,11 +42,13 @@ TASK_NAME = "ta-issue-matrix"
 # account with no global role, so that it is staff of exactly one issue.
 JOBS = {"J1": (ORG_I, None), "J2": (ORG_I, "ta-norole-i"), "JJ": (ORG_J, None)}
 # Fixed issues, each opened by its organization's owner on its job, with the first comment that
-# opening an issue creates (C1, C2, CJ).
+# opening an issue creates (C1, C2, CJ, the comments the rows act on) and a second comment by
+# the owner (REPLY).
 ISSUES = {"I1": "J1", "I2": "J2", "IJ": "JJ"}
 FIXED_POSITION = [10.0, 10.0, 40.0, 40.0]
 THROWAWAY_POSITION = [1.0, 1.0, 9.0, 9.0]
 ACTOR_POSITION = [2.0, 2.0, 8.0, 8.0]
+REPLY = "second fixed comment, by the owner"
 
 
 def comment_of(issue: str) -> str:
@@ -458,10 +460,18 @@ class Live:
                 self.pages(owner, with_org("/api/comments", org, issue_id=self.ids[issue]))[1], key=lambda c: c["id"]
             )
             self.ids[comment_of(issue)] = comments[0]["id"]
-            for c in comments[1:]:
-                self.must(owner, "DELETE", with_org(f"/api/comments/{c['id']}", org))
+            # a second fixed comment, so that every fixed issue carries comments, not one
+            if len(comments) < 2 or comments[1]["message"] != REPLY:
+                for c in comments[1:]:
+                    self.must(owner, "DELETE", with_org(f"/api/comments/{c['id']}", org))
+                self.must(owner, "POST", with_org("/api/comments", org), {"issue": self.ids[issue], "message": REPLY})
+            else:
+                for c in comments[2:]:
+                    self.must(owner, "DELETE", with_org(f"/api/comments/{c['id']}", org))
             self.reset(issue)
-            print(f"  {issue}: issue {self.ids[issue]} on {job} by {owner}, comment {self.ids[comment_of(issue)]}")
+            print(
+                f"  {issue}: issue {self.ids[issue]} on {job} by {owner}, comment {self.ids[comment_of(issue)]} and a reply"
+            )
 
     def new_issue(self, user: str, org: str | None, job: str, position: list, message: str) -> int:
         body = {"frame": self.frames[job], "job": self.ids[job], "position": position, "message": message}
