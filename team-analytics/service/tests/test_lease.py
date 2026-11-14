@@ -2,18 +2,25 @@
 for good once it could have run out.
 
 The lease's time is supplied (`SuppliedClock`): it stands still until a test moves it, so no outcome here
-depends on how long a refresh takes on this host. What is left of real time is PATIENCE_S.
+depends on how long a refresh takes on this host. What is left of real time is PATIENCE_S. One test
+(`ProductionClockTest`) runs on the service's own lease clock, ClickHouse's, with a short lease.
 """
 
+import dataclasses
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 
 from team_analytics.refresh import LeaseClock
+from team_analytics.service import Service
 
-from tests.support import StackTestCase
+from tests.support import FakeUser, StackTestCase, clickhouse_client, working_time
 
 # Real seconds a test waits for something that should happen at once before it calls it stuck.
 PATIENCE_S = 60
+ORG = 7
+ALICE = (11, "alice")
+MINUTE = 60_000
 
 
 class SuppliedClock(LeaseClock):
@@ -92,6 +99,21 @@ def on_renewals(sql, behaviour) -> None:
         return behaviour(lambda: original(name, *args, **kwargs))
 
     sql.statements = run
+
+
+def hold_after_computing(sql, inside: threading.Event, go_on: threading.Event) -> None:
+    """Makes this replica's refresh in thread `replica-a` wait, once its refresh files have run and before it
+    marks the hours, until `go_on` is set (`inside` is set when it waits): at its check for a cutover to store,
+    which comes between the two."""
+    original = sql.rows
+
+    def run(name, *args, **kwargs):
+        if name == "control/cutover_due.sql" and threading.current_thread().name == "replica-a":
+            inside.set()
+            go_on.wait()
+        return original(name, *args, **kwargs)
+
+    sql.rows = run
 
 
 def kill(replica) -> None:
@@ -238,6 +260,44 @@ class LostLeaseTest(LeaseTestCase):
         self.assertTrue(replica_c.refresh().ran, "the expired claim of replica A came back to life")
         self.finish(thread)
 
+    def test_work_done_after_the_lease_was_lost_stays_out_of_status_and_figures(self):
+        self.stack.cvat.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "owner", True)}))
+        self.stack.add_events([working_time(self.stack.now - timedelta(minutes=10), MINUTE, user=ALICE, org=ORG)])
+        self.assertTrue(self.stack.service.refresh().ran)
+        before = self.status_and_figures()
+        self.assertEqual(before[1], MINUTE)
+
+        # replica A computes with two more minutes, five minutes later, and loses the lease before it marks them
+        self.stack.add_events([working_time(self.stack.now - timedelta(minutes=5), 2 * MINUTE, user=ALICE, org=ORG)])
+        self.stack.now += timedelta(minutes=5)
+        failing = threading.Semaphore(0)
+
+        def failing_renewal(_write):
+            failing.release()
+            raise ClickHouseBlip("renewal")
+
+        replica_a = self.stack.new_service()
+        hold_after_computing(replica_a.sql, self.inside, self.go_on)
+        on_renewals(replica_a.sql, failing_renewal)
+        thread, outcome = self.start(replica_a)
+        for _ in range(2):  # the renewals due inside the lease both fail
+            self.a_third_of_the_lease_passes()
+            self.assertTrue(failing.acquire(timeout=PATIENCE_S), "replica A did not try to renew its lease")
+        self.a_third_of_the_lease_passes()  # the lease has run out
+        self.finish(thread)
+        self.assertFalse(outcome["a"].ran)
+        self.assertEqual(self.status_and_figures(), before, "replica A's work after losing the lease became visible")
+
+    def status_and_figures(self) -> tuple[str | None, int]:
+        """The latest refresh as status reports it, and Alice's working time in this week's overview."""
+        status, body = self.stack.get("/team-analytics-api/v1/status", "lead", org="org7")
+        self.assertEqual(status, 200, body)
+        code, overview = self.stack.overview("lead", org="org7")
+        self.assertEqual(code, 200, overview)
+        rows = overview["by_annotator"]["rows"]
+        return (body["refresh"]["last_success_at"],
+                sum(row["working_time_ms"] for row in rows if row["user_id"] == ALICE[0]))
+
     def test_a_renewal_that_hangs_does_not_hold_up_the_release(self):
         renewing, hang = threading.Event(), threading.Event()
         self.addCleanup(hang.set)
@@ -257,34 +317,103 @@ class LostLeaseTest(LeaseTestCase):
         self.assertTrue(replica_b.refresh().ran, "replica A did not release the lease")
 
 
+def renewal_attempts(sql) -> threading.Semaphore:
+    """Released each time this replica tries to renew its lease, before the renewal is sent (and fails, once
+    the replica is killed). Counts from now on; the claim itself is made before."""
+    tried = threading.Semaphore(0)
+    original = sql.statements
+
+    def run(name, *args, **kwargs):
+        if name == "control/lock_claim.sql":
+            tried.release()
+        return original(name, *args, **kwargs)
+
+    sql.statements = run
+    return tried
+
+
 class KilledHolderTest(LeaseTestCase):
-    """A replica killed inside a step releases nothing. The others carry on once its lease has run out: two
-    minutes after its claim, or after the last renewal of it, which comes every 40 seconds."""
+    """A replica killed inside a step releases nothing and renews nothing. The others carry on once its lease
+    has run out: two minutes after its claim, or after the last renewal of it, which comes every 40 seconds.
+    A holder that is alive keeps the lease past those two minutes on the same clock; the kill is what ends it.
+    Each renewal the killed holder's renewal thread tries is awaited, so a kill that stopped nothing would
+    renew the lease and fail these tests."""
+
+    def renewed(self, landed: threading.Semaphore, times: int) -> None:
+        for _ in range(times):
+            self.a_third_of_the_lease_passes()
+            self.assertTrue(landed.acquire(timeout=PATIENCE_S), "replica A did not renew its lease")
+
+    def test_a_holder_that_is_alive_keeps_the_lease_past_its_length(self):
+        landed = threading.Semaphore(0)
+        replica_a, replica_b = self.held_replica(), self.stack.new_service()
+        on_renewals(replica_a.sql, lambda write: (write(), landed.release()))
+        thread, outcome = self.start(replica_a)
+        self.renewed(landed, 4)  # 160 s after the claim
+        self.assertFalse(replica_b.refresh().ran, "replica B refreshed while A was alive and renewing")
+        self.finish(thread)
+        self.assertTrue(outcome["a"].ran)
 
     def test_a_holder_killed_in_mid_step_is_overtaken_once_its_lease_has_run_out(self):
         replica_a, replica_b = self.held_replica(), self.stack.new_service()
         self.start(replica_a)
         kill(replica_a)
-        self.clock.advance(119)
+        tried = renewal_attempts(replica_a.sql)
+        self.a_third_of_the_lease_passes()  # 40 s after the claim
+        self.assertTrue(tried.acquire(timeout=PATIENCE_S), "the killed holder's renewal was never due")
+        self.clock.advance(79)
         self.assertFalse(replica_b.refresh().ran, "replica B refreshed inside the killed holder's lease")
         self.clock.advance(1)
         self.assertTrue(replica_b.refresh().ran, "replica B is still held up two minutes after the holder was killed")
 
     def test_a_holder_killed_after_a_renewal_is_overtaken_two_minutes_after_that_renewal(self):
         landed = threading.Semaphore(0)
-
-        def renewal(write):
-            write()
-            landed.release()
-
         replica_a, replica_b = self.held_replica(), self.stack.new_service()
-        on_renewals(replica_a.sql, renewal)
+        on_renewals(replica_a.sql, lambda write: (write(), landed.release()))
         self.start(replica_a)
-        self.assertTrue(self.clock.renewal_awaited(PATIENCE_S), "replica A is not waiting to renew its lease")
-        self.clock.advance(40)
-        self.assertTrue(landed.acquire(timeout=PATIENCE_S), "replica A did not renew its lease 40 seconds on")
+        self.renewed(landed, 1)  # renewed 40 s after the claim
         kill(replica_a)
-        self.clock.advance(119)
+        tried = renewal_attempts(replica_a.sql)
+        self.a_third_of_the_lease_passes()  # 80 s after the claim
+        self.assertTrue(tried.acquire(timeout=PATIENCE_S), "the killed holder's renewal was never due")
+        self.clock.advance(79)
         self.assertFalse(replica_b.refresh().ran, "replica B refreshed inside the killed holder's renewed lease")
         self.clock.advance(1)
         self.assertTrue(replica_b.refresh().ran, "replica B is still held up two minutes after the last renewal")
+
+
+class ProductionClockTest(StackTestCase):
+    """The lease on the service's own clock: claims stamped and judged by ClickHouse's time, here with a lease
+    of a few seconds. Only a lower bound on ClickHouse's clock is asserted, so a slow host can only make the
+    test wait longer."""
+
+    LEASE_S = 4
+
+    def test_a_killed_holder_is_overtaken_once_its_lease_has_run_out_on_clickhouses_clock(self):
+        config = dataclasses.replace(self.stack.config, refresh_lease_s=self.LEASE_S)
+        inside, go_on = threading.Event(), threading.Event()
+        self.addCleanup(go_on.set)
+
+        def clock():
+            if threading.current_thread().name == "holder":
+                inside.set()
+                go_on.wait()
+            return self.stack.now
+
+        holder, other = Service(config, clock=clock), Service(config, clock=lambda: self.stack.now)
+        server = clickhouse_client()
+
+        def clickhouse_now() -> datetime:
+            return server.query("SELECT now64(6, 'Etc/UTC')").result_rows[0][0]
+
+        before_the_claim = clickhouse_now()
+        threading.Thread(target=holder.refresh, name="holder", daemon=True).start()
+        self.assertTrue(inside.wait(PATIENCE_S), "the holder did not start refreshing")
+        kill(holder)
+        deadline = time.monotonic() + PATIENCE_S
+        while not other.refresh().ran:
+            self.assertLess(time.monotonic(), deadline, "the other replica never got the lease")
+            time.sleep(0.5)
+        taken_after = (clickhouse_now() - before_the_claim).total_seconds()
+        self.assertGreaterEqual(taken_after, self.LEASE_S, "the other replica got the lease inside the holder's")
+
