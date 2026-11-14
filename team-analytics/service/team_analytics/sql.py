@@ -41,6 +41,14 @@ def _file(name: str) -> Template:
     return Template((SQL_DIR / name).read_text())
 
 
+def _values(params: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The parameters as bound. A value given as a callable is taken when the statement runs, not when the
+    caller built the parameters: a statement that waited carries the time it ran at (the lease's clock)."""
+    if not params:
+        return None
+    return {name: value() if callable(value) else value for name, value in params.items()}
+
+
 class Sql:
     def __init__(self, config: Config) -> None:
         self._names = {"events_db": identifier(config.events_db), "totals_db": identifier(config.totals_db)}
@@ -73,9 +81,9 @@ class Sql:
         client = self._shared_client()
         for statement in self.text(name, **identifiers).split(";\n"):
             if statement.strip():
-                client.command(statement, parameters=params or None, settings=SETTINGS)
+                client.command(statement, parameters=_values(params), settings=SETTINGS)
 
     def rows(self, name: str, params: dict[str, Any] | None = None, **identifiers: str) -> list[dict[str, Any]]:
-        result = self._shared_client().query(self.text(name, **identifiers), parameters=params or None,
+        result = self._shared_client().query(self.text(name, **identifiers), parameters=_values(params),
                                              settings=SETTINGS)
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
