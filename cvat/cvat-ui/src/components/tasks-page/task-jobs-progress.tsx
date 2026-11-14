@@ -33,7 +33,9 @@ function TaskJobsProgress(props: Props): JSX.Element {
             count: summary.counts[stage][state],
             color: TASK_JOB_COLORS[stage][state],
         }))),
-        { key: 'inaccessible', label: 'not available', count: inaccessibleJobs, color: '#c1c1c1' },
+        {
+            key: 'inaccessible', label: 'not available', count: inaccessibleJobs, color: '#c1c1c1',
+        },
     ].filter((bucket: Bucket) => bucket.count > 0);
 
     return (
@@ -49,7 +51,9 @@ function TaskJobsProgress(props: Props): JSX.Element {
                 </Text>
             </div>
             <div className='cvat-task-item-jobs-progress'>
-                {buckets.map(({ key, label, count, color }: Bucket) => (
+                {buckets.map(({
+                    key, label, count, color,
+                }: Bucket) => (
                     <div
                         key={key}
                         className={`cvat-task-item-jobs-progress-segment cvat-jobs-progress-${key}`}

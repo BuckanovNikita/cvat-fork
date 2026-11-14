@@ -23,7 +23,6 @@ class TeamAnalyticsErrorBoundary extends React.Component<React.PropsWithChildren
     }
 
     public componentDidCatch(error: Error): void {
-        // eslint-disable-next-line no-console
         console.warn('Team analytics failed:', error);
     }
 

@@ -31,20 +31,6 @@ export function cutoverDay(cutover: string, timeZone?: string): string {
     });
 }
 
-// The notice the shown period needs: legacy, partly legacy (naming the cutover day), or none. A period with no
-// job work in the scope shows only the empty state, so neither notice.
-export function LegacyNotices({ operations, timeZone }: {
-    operations?: OperationsFigures;
-    timeZone?: string;
-}): JSX.Element | null {
-    if (!operations || hasNoJobWork(operations)) return null;
-    if (operations.legacy) return <LegacyNotice />;
-    if (operations.partly_legacy && operations.cutover) {
-        return <PartlyLegacyNotice cutover={operations.cutover} timeZone={timeZone} />;
-    }
-    return null;
-}
-
 // Shown for a partly legacy period: the cutover falls inside it, so some figures cover only the part after it.
 export function PartlyLegacyNotice({ cutover, timeZone }: { cutover: string; timeZone?: string }): JSX.Element {
     return (
@@ -59,4 +45,18 @@ export function PartlyLegacyNotice({ cutover, timeZone }: { cutover: string; tim
             </div>
         </div>
     );
+}
+
+// The notice the shown period needs: legacy, partly legacy (naming the cutover day), or none. A period with no
+// job work in the scope shows only the empty state, so neither notice.
+export function LegacyNotices({ operations, timeZone }: {
+    operations?: OperationsFigures;
+    timeZone?: string;
+}): JSX.Element | null {
+    if (!operations || hasNoJobWork(operations)) return null;
+    if (operations.legacy) return <LegacyNotice />;
+    if (operations.partly_legacy && operations.cutover) {
+        return <PartlyLegacyNotice cutover={operations.cutover} timeZone={timeZone} />;
+    }
+    return null;
 }

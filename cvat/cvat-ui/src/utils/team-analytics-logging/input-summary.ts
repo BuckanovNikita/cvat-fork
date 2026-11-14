@@ -9,10 +9,19 @@
 //                         written first)
 //   untrackInputJob()     the job is closed: what was counted is written, counting stops
 //   hotkeyUsed(action, event)  the shortcut dispatcher is about to run the handler of `action`
-//   inputEvent(event)     every keydown and click the application's window listener sees
+//   inputEvent(event)     every keydown, click and mousedown the application's window listeners see
+//                         (a mousedown only ends a pending frame-navigation hotkey)
+//   frameRequested()      a frame change starts (annotation-actions.ts changeFrameAsync); returns the
+//                         frame-navigation hotkey that asked for it, or null
+//   frameShown(hotkey, from, to)  that frame change shows frame `to`; `from` is the frame shown when it
+//                         started
 //
 // A hotkey action is named by what the shortcut does, so a remapped key is the same action. A held
-// key counts once (auto-repeats ignored), except frame navigation, where every invocation counts.
+// key counts once (auto-repeats ignored), except frame navigation, where every frame moved counts: a
+// frame-navigation hotkey counts when the frame change it asked for shows another frame. A press or a
+// repeat that asks again for the frame already loading, or that cannot move (first or last frame,
+// navigation blocked), counts nothing. A frame-navigation hotkey asks for the next frame change that
+// starts after it, unless a mouse button press, a click or another hotkey comes first.
 // A mouse action is a click on a control (button, menu item, sidebar control, ...), counted per zone
 // of the page; clicks on the canvas are counted apart, under zone 'canvas'.
 // The summary is written at most once a minute and only at a moment when the person acts (a key press
@@ -22,12 +31,12 @@
 import { RECORD } from './contract';
 import { guarded } from './guard';
 import { markInput, resetInputMethod } from './input-method';
-import type { LoggingJob } from './index';
-import { logRecord } from './index';
+import type { LoggingJob } from './record';
+import { logRecord } from './record';
 
 export const SUMMARY_INTERVAL_MS = 60000;
 
-// Shortcuts that move between frames: a held key moves on every invocation, and each counts.
+// Shortcuts that move between frames: a held key moves on every invocation, and each frame moved counts.
 export const FRAME_NAVIGATION_ACTIONS: ReadonlySet<string> = new Set([
     'NEXT_FRAME', 'PREV_FRAME', 'FORWARD_FRAME', 'BACKWARD_FRAME', 'NEXT_KEY_FRAME', 'PREV_KEY_FRAME',
     'SEARCH_FORWARD', 'SEARCH_BACKWARD', 'CHAPTER_FORWARD', 'CHAPTER_BACKWARD',
@@ -65,12 +74,17 @@ let job: LoggingJob | null = null;
 let hotkeys: Record<string, number> = {};
 let mouse: Record<string, number> = {};
 let lastWritten = 0;
+// the frame-navigation hotkey whose frame change has not started yet
+let navigation: string | null = null;
+// the frame last shown by a frame change, while the job is open
+let shownFrame: number | null = null;
 
 function counted(): boolean {
     return Object.keys(hotkeys).length > 0 || Object.keys(mouse).length > 0;
 }
 
 function add(counts: Record<string, number>, name: string): void {
+    // eslint-disable-next-line no-param-reassign
     counts[name] = (counts[name] ?? 0) + 1;
 }
 
@@ -110,6 +124,8 @@ export function trackInputJob(next: LoggingJob | null | undefined): void {
         hotkeys = {};
         mouse = {};
         lastWritten = Date.now();
+        navigation = null;
+        shownFrame = null;
         resetInputMethod();
     });
 }
@@ -120,6 +136,8 @@ export function untrackInputJob(): Promise<void> {
     return guarded(Promise.resolve(), () => {
         const logged = job ? write() : Promise.resolve();
         job = null;
+        navigation = null;
+        shownFrame = null;
         resetInputMethod();
         return logged;
     });
@@ -129,14 +147,43 @@ export function hotkeyUsed(action: string, event: { repeat?: boolean } | null | 
     guarded(undefined, () => {
         if (!tracked()) return;
         markInput('hotkey');
-        if (event?.repeat && !FRAME_NAVIGATION_ACTIONS.has(action)) return;
+        if (FRAME_NAVIGATION_ACTIONS.has(action)) {
+            // counted when the frame change it asks for shows another frame (frameShown)
+            navigation = action;
+            return;
+        }
+        navigation = null;
+        if (event?.repeat) return;
         add(hotkeys, action);
+    });
+}
+
+export function frameRequested(): string | null {
+    return guarded(null, () => {
+        const hotkey = tracked() ? navigation : null;
+        navigation = null;
+        return hotkey;
+    });
+}
+
+export function frameShown(hotkey: string | null, from: number, to: number): void {
+    guarded(undefined, () => {
+        if (!tracked()) return;
+        const before = shownFrame ?? from;
+        shownFrame = to;
+        if (hotkey !== null && to !== before) add(hotkeys, hotkey);
     });
 }
 
 export function inputEvent(event: { type?: string; target?: unknown } | null | undefined): void {
     guarded(undefined, () => {
         if (!tracked() || !event) return;
+        if (event.type === 'mousedown' || event.type === 'click') {
+            // a frame change that starts after the mouse button goes down (the player slider moves
+            // then) is not a hotkey's
+            navigation = null;
+        }
+        if (event.type === 'mousedown') return;
         active();
         if (event.type !== 'click' || !isElement(event.target)) return;
         const zone = zoneOf(event.target);

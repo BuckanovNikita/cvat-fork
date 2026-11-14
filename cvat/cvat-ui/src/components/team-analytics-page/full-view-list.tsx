@@ -217,7 +217,6 @@ export function FullTable({
                         {shown.map((row) => (
                             <tr key={row.key}>
                                 <th scope='row'>{row.name}</th>
-                                {/* eslint-disable-next-line react/no-array-index-key */}
                                 {row.cells.map((cell, index) => <td key={index}>{cell}</td>)}
                             </tr>
                         ))}

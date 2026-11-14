@@ -2,6 +2,8 @@
 
 This is a source inventory for the documentation task, not a deployment report.
 The maintained behavior is described in the [specification](../fork-specification.md).
+The import was re-filtered on 2026-11-14; its new identifiers are in
+[the widened import baseline](2026-11-14-widened-import-baseline.md).
 
 ## Revisions
 
