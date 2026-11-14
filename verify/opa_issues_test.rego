@@ -171,6 +171,90 @@ test_sandbox_filter_contract if {
     }
 }
 
+# A caller with no global role (privilege null) is below the patch's floor: the
+# patched policies must decide exactly as stock for every action and for the list
+# filter. The expectations below are stock's results, written out, and do not
+# depend on `patched`, so the same cases pass on the stock tag and on the patched
+# tree. Stock lets such a caller view what it is staff of and list its own items.
+
+organization_roles := ["worker", "supervisor", "maintainer", "owner"]
+
+staff_filters := {
+    "issues": ["|",
+        {"owner": 7},
+        {"assignee": 7},
+        {"job__assignee": 7},
+        {"job__segment__task__owner": 7},
+        {"job__segment__task__assignee": 7},
+        {"job__segment__task__project__owner": 7},
+        {"job__segment__task__project__assignee": 7},
+    ],
+    "comments": ["|",
+        {"owner": 7},
+        {"issue__owner": 7},
+        {"issue__assignee": 7},
+        {"issue__job__assignee": 7},
+        {"issue__job__segment__task__owner": 7},
+        {"issue__job__segment__task__assignee": 7},
+        {"issue__job__segment__task__project__owner": 7},
+        {"issue__job__segment__task__project__assignee": 7},
+    ],
+}
+
+test_no_global_role_staff_gets_stock_actions if {
+    every package_name, package_scopes in scopes {
+        every role in organization_roles {
+            every scope in package_scopes {
+                result := data[package_name].allow with input as request(role, scope) with input.auth.user.privilege as null with input.resource.job.assignee.id as 7
+                result == (scope == "view")
+            }
+        }
+    }
+}
+
+test_no_global_role_nonstaff_gets_stock_actions if {
+    every package_name, package_scopes in scopes {
+        every role in organization_roles {
+            every scope in package_scopes {
+                not data[package_name].allow with input as request(role, scope) with input.auth.user.privilege as null
+            }
+        }
+    }
+}
+
+test_no_global_role_member_gets_stock_list_filter if {
+    every package_name, field in organization_fields {
+        every role in organization_roles {
+            every staff_id in [7, 99] {
+                candidate := request(role, "list")
+                data[package_name].allow with input as candidate with input.auth.user.privilege as null with input.resource.job.assignee.id as staff_id
+                result := data[package_name].filter with input as candidate with input.auth.user.privilege as null with input.resource.job.assignee.id as staff_id
+                result == ["&", staff_filters[package_name], ["|", {field: 42}], "org_filter_proof"]
+            }
+        }
+    }
+}
+
+test_no_global_role_sandbox_gets_stock_actions if {
+    every package_name, package_scopes in scopes {
+        every scope in package_scopes {
+            candidate := request("worker", scope)
+            staff := data[package_name].allow with input as candidate with input.auth.user.privilege as null with input.auth.organization as null with input.resource.organization as null with input.resource.job.assignee.id as 7
+            staff == (scope == "view")
+            not data[package_name].allow with input as candidate with input.auth.user.privilege as null with input.auth.organization as null with input.resource.organization as null
+        }
+    }
+}
+
+test_no_global_role_nonmember_gets_stock_actions if {
+    every package_name, package_scopes in scopes {
+        every scope in array.concat(package_scopes, ["list"]) {
+            not data[package_name].allow with input as request(null, scope) with input.auth.user.privilege as null with input.resource.job.assignee.id as 7
+        }
+        not data[package_name].filter with input as request(null, "list") with input.auth.user.privilege as null
+    }
+}
+
 test_admin_filter_scoped if {
     every package_name, field in organization_fields {
         candidate := request("worker", "list")
