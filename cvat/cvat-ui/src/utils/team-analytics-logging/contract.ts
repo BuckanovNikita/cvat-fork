@@ -21,6 +21,22 @@ export const PAYLOAD = {
     objectRef: 'object_ref',
     // drag and resize only: frame number
     frame: 'frame',
+    // drag only: GROUP.move on the group event, GROUP.grabbed on CVAT's own drag of the grabbed object
+    group: 'group',
+} as const;
+
+// A group move (several selected objects dragged together, or the selection box moved) is one
+// `drag:object` event for the gesture, sent by Team Analytics:
+//   duration   the gesture's duration, from the canvas
+//   count      the number of objects moved (the event's count column)
+//   payload    `group` = GROUP.move, the shape fields of all objects moved (`rectangle_count` = how many
+//              of them are bounding boxes), `frame`, `input_method` 'mouse'; no `object_ref`, no `obj_id`
+// It counts one alignment per object moved, sharing the duration equally, and ends or continues no other
+// alignment. When the gesture began by dragging one object, CVAT still logs its own `drag:object` of that
+// object right after; that event carries `group` = GROUP.grabbed and is no operation of its own.
+export const GROUP = {
+    move: 'move',
+    grabbed: 'grabbed',
 } as const;
 
 // `obj_name` of the `debug:info` records Team Analytics adds (logged through the job logger).
