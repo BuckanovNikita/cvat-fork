@@ -79,6 +79,45 @@ test('projects: named as CVAT names them, with the annotators who worked in each
     assert.deepEqual(rows.map((r) => r.slice(0, 2)), [['Cats', '4'], ['No project', '1'], ['Project #8', '2']]);
 });
 
+test('a project with only technical-account boxes shows zeros, its boxes and a dash where nothing can be averaged', () => {
+    // the row as the service sends it: nobody worked in the project, so both ratios are null
+    const automated = {
+        id: 3,
+        user_name: null,
+        annotators: 0,
+        sessions: 0,
+        working_time_ms: 0,
+        drawn: 0,
+        pasted: 0,
+        propagated: 0,
+        model: 9,
+        saved_boxes: 7,
+        alignments: 0,
+        class_changes: 0,
+        deletions: 0,
+        average_create_ms: null,
+        hotkey_share: null,
+    };
+    const shown = details({
+        by: 'projects', rows: [row(1, { user_name: null, annotators: 2 }), automated], project_ids: [1, 3], total: 2,
+    });
+    for (const [answer, expected] of [
+        [shown, ['Project #3', '0', '0', '0.0 h', '0', '0', '0', '9', '0', '0', '0', '—', '—']],
+        // a legacy period: its saved boxes in place of Model
+        [{ ...shown, legacy: true, shapes: 'all' },
+            ['Project #3', '0', '0', '0.0 h', '0', '0', '0', '7', '0', 'Not recorded', '0', '—', 'Not recorded']],
+    ]) {
+        const html = card({ details: answer, by: 'projects' });
+        const rows = cells(html);
+        assert.equal(rows.length, 3);
+        assert.deepEqual(rows[2], expected);
+        // no cell is left empty and no figure is the result of a division by zero, hover text included
+        assert.ok(rows.every((cellsOfRow) => cellsOfRow.every((cell) => cell !== '')));
+        assert.doesNotMatch(html, /NaN|Infinity|undefined|null/);
+        assert.match(text(html), /1–2 of 2/);
+    }
+});
+
 test('a legacy period shows saved boxes in place of Model and says what was not recorded', () => {
     const [header, alice] = cells(card({ details: details({ legacy: true, shapes: 'all' }) }));
     assert.equal(header[7], 'Boxes saved');
