@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] Before the change is adopted, the cost of the long-range search is measured on the large loaded volume, in time and memory, and recorded. If it is too costly, the fallback of the spec is used and this ticket says so.
+- [ ] Before the change is adopted, the cost of the long-range search is measured, in time and memory, on data of the scale of the design measurements (about 36 million event rows, built with the benchmark fixture under `docs/evidence/`), and recorded. The test stack's few thousand rows are not a measurement. If it is too costly, the fallback of the spec is used and this ticket says so.
 - [ ] Test first, through the service's read interface: a service started on stored shape-tagged events knows the cutover on its first answer, before any refresh.
 - [ ] Shape-tagged work that exists only in the recorded events, not yet in the stored totals, yields a cutover.
 - [ ] An earlier shape-tagged event that arrives after the cutover was stored moves it to that event's hour at the next daily check. A later event never moves it.
