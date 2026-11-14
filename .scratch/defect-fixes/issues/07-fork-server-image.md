@@ -10,7 +10,7 @@
 - [x] The image's tag names the release and marks it as the fork's. Its default is set in the script, as for the UI image.
 - [x] The server's own bundle builder, run in the image with no mounts, yields a bundle whose two policies equal the patched files of the import. The same check on the stock image shows the stock policies.
 - [x] Compared with the stock image, only those two files differ.
-- [ ] The script needs no network when the stock image is local, and never pulls or pushes.
+- [x] The script needs no network when the stock image is local, and never pulls or pushes.
 - [x] The Team Analytics service image still builds on the stock base, unchanged.
 - [x] The checks are recorded in a dated evidence file.
 
@@ -22,7 +22,11 @@
 with `curl -s <api>/auth/rules | verify/policy_bundle.sh check`, which compares each policy
 byte for byte with the import's file.
 
-2026-11-14: The no-network criterion is unticked. Its second half is shown: the script
+2026-11-14: The no-network criterion is now shown. The script, given the stock image under a
+temporary name on the unresolvable host `registry.invalid` as its base, built the same image
+(same ID) with no pull; see the evidence file. The earlier comment below is superseded.
+
+2026-11-14 (superseded): The no-network criterion is unticked. Its second half is shown: the script
 refuses a base that is not local, never pulls and has no push step, and the build's events
 showed no pull. The first half is not shown: the Docker daemon's network cannot be switched
 off from here, so the build never ran with the network off. Both halves currently rest on the

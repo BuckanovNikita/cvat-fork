@@ -60,6 +60,16 @@ occurs twice in each policy of the fork bundle and zero times in the stock bundl
   image, no `pull`. The plain progress log resolves the base by its local digest
   (`docker.io/cvat/server:v2.82.0@sha256:e4ff37f1...`), and the stock image ID was the same
   afterwards.
+- Unreachable base name. The local stock image got a temporary second name under a host
+  that cannot resolve by construction, `registry.invalid/cvat-fork-offline-check/server:v2.82.0`,
+  and the script ran with that `BASE_IMAGE` and a throwaway `IMAGE`. It succeeded (exit 0).
+  The plain log reads `load metadata for registry.invalid/cvat-fork-offline-check/server:v2.82.0`
+  `DONE`, then `FROM registry.invalid/...@sha256:e4ff37f1b598...` resolved, then the export
+  of manifest `sha256:4b38c649ae96...`. The image events of the build were the temporary
+  `tag`, then `create` and `tag` of the result; no `pull`. The result had the same image ID
+  as `cvat/server:v2.82.0-fork-policies` (`sha256:4b38c649ae96...`), so the same content.
+  Afterwards both names were untagged; `cvat/server:v2.82.0` kept ID `sha256:e4ff37f1b598...`
+  and `cvat/server:v2.82.0-fork-policies` kept `sha256:4b38c649ae96...`.
 
 ### The Team Analytics service image
 
@@ -70,9 +80,9 @@ not contain the fork image's policy layer.
 
 ## Not verified
 
-- The client cannot switch off the Docker daemon's network, so the build was not run on a
-  machine with no network. `--network=none` covers only `RUN` steps, of which there are
-  none; the absence of a pull rests on the local-base check, the events and the log above.
+- The daemon's network itself was not switched off; the unreachable base name above stands
+  in for that. In that run the `COPY` step was served from the build cache, which bears on
+  the build context, not on how the base was resolved.
 - No server was started: the policies a running server serves at `/api/auth/rules` are
   ticket 08's check (`curl -s <api>/auth/rules | verify/policy_bundle.sh check`).
 - The policy decisions themselves are ticket 06's policy test, not repeated here.
