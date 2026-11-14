@@ -73,7 +73,7 @@ class CountingTest(OperationsCase):
         self.assertEqual([ops[name]["objects"] for name in ("creation", "alignment", "class_change", "deletion")],
                          [8, 2, 0, 3])
 
-    def test_a_creation_undone_and_redone_is_two_creations_and_no_deletion(self):
+    def test_a_creation_undone_and_redone_is_one_creation_and_no_deletion(self):
         t = "2026-11-13 10:00:00"
         self.stack.add_events([
             client("load:job", seconds(t, 0)),
@@ -87,9 +87,22 @@ class CountingTest(OperationsCase):
 
         ops = self.by_name(self.operations())
 
-        self.assertEqual(ops["creation"]["objects"], 2)
+        self.assertEqual(ops["creation"]["objects"], 1)
         self.assertEqual(ops["deletion"]["objects"], 0)
         self.assertEqual(ops["alignment"]["objects"], 0)
+
+    def test_an_undone_creation_still_counts(self):
+        t = "2026-11-13 10:00:00"
+        self.stack.add_events([
+            client("load:job", seconds(t, 0)),
+            draw(seconds(t, 10)),
+            client("action:undo", seconds(t, 15), count=1, name="Created objects", frame=0),
+        ])
+
+        ops = self.by_name(self.operations())
+
+        self.assertEqual((ops["creation"]["objects"], ops["creation"]["time_ms"]), (1, 10_000))
+        self.assertEqual(ops["deletion"]["objects"], 0)
 
 
 class TimePerOperationTest(OperationsCase):
@@ -218,6 +231,25 @@ class OtherTest(OperationsCase):
         self.assertEqual(ops["other"]["time_ms"], 0)
         self.assertEqual(operations["working_time_ms"], 0)
         self.assertEqual(operations["active_time_ms"], 80_000)
+        self.assertAlmostEqual(sum(row["share"] for row in operations["rows"]), 1.0)
+
+    def test_with_a_redo_the_shares_still_add_up_and_other_is_not_below_zero(self):
+        # no working time in the period: the operations are all of the active time
+        t = "2026-11-13 10:00:00"
+        self.stack.add_events([
+            client("load:job", seconds(t, 0)),
+            draw(seconds(t, 10)),  # 10 s
+            client("action:undo", seconds(t, 15), count=1, name="Created objects", frame=0),
+            client("action:redo", seconds(t, 20), count=1, name="Created objects", frame=0),
+            client("delete:object", seconds(t, 24), count=1),  # 4 s since the redo
+        ])
+
+        operations = self.operations()
+        ops = self.by_name(operations)
+
+        self.assertEqual(ops["other"]["time_ms"], 0)
+        self.assertEqual(operations["working_time_ms"], 0)
+        self.assertEqual(operations["active_time_ms"], 14_000)
         self.assertAlmostEqual(sum(row["share"] for row in operations["rows"]), 1.0)
 
     def test_other_is_computed_for_the_filtered_project_and_never_below_zero(self):
