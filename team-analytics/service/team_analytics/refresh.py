@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from typing import TypeVar
 
 from team_analytics.config import Config
+from team_analytics.cutover import find_cutover
 from team_analytics.sql import Sql
 
 log = logging.getLogger(__name__)
@@ -221,6 +222,8 @@ class Refresher:
         for name in self._sql.files("refresh"):
             self.ensure_lease()
             self._sql.statements(name, params)
+        # the first tagged hour in the totals: the cutover is found and stored before any hour is offered
+        find_cutover(self._sql, self.ensure_lease)
         self.ensure_lease()  # once marked, the hours are visible
         self._sql.statements("control/mark_hours.sql", params)
         if marked:

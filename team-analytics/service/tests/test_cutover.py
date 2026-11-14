@@ -127,6 +127,54 @@ class WithCutoverTest(CutoverCase):
         self.assertTrue(last["hotkey_recorded"])
 
 
+class WhileHistoryIsProcessedTest(CutoverCase):
+    """History fills newest first, but a processed period is labelled by the real cutover from the start."""
+
+    stack_options = {}  # the trailing 48 h refresh, history one day per step
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.stack.add_events([
+            working_time(at("2026-10-20 10:00:00"), 3_600_000, user=ALICE, org=ORG_A),
+            client("load:job", at("2026-10-20 10:00:00")),
+            draw(at("2026-10-20 10:00:10")),
+            # the real cutover, days before the trailing hours
+            client("load:job", at("2026-11-02 10:30:00")),
+            draw(at("2026-11-02 10:30:10"), input_method="mouse", **BOX),
+            # this week: untagged work on Tuesday, tagged work on Thursday (inside the trailing hours)
+            working_time(at("2026-11-10 10:00:00"), 3_600_000, user=ALICE, org=ORG_A),
+            client("load:job", at("2026-11-10 10:00:00")),
+            draw(at("2026-11-10 10:00:10")),
+            client("load:job", at("2026-11-12 10:00:00")),
+            draw(at("2026-11-12 10:00:10"), input_method="mouse", **BOX),
+        ])
+
+    def process_this_week(self) -> None:
+        for _ in range(10):
+            if self.get("overview", period="week")["processed"]:
+                return
+            self.stack.service.step()
+        self.fail("this week was never processed")
+
+    def test_a_processed_period_is_labelled_by_the_real_cutover_before_history_reaches_it(self):
+        self.stack.refresh()
+        self.process_this_week()
+        self.assertEqual(self.get("status")["cutover"], {"at": CUTOVER})
+        week = self.operations(period="week", shapes="bounding_boxes")
+        self.assertEqual((week["legacy"], week["partly_legacy"], week["cutover"]), (False, False, CUTOVER))
+
+    def test_a_stored_cutover_does_not_move(self):
+        self.stack.refresh()
+        self.stack.add_events([
+            client("load:job", at("2026-10-25 10:00:00")),
+            draw(at("2026-10-25 10:00:10"), input_method="mouse", **BOX),
+        ])
+        for _ in range(40):  # all of history, the new event's day included
+            self.stack.service.step()
+        self.assertTrue(self.get("status")["history"]["complete"])
+        self.assertEqual(self.get("status")["cutover"], {"at": CUTOVER})
+
+
 class WithoutCutoverTest(CutoverCase):
     def test_without_any_shape_tagged_event_a_period_with_job_work_is_legacy(self):
         self.stack.add_events([
