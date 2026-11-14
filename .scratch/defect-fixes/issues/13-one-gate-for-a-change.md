@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 (Frontend tests fail without their browser environment), 05 (First lint run on the fork's UI code), 06 (Policies patched in place with the role floor).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A hook pipeline configuration holds ESLint, stylelint and the type check on the fork's UI code, ruff on the fork's Python, the policy test, and the three fast frontend suites.
 - [x] The pipeline's all-files run passes on the branch.
@@ -57,3 +57,5 @@ Outstanding:
 - A fresh clone was not tried. The import tag is local only (section 1 of the
   upgrade procedure), so a fresh clone must recreate it before the UI linters
   and the stock policy test can run.
+
+2026-11-14: Resolved by merge `868ccf5f` into `feat/team-analytics-page`; evidence in `docs/evidence/2026-11-14-check-pipeline.md`. On the merged tree `prek run --all-files` exited 0 with all nine hooks passed (ESLint, stylelint, type check, ruff, both policy tests, the task progress, UI logging and page suites); `.venv` is ignored by git; nothing under `cvat/` changed.
