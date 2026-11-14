@@ -220,12 +220,14 @@ Behavior to preserve:
   CVAT for project names and the details project search stay bounded: names
   go 100 ids per request, and the search sends one table page of ids.
 - Legacy rule: the cutover is the hour of the first shape-tagged operation
-  event on the instance, reported by `status`. The step that first stores a
-  shape-tagged hour finds it with one bounded aggregate over the raw events and
-  stores it in the totals database before its hours become visible; requests
-  read the stored value, which never moves. Until it is stored there is no
-  cutover. A
-  period that ends at or before it, or any period while there is none, is a
+  event on the instance, reported by `status`. The service looks for it in
+  the recorded events with one aggregate over the raw events: when it starts,
+  before it answers; in the daily check; and in the step that first stores a
+  shape-tagged hour while none is stored, before those hours become visible.
+  Every hour found is stored in the totals database, and requests read the
+  earliest stored hour, so the cutover moves to an earlier hour when an
+  earlier shape-tagged event turns up and never to a later one. Until an hour
+  is stored there is no cutover. A period that ends at or before it, or any period while there is none, is a
   legacy period (all shapes, the legacy notice, class change and hotkey use
   not recorded, saved boxes in place of Model). A period that begins at or
   after it is never legacy. A period that holds it is partly legacy: figures
