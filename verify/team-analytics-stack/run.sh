@@ -13,6 +13,8 @@
 #   run.sh check-final    the final run: the real UI annotates in a browser and its records arrive,
 #                         figures for that work and for loaded volume, every account and endpoint,
 #                         the page, then the page and annotation with the service stopped
+#   run.sh check-task-progress  tasks with a job in every stage and state, then the tasks list
+#                         in a browser with the stack's UI image: legend, segments, colours, total
 #   run.sh check-policies fetch the policy bundle the running server serves and check both
 #                         patched policies in it, each by itself
 #   run.sh forward        (re)start the port-forward of a running stack
@@ -32,6 +34,10 @@
 #                         personal-workspace, header-credentials (all of them without CASE)
 #   run.sh check-ingress-gone
 #                         after down: no Ingress names the stack's host and the controller has no route
+#   run.sh check-issues   the issue and comment matrix through the real API, with its own accounts
+#                         (issue_accounts.json, one without a global role), judged pass or fail
+#   run.sh check-issue-policies [patched|stock]
+#                         the same matrix's expectations against the policy engine, no server
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -470,6 +476,24 @@ check_final() {
     log "final run passed"
 }
 
+# ---------------------------------------------------------------- task progress
+
+# The fork's task-progress summary on the tasks list (ticket 10): the seed creates, as ta-admin in
+# its personal workspace, a task with one job in each stage and state the server's schema names and
+# a task with a single annotation/new job; a headless browser then reads both task cards from the
+# UI the stack serves, which must be TA_UI_IMAGE. Every run seeds new tasks.
+check_task_progress() {
+    local state="$STATE_DIR/task-progress.json" ui
+    mkdir -p "$STATE_DIR"
+    ui="$("${K[@]}" -n "$TA_NAMESPACE" get deploy "$TA_RELEASE-frontend" -o jsonpath='{.spec.template.spec.containers[*].image}')"
+    [ "$ui" = "$TA_UI_IMAGE" ] || die "the frontend runs '$ui', not the UI image under test $TA_UI_IMAGE"
+    log "task progress: UI image $TA_UI_IMAGE (local $(docker image inspect --format '{{.Id}}' "$TA_UI_IMAGE" 2>/dev/null || echo 'none'); running $("${K[@]}" -n "$TA_NAMESPACE" get pods -l "app.kubernetes.io/instance=$TA_RELEASE,tier=frontend" -o jsonpath='{.items[*].status.containerStatuses[*].imageID}'))"
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/task_progress.py" seed >"$state"
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
+        nice -n19 node "$HERE/task_progress_browser.cjs" "$state"
+    log "task progress check passed"
+}
+
 # ---------------------------------------------------------------- policies
 
 # The policies the running server serves to OPA (/api/auth/rules, the bundle the chart's OPA
@@ -585,6 +609,50 @@ check_ingress_gone() {
     log "no Ingress names $TA_INGRESS_HOST; the controller answers 404 for it"
 }
 
+# ---------------------------------------------------------------- issue matrix
+
+# The issue and comment matrix (ticket 09) through the real API: seed_users.py loads the accounts
+# and two organizations of issue_accounts.json, issue_matrix.py sets their global roles through
+# the admin API (one has none), lays out jobs, issues and comments, runs every row and judges it.
+# Needs the stack's own seed (ta-admin). Repeatable on the same stack.
+check_issues() {
+    local out="$STATE_DIR/issue-matrix.json"
+    mkdir -p "$STATE_DIR"
+    log "issue matrix: loading the accounts of issue_accounts.json"
+    "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- \
+        env TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_ACCOUNTS="$(cat "$HERE/issue_accounts.json")" \
+        python manage.py shell <"$HERE/seed_users.py" >&2
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/issue_matrix.py" live "$out"
+    log "issue matrix results: $(show_path "$out")"
+}
+
+# The same matrix's expectations against the policy engine, without a server: issue_matrix.py
+# builds the input the stock server would send for every row, OPA (local image, no network) decides,
+# and issue_matrix.py judges. MODE patched reads the import's policies, MODE stock those of
+# STOCK_TAG, as verify/policy_test.sh does; each mode has its own expectation column.
+check_issue_policies() {
+    local mode="${1:-patched}" work p image="${OPA_IMAGE:-openpolicyagent/opa:1.12.2}" stock_tag="${STOCK_TAG:-cvat-v2.82.0-widened}"
+    local policies=(cvat/apps/engine/rules/issues.rego cvat/apps/engine/rules/comments.rego
+        cvat/apps/iam/rules/utils.rego cvat/apps/organizations/rules/organizations.rego)
+    case "$mode" in patched | stock) ;; *) die "usage: run.sh check-issue-policies [patched|stock]" ;; esac
+    work="$(mktemp -d)"
+    for p in "${policies[@]}"; do
+        mkdir -p "$work/policies/$(dirname "$p")"
+        if [ "$mode" = patched ]; then cp "$IMPORT_DIR/$p" "$work/policies/$p"
+        else git -C "$ROOT" show "$stock_tag:$p" >"$work/policies/$p" || { rm -rf "$work"; die "no $p in $stock_tag"; }; fi
+    done
+    python3 -I -B "$HERE/issue_matrix.py" opa-cases >"$work/cases.json"
+    chmod -R a+rX "$work"
+    local rc=0
+    docker run --rm --network none --cpus=1 --memory=256m -v "$work:/work:ro" "$image" \
+        eval --format json --data /work/policies --data /work/cases.json \
+        "$(python3 -I -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import issue_matrix; print(issue_matrix.OPA_QUERY)' "$HERE")" \
+        >"$work/answers.json" || rc=$?
+    [ "$rc" = 0 ] && { python3 -I -B "$HERE/issue_matrix.py" opa-judge "$mode" <"$work/answers.json" || rc=$?; }
+    rm -rf "$work"
+    [ "$rc" = 0 ] || die "issue matrix expectations differ from the $mode policies"
+}
+
 # ---------------------------------------------------------------- teardown
 
 teardown() {
@@ -646,7 +714,9 @@ up() {
     check_ingress
     check_event
     check_tracer
+    check_task_progress
     check_final
+    check_issues
     check_access_cases
     log "up:$BASE_URL (accounts: see README.md, password \$TA_SEED_PASSWORD)"
 }
@@ -659,8 +729,11 @@ case "${1:-}" in
     check-event) check_event ;;
     check-tracer) check_tracer ;;
     check-final) check_final ;;
+    check-task-progress) check_task_progress ;;
     check-policies) check_policies ;;
     check-bundle) check_bundle ;;
+    check-issues) check_issues ;;
+    check-issue-policies) check_issue_policies "${2:-patched}" ;;
     forward) start_port_forward ;;
     status) status ;;
     preflight) preflight; log "preflight passed; nothing was created or pulled" ;;

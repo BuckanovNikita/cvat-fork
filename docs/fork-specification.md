@@ -202,10 +202,24 @@ Behavior to preserve:
   (2 s). On SIGTERM the service
   finishes the step in progress and releases the lease before exiting. A
   replica killed mid-step releases nothing and holds up the others until its
-  lease runs out, at most 120 s after the kill: the lease is 120 s long and
-  is renewed every 40 s while a step runs.
+  lease runs out: the lease is 120 s long and is renewed every 40 s while a
+  step runs, so it runs out at most 120 s after the kill. The next replica
+  takes over at its next try after that; a replica that finds the lease taken
+  tries again every 5 s. Known limit: on SIGTERM the service waits at most
+  25 s for the step in progress. A step still running then (a long day of
+  history, or the daily check's cutover search, which may take up to its
+  60 s limit) ends with the process without releasing the lease, which then
+  holds the others up as a killed replica's does; a statement it had sent
+  goes on in ClickHouse until it ends or reaches its limit. The signal neither
+  releases the lease nor stops the statement: releasing it while the step's
+  statement still runs in ClickHouse could let another replica write beside
+  it, and stopping the statement would mean tracking and killing it by query
+  id.
 - One ClickHouse client without a session serves the HTTP threads and the
-  refresh loop. A request body is read and dropped, or the connection is closed
+  refresh loop; the cutover search at start and in the daily check goes
+  through a second one, which gives up after hearing nothing from ClickHouse
+  for a few seconds longer than the search's limit. A request body is read and dropped, or the
+  connection is closed
   after the answer, so a body is never answered as a request.
 - Its routes are under `/team-analytics-api/v1/`. Every request is checked
   against CVAT with the caller's own cookie or token: `/api/users/self`,
@@ -217,10 +231,64 @@ Behavior to preserve:
   one. A CVAT answer without the expected shape is a 503 refusal and is never
   cached. A 401 or 403 from any endpoint puts the open page into that refusal.
 - A read of a period that is not fully processed carries no figures, whoever
-  asks: the overview, the full-view list and the details table keep their
-  envelope (period, filter echo, `processed: false`, the legacy flags) and
-  every figure in them is null. A trend bucket that is not fully processed has
-  null values. The page shows that the period is being processed.
+  asks: it keeps its envelope, says `processed: false`, and every other field
+  is null. The envelope of each endpoint:
+  - overview: `period`, `filters`, `processed`, and `operations` with only
+    its legacy flags (`legacy`, `partly_legacy`, `cutover`, `shapes`); every
+    other section is null whole, rows and all;
+  - full-view list: `period`, `processed`, `by` and the legacy flags;
+  - details table: `by`, `page_size`, `processed`, `technical_accounts` (how
+    many accounts are configured as technical) and the legacy flags; it
+    returns neither the period nor a filter echo, in any answer;
+  - trends: each bucket says whether it is processed; in every line the point
+    of a bucket that is not fully processed keeps `legacy` and
+    `hotkey_recorded` and has null values. A comparison candidate's
+    `working_time_ms` sums only the fully processed buckets and is null while
+    none is; candidates are ranked by it, then by id, so time in a bucket not
+    fully processed ranks nobody. Who is a candidate still comes from every
+    computed hour of the twelve buckets, processed or not, so that the
+    comparison can be offered while history is processed.
+
+  Each endpoint reads how far history is processed once per request, before it
+  reads any figure, so a history step that finishes during a request can only
+  make the answer say `processed: false` where it could have said true, never
+  mark figures read before the step as processed. The page shows that the
+  period is being processed.
+- Known limit of unprocessed periods: the legacy flags of an answer that is
+  not fully processed (`legacy`, `partly_legacy` and `shapes`, and
+  `hotkey_recorded` on a trend point) describe only the part already
+  processed, and can change, even to the opposite, once processing completes.
+  A caller must not read them as final while `processed` is false. The page
+  hides the shape switch while the overview's `operations.legacy` is true, so
+  the switch can appear or vanish when a period's processing completes.
+- `status` depends on who asks. An administrator, with or without an
+  organization selected, gets the whole history block: `complete`, `percent`,
+  `ready_from`, `ready_from_day`, `first_day`, `days_ready`, `days_total`,
+  `periods`, `earliest_month`, `complete_weeks`, `trends_ready`. Everyone else
+  who may read gets `complete`, `percent`, `periods`, `earliest_month`,
+  `complete_weeks` and `trends_ready`. Both get `refresh` (freshness) and
+  `cutover`. Every one of these fields describes the whole instance, not the
+  caller's organization: history is processed for the instance as a whole.
+- Known limit of `status` for a caller outside the admin group: while history
+  is processed, such a caller who polls status can work out the instance's
+  exact first event day, and so the length of its history. The percentage is
+  "days processed / days in the instance"; each time `earliest_month` changes
+  the processed days begin on that month's first day, and each time
+  `complete_weeks` changes (below twelve) on a Monday, so the processed day
+  count is known exactly at those moments and the percentage then gives the
+  total. The `processed` flags of the overview, the list and the details table
+  for any `month`, and the trends' per-bucket flags, bound the same to the
+  month or the week. After history is complete the window reopens briefly: an
+  event dated before the instance's first day makes `complete` false again for
+  a step or two, and for that time the same applies to the older history.
+  Making the percentage coarser (rounded, or not tied to the instance's day
+  counts) would blunt this; that is an open decision for the owner.
+- The details table by project lists every project in the caller's scope with
+  working time, operations or saved boxes, so a project whose only work is
+  boxes saved by a technical account has a row (no working time, its saved
+  boxes and its Model boxes). A technical account never appears in the table
+  by annotator or in any other list of people, and under an annotator filter
+  on its id its saved boxes neither list a project nor count for one.
 - The page's project and annotator filters belong to the organization named
   by `org` in the page address. Filters of another organization, or of an
   address that names none while one is selected, are not applied. Requests to
@@ -228,7 +296,7 @@ Behavior to preserve:
   go 100 ids per request, and the search sends one table page of ids.
 - Legacy rule: the cutover is the hour of the first shape-tagged operation
   event on the instance, reported by `status`. The service looks for it in
-  the recorded events with one aggregate over the raw events: when it starts,
+  the recorded events with one statement over the raw events: when it starts,
   before it answers; in the daily check; and in the step that first stores a
   shape-tagged hour while none is stored, before those hours become visible.
   Every hour found is stored in the totals database, and requests read the
@@ -256,8 +324,20 @@ Behavior to preserve:
   and every period reads as legacy. The search reads every recorded event
   before the stored cutover, or all of them while none is stored, so its cost
   grows with that history; what it cost at the volume of the design
-  measurements is in `docs/evidence/2026-11-14-cutover-search-cost.md`. If the
-  search fails at start, the service starts without it.
+  measurements is in `docs/evidence/2026-11-14-cutover-search-cost.md`. The
+  search at start and in the daily check runs with limits that ClickHouse
+  enforces on the statement: 23 s at start, 60 s in the daily check, and
+  512 MiB of memory in both. ClickHouse stops a search that reaches one; that
+  is the bound. The service's client gives up only after hearing nothing for
+  a few seconds longer than the limit, so it does not give up first; a client
+  that gives up does not stop the statement in ClickHouse. A search that fails or
+  is stopped at start lets the service start without it; in the daily check
+  the step ends without it. Either way the cutover is looked for again at the
+  next daily check or start, so on an instance whose history before the
+  cutover takes longer than the limit to read, the search keeps failing: the
+  cutover is then found only by the refresh that first stores a shape-tagged
+  hour while none is stored (that search has no time limit), and a late
+  earlier event never moves it.
 - New measurements travel inside existing client event types (ADR 0002):
   payload fields on draw, paste, propagate, drag, resize and delete, plus three
   `debug:info` records (`team_analytics:class_change`,
@@ -290,6 +370,17 @@ Behavior to preserve:
   with the group event but were stored by a service without the group-move
   rule hold a group drag as two alignments and a selection-box move as one;
   computing them again gives one per object moved.
+- Known limits of a refresh window shorter than a day
+  (`TEAM_ANALYTICS_REFRESH_WINDOW_HOURS` below 24): today's hours before the
+  window are computed by the history step once each has left the window. A
+  record that reaches ClickHouse after its hour was computed (client records
+  arrive in batches, often minutes late) is counted only when its day is
+  computed as a whole, after midnight; until then the period reads as
+  processed without it. And after each refresh that moves the window on, every
+  period reads as being processed until the history step that follows has
+  computed the hour that left it. The default window of 48 hours does not
+  behave so: the next ten-minute refresh counts a late record, and no hour of
+  today lies before the window.
 - The logging module never throws into the annotation view. After three
   failures it switches itself off for the page's life. It records nothing
   outside an open 2D job.

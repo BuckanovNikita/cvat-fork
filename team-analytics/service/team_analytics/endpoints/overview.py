@@ -19,6 +19,8 @@ ENVELOPE = frozenset({"period", filters.KEY, processed.KEY, operations.KEY})
 
 def handle(request: Request) -> dict:
     span = request.span()
+    # the history state is read before any section reads figures (service.Request.history)
+    request.history()
     body: dict = {"period": span.describe()}
     for section in discover(overview):
         body[section.KEY] = section.build(request)

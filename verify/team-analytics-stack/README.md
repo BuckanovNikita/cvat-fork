@@ -15,8 +15,8 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
 
 Это теги по умолчанию (`TA_SERVER_IMAGE`, `TA_UI_IMAGE`, `TA_SERVICE_IMAGE` в `stack.env`);
 образы должны быть собраны из проверяемой версии, иначе проверки политик и страницы не
-пройдут. Остальные подкоманды (`seed`, `check-event`, `check-tracer`, `check-final`,
-`check-policies`, `forward`, `status`, `preflight`, `build-chart`, `render`, `check-render`,
+пройдут. Остальные подкоманды (`seed`, `check-event`, `check-tracer`, `check-task-progress`, `check-final`,
+`check-policies`, `check-issues`, `check-issue-policies`, `forward`, `status`, `preflight`, `build-chart`, `render`, `check-render`,
 `check-bundle`, `render-ingress`, `check-ingress`, `seed-access`, `check-access`,
 `check-ingress-gone`) описаны в шапке `run.sh`; `preflight` выполняет всё, что `up` делает до
 первого изменения в кластере, и ничего не создаёт и не скачивает. Ручных шагов нет.
@@ -99,6 +99,17 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
   каждой роли, затем `browser_check.cjs` в headless Chrome входит как `ta-maintainer`
   (ссылка в шапке, цифры на странице) и как `ta-worker` (ссылки нет, прямой переход —
   «not available», запрос к сервису — 403). `TA_SCREENSHOT_DIR` сохраняет снимки экрана.
+- Проверка прогресса задач (`run.sh check-task-progress`, часть `up` после проверки рабочего
+  времени; `task_progress.py`, `task_progress_browser.cjs`). Сначала стенд убеждается, что UI
+  работает на образе `TA_UI_IMAGE`. Затем `ta-admin` в личном пространстве создаёт через API
+  две новые задачи: в первой по одному заданию на каждую пару этапа и состояния (этапы и
+  состояния сверяются со схемой API сервера), во второй одно задание annotation / new.
+  Каждое задание читается обратно. Headless Chrome входит как `ta-admin` и открывает список
+  задач с фильтром по этим задачам. На карточке каждой задачи проверяются подписи легенды
+  со счётчиками, цвет, вес и подсказка каждого сегмента (таблица UI-2 в
+  `docs/fork-specification.md`) и общее число заданий. Проверяется, что нет корзины
+  «not available» и стоковых подписей. Текст легенды должен читаться на карточке
+  (контраст не ниже 4.5:1).
 - Итоговый прогон (`run.sh check-final`, последняя часть `up`; `final_run.py`,
   `final_browser.cjs`). Организация `ta-org-c` (`ta-owner-c`, `ta-worker-c` и
   техническая учётная запись `ta-bot`, `TA_TECHNICAL_ACCOUNTS`). На каждом запуске
@@ -113,6 +124,18 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
   обращается к каждому адресу сервиса. Наконец сервис останавливается, и стенд проверяет
   панель ошибки и то, что разметка рисуется и сохраняется; после этого сервис
   запускается снова.
+- Матрица прав на issues и комментарии (`run.sh check-issues`, часть `up` после итогового
+  прогона; `issue_matrix.py`). Свои учётные записи (`issue_accounts.json`, загружаются тем
+  же `seed_users.py`): организация `ta-org-i` с `ta-owner-i`, `ta-maintainer-i`,
+  `ta-supervisor-i`, `ta-worker-i`, `ta-worker-i2` (глобальная роль `worker`) и
+  `ta-norole-i` без глобальной роли; `ta-outsider-i` не состоит нигде; организация
+  `ta-org-j` с `ta-owner-j` и `ta-worker-j`. Глобальные роли выставляет `ta-admin` через
+  `PATCH /api/users/<id>` и читает обратно. Задание без исполнителя с issue владельца и двумя
+  комментариями, второе задание у `ta-norole-i`, задание в `ta-org-j`. Каждая строка матрицы
+  выполняется через API, владелец читает результат обратно; стенд сам решает, прошла ли
+  матрица, и пишет её в `issue-matrix.json` в каталоге состояния. Те же ожидания без
+  сервера, против политик импорта или стокового тега: `run.sh check-issue-policies
+  [patched|stock]` (локальный образ OPA, без сети).
 - Случаи доступа (`run.sh check-access [CASE]`, последняя часть `up`; `access_cases.py`,
   учётные записи — `access_accounts.json`, загружает `seed_access.py`). Каждый случай сам
   решает, пройден ли он, и печатает `[access] PASS` или `[access] FAIL`.

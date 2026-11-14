@@ -111,8 +111,6 @@ and start from it.
 
 ## Not verified
 
-- The UI image build from the new import. It was not run because the machine
-  was in use; the build inputs it reads are unchanged by the merge.
 - The two Compose launchers (`verify/run.sh`, `verify/opa_issues.sh`) no
   longer have `cvat/docker-compose.yml` and cannot run. That is expected; they
   are removed later and their checks move to the Kubernetes stack.
@@ -123,3 +121,14 @@ and start from it.
   history the clone held. Compare both with the table above before tagging.
 - Pushing: the new tag and the mirror are local. The branch carries only the
   snapshot and the merge, not the 2834-commit filtered history behind the tag.
+
+## UI image build, 2026-11-15
+
+Run after the machine was free, from the integration branch at `3dc1a7bc`
+(the import as re-pulled, with the fork's later UI changes):
+`IMAGE=cvat/ui:v2.82.0-team-analytics ./build-ui.sh`. It exited 0 on
+`node:24.19.0-slim` and left image `sha256:310e9bbc6a47`. Its log holds no
+error line and no local path.
+
+This shows that the image builds from the widened import. It does not show the
+image in a browser; the stack run of ticket 08 is the first to serve it.

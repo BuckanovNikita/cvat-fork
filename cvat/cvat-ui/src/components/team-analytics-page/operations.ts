@@ -2,7 +2,10 @@
 //
 // SPDX-License-Identifier: MIT
 
-import { OperationName, OperationRow, OperationsFigures } from './service';
+import {
+    OperationName, OperationRow, OperationsFigures, RowOperations,
+} from './service';
+import { formatHours } from './format';
 
 // Each operation has one name and one colour everywhere on the page.
 export interface OperationLook {
@@ -19,6 +22,33 @@ export const OPERATION_LOOKS: Record<OperationName, OperationLook> = {
     deletion: { name: 'Deletion', color: '#eda100', ink: '#0b0b0b' },
     other: { name: 'Other', color: '#c9c8c2', ink: '#0b0b0b' },
 };
+
+// One part of a row's bar
+export interface BarPart {
+    key: string;
+    color: string;
+    // relative size of the part within the row's bar
+    grow: number;
+    title: string;
+}
+
+// The parts a row's bar is split into, in order: each operation and Other, class change left out in a legacy
+// period (it was not recorded). The overview's bars and the full view's share them, and so their legends.
+export function splitParts(legacy: boolean): OperationName[] {
+    const operations: OperationName[] = ['creation', 'alignment', 'class_change', 'deletion'];
+    return [...operations.filter((key) => !(legacy && key === 'class_change')), 'other'];
+}
+
+// The parts of the bar of row `name`: each part's time out of the row's operations.
+export function operationParts(operations: RowOperations, name: string, legacy: boolean): BarPart[] {
+    return splitParts(legacy).map((key) => {
+        const look = OPERATION_LOOKS[key];
+        const time = operations[key].time_ms;
+        return {
+            key, color: look.color, grow: time, title: `${name} · ${look.name}: ${formatHours(time)}`,
+        };
+    });
+}
 
 export function operationRow(figures: OperationsFigures, operation: OperationName): OperationRow | null {
     return figures.rows.find((row) => row.operation === operation) ?? null;

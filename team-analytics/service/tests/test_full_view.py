@@ -104,20 +104,33 @@ class RefusalsTest(FullViewCase):
         self.assertEqual(status, 401)
 
 
+def operations_per_row() -> list[dict]:
+    return [
+        # alice, project 1: a box drawn in 10 s and a rectangle track drawn in 10 s; 2 min of working time
+        client("load:job", seconds(T, 0)),
+        draw(seconds(T, 10), **BOX),
+        draw(seconds(T, 20), **BOX_TRACK),
+        working_time(seconds(T, 20), 2 * MINUTE, user=ALICE, org=ORG),
+        # bob, project 2: two boxes pasted 10 s after loading; only 5 s of working time (Other stays at 0)
+        client("load:job", seconds(T, 100), user=BOB, project=2, task=2, job=2),
+        paste(seconds(T, 110), 2, user=BOB, project=2, task=2, job=2, **{**BOX, "rectangle_count": 2}),
+        working_time(seconds(T, 110), 5_000, user=BOB, org=ORG, project=2, task=2, job=2),
+    ]
+
+
+def legacy_work() -> list[dict]:
+    """alice draws one object without a shape tag: there is no cutover, so every period is legacy."""
+    return [
+        client("load:job", seconds(T, 0)),
+        draw(seconds(T, 10)),
+        working_time(seconds(T, 10), MINUTE, user=ALICE, org=ORG),
+    ]
+
+
 class OperationsPerRowTest(FullViewCase):
     def setUp(self) -> None:
         super().setUp()
-        self.stack.add_events([
-            # alice, project 1: a box drawn in 10 s and a rectangle track drawn in 10 s; 2 min of working time
-            client("load:job", seconds(T, 0)),
-            draw(seconds(T, 10), **BOX),
-            draw(seconds(T, 20), **BOX_TRACK),
-            working_time(seconds(T, 20), 2 * MINUTE, user=ALICE, org=ORG),
-            # bob, project 2: two boxes pasted 10 s after loading; only 5 s of working time (Other stays at 0)
-            client("load:job", seconds(T, 100), user=BOB, project=2, task=2, job=2),
-            paste(seconds(T, 110), 2, user=BOB, project=2, task=2, job=2, **{**BOX, "rectangle_count": 2}),
-            working_time(seconds(T, 110), 5_000, user=BOB, org=ORG, project=2, task=2, job=2),
-        ])
+        self.stack.add_events(operations_per_row())
 
     def test_each_annotator_row_splits_its_working_time_by_operation_and_other(self):
         rows = self.rows_by_id(self.listed("annotators", shapes="all"))
@@ -155,11 +168,7 @@ class OperationsPerRowTest(FullViewCase):
 
 class LegacyListTest(FullViewCase):
     def test_a_list_without_shape_tagged_work_is_legacy_and_counts_all_shapes(self):
-        self.stack.add_events([
-            client("load:job", seconds(T, 0)),
-            draw(seconds(T, 10)),
-            working_time(seconds(T, 10), MINUTE, user=ALICE, org=ORG),
-        ])
+        self.stack.add_events(legacy_work())
 
         listed = self.listed("annotators", shapes="bounding_boxes")
         self.assertTrue(listed["legacy"])
@@ -221,15 +230,22 @@ class ProcessedTest(FullViewCase):
         self.assertEqual(body["processed"], self.overview(period="year")["processed"])
         # no figures, only the envelope: the period, the kind of list and the legacy flags
         self.assertEqual(body["period"]["first_day"], "2025-11-14")
+        # `legacy: False` pins a recorded limit (docs/fork-specification.md, "Known limit of unprocessed
+        # periods"): the legacy flags of an unprocessed period describe only what is processed of it, and this
+        # Year would read as legacy once processed
         self.assertEqual({key: body[key] for key in ("by", "legacy", "partly_legacy", "cutover", "shapes")},
                          {"by": "annotators", "legacy": False, "partly_legacy": False, "cutover": None,
                           "shapes": "all"})
         self.assertEqual((body["total"], body["rows"]), (None, None))
+        # every key outside the envelope is null, so a field added later is withheld too
+        envelope = {"period", "processed", "by", "legacy", "partly_legacy", "cutover", "shapes"}
+        self.assertLessEqual({key for key, value in body.items() if value is not None}, envelope)
 
         status, body = self.stack.get(LIST, "lead", org="org7", by="hotkeys", period="year")
         self.assertEqual(status, 200, body)
         self.assertFalse(body["processed"])
         self.assertEqual((body["hotkey_actions"], body["rows"]), (None, None))
+        self.assertLessEqual({key for key, value in body.items() if value is not None}, envelope)
 
     def test_a_wholly_processed_period_keeps_its_figures(self):
         self.stack.add_events([working_time(at("2026-11-12 10:00:00"), HOUR, user=ALICE, org=ORG)])
@@ -239,3 +255,89 @@ class ProcessedTest(FullViewCase):
         self.assertTrue(body["processed"])
         self.assertEqual(body["total"], {"count": 1, "working_time_ms": HOUR})
         self.assertEqual([(row["id"], row["working_time_ms"]) for row in body["rows"]], [(ALICE[0], HOUR)])
+
+
+class OverviewSplitTest(FullViewCase):
+    """The overview's rows by annotator and by project carry their operation parts, equal to the full view's."""
+
+    SECTIONS = (("by_annotator", "annotators", "user_id"), ("by_project", "projects", "project_id"))
+
+    def overview(self, **query) -> dict:
+        # a processed period, as the full view reads it (`listed`), so that the overview holds its figures
+        self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))
+        return super().overview(**query)
+
+    def test_each_overview_row_carries_the_operations_of_its_row_in_the_full_view(self):
+        self.stack.add_events(operations_per_row())
+        for shapes in ("all", "bounding_boxes"):
+            overview = self.overview(shapes=shapes)
+            for section, by, key in self.SECTIONS:
+                with self.subTest(shapes=shapes, section=section):
+                    listed = self.listed(by, shapes=shapes)
+                    rows = self.rows_by_id(listed)
+                    self.assertEqual(len(overview[section]["rows"]), 2)
+                    for row in overview[section]["rows"]:
+                        self.assertEqual(row["operations"], rows[row[key]]["operations"])
+                    self.assertEqual(overview[section]["legacy"], listed["legacy"])
+        # the worked example of OperationsPerRowTest, read from the overview alone
+        alice = self.overview(shapes="bounding_boxes")["by_annotator"]["rows"][0]
+        self.assertEqual(alice["user_id"], ALICE[0])
+        self.assertEqual(alice["operations"]["creation"]["objects"], 1)
+        self.assertEqual(alice["operations"]["creation"]["time_ms"], 10_000)
+        self.assertEqual(alice["operations"]["other"], {"time_ms": 2 * MINUTE - 10_000})
+
+    def test_the_rest_carries_the_parts_of_the_rows_it_stands_for(self):
+        # nine annotators with an hour or more and no operation, each in a project of their own; bob, last, drew
+        # two boxes in 20 s with 5 s of working time: his Other stays at 0, so the rest's Other is the rows'
+        # Other added up (1 h of user01 + 0), not the rest's working time less its operations
+        self.stack.add_events([
+            *[working_time(at("2026-11-12 09:00:00"), n * HOUR, user=(100 + n, f"user{n:02}"), org=ORG,
+                           project=10 + n, task=10 + n, job=10 + n) for n in range(1, 10)],
+            client("load:job", seconds(T, 0), user=BOB, project=2, task=2, job=2),
+            draw(seconds(T, 10), user=BOB, project=2, task=2, job=2, **BOX),
+            draw(seconds(T, 20), user=BOB, project=2, task=2, job=2, **BOX),
+            working_time(seconds(T, 20), 5_000, user=BOB, org=ORG, project=2, task=2, job=2),
+        ])
+
+        overview = self.overview(shapes="all")
+        for section, by, _ in self.SECTIONS:
+            with self.subTest(section=section):
+                rest = overview[section]["rest"]
+                self.assertEqual((rest["count"], rest["working_time_ms"]), (2, HOUR + 5_000))
+                self.assertEqual(rest["operations"]["creation"],
+                                 {"objects": 2, "timed_objects": 2, "time_ms": 20_000, "average_ms": 10_000})
+                self.assertEqual(rest["operations"]["alignment"],
+                                 {"objects": 0, "timed_objects": 0, "time_ms": 0, "average_ms": None})
+                self.assertEqual(rest["operations"]["other"], {"time_ms": HOUR})
+                hidden = self.listed(by, shapes="all")["rows"][len(overview[section]["rows"]):]
+                self.assertEqual(sum(row["operations"]["other"]["time_ms"] for row in hidden), HOUR)
+
+    def test_no_rows_give_an_empty_rest_with_zero_parts(self):
+        rest = self.overview()["by_annotator"]["rest"]
+        self.assertEqual(rest["count"], 0)
+        self.assertEqual(rest["operations"]["other"], {"time_ms": 0})
+        self.assertEqual(rest["operations"]["deletion"],
+                         {"objects": 0, "timed_objects": 0, "time_ms": 0, "average_ms": None})
+
+    def test_in_a_legacy_period_the_split_follows_the_full_view(self):
+        self.stack.add_events(legacy_work())
+        listed = self.listed("annotators", shapes="bounding_boxes")
+        section = self.overview(shapes="bounding_boxes")["by_annotator"]
+        self.assertTrue(listed["legacy"])
+        self.assertTrue(section["legacy"])
+        self.assertEqual(section["rows"][0]["operations"], listed["rows"][0]["operations"])
+        self.assertEqual(section["rows"][0]["operations"]["creation"]["objects"], 1, "all shapes count")
+        # an annotator without work selected: the overview's own operations are empty, so not legacy, while the
+        # rows, which keep every annotator listed, stay legacy as their full view does
+        filtered = self.overview(shapes="bounding_boxes", annotator="999")
+        self.assertFalse(filtered["operations"]["legacy"])
+        self.assertTrue(self.listed("annotators", shapes="bounding_boxes", annotator="999")["legacy"])
+        self.assertTrue(filtered["by_annotator"]["legacy"])
+
+    def test_a_period_not_fully_processed_carries_no_parts(self):
+        # a pin: the overview withholds whole sections (ticket 14), so the parts go null with their rows
+        self.stack.add_events([working_time(at("2026-10-01 10:00:00"), HOUR, user=ALICE, org=ORG)])
+        self.stack.refresh()
+        body = FullViewCase.overview(self, period="year")  # history not computed: the year is not processed
+        self.assertFalse(body["processed"])
+        self.assertEqual((body["by_annotator"], body["by_project"]), (None, None))
