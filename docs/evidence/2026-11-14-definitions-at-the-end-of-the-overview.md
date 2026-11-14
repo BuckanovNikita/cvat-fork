@@ -57,3 +57,16 @@ The whole seam 3 suite passes after the change, with nothing skipped.
   1400 px and 400 px. It should check that at 400 px the definitions are one
   column, inside the page's column, with no sideways scroll, and that at
   1400 px they sit in several columns below the details table.
+
+## Independent review, 2026-11-15
+
+This ticket was reviewed together with ticket 23; the review, its findings and
+what was done are in
+`docs/evidence/2026-11-14-overview-bars-split-by-operation.md`
+("Independent review, 2026-11-15"). For this ticket: the definitions held
+(worded from the glossary, no figures, overview only). One finding is recorded,
+not changed: a row whose operation time exceeds its working time draws parts
+that add up to more than its working time, beside the definition that every
+breakdown of time adds up to it. The limit is in `docs/fork-specification.md`
+("Known limit of the split by operation"); the wording is an open decision for
+the owner.
