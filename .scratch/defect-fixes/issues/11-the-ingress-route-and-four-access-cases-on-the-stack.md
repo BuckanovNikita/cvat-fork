@@ -40,3 +40,4 @@ Both points left open in part one are settled. CVAT accepts a read-only Bearer a
 The stack is shared with other tickets, so `access_cases.py` now reads a compared pair of service reads again, up to 4 times, before it judges a difference (`same_reads`).
 
 Criterion 8 stays unticked. The stack stays up for further tickets, so step 8 (`run.sh down`, then `run.sh check-ingress-gone`) runs at the end of the live work.
+- 2026-11-15: The live run merged into `feat/team-analytics-page` as `aa03acae`, with no conflict. On the merged tree `py_compile` on `access_cases.py` passed; no launcher command was run by the merger. The ticket stays open for criterion 8 (teardown removes the Ingress), shown when the stack comes down. Evidence: `docs/evidence/2026-11-14-stack-ingress-and-access-cases.md`.

@@ -10,8 +10,9 @@ queries and refuse concurrent ones, while a session-less client only shares its 
 is safe across threads. File texts are read once.
 
 A statement run with a `Limit` gets that limit as ClickHouse settings, so the server stops it there; that is
-the bound. It is sent through a second client of the same kind, which gives up only after hearing nothing from
-the server for a few seconds longer than the limit. Neither client's wait bounds a whole statement: the client
+the bound. It is sent through a client of the same kind kept for that limit (one client per limit, so the cutover
+search's two limits make two more clients), which gives up only after hearing nothing from the server for a few
+seconds longer than the limit. No client's wait bounds a whole statement: the client
 asks for progress headers, which reset its read timeout. The shared client keeps the library's wait (300 s).
 """
 

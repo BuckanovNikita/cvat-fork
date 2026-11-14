@@ -74,7 +74,7 @@ import showPlatformNotification, {
 import '../styles.scss';
 import appConfig from 'config';
 import EventRecorder from 'utils/event-recorder';
-import { inputEvent } from 'utils/team-analytics-logging';
+import { listenForInput } from 'utils/team-analytics-logging';
 import { authQuery } from 'utils/auth-query';
 import CVATMarkdown from './common/cvat-markdown';
 import EmailConfirmationPage from './email-confirmation-pages/email-confirmed';
@@ -168,8 +168,6 @@ class CVATApplication extends React.PureComponent<CVATAppProps & RouteComponentP
                 EventRecorder.recordMouseEvent(e);
             }
 
-            inputEvent(e);
-
             EventRecorder.recordUserActivity();
         };
 
@@ -188,8 +186,7 @@ class CVATApplication extends React.PureComponent<CVATAppProps & RouteComponentP
             }
         };
 
-        // Team Analytics: a mouse button press ends a pending frame-navigation hotkey (input-summary.ts)
-        window.addEventListener('mousedown', inputEvent, { capture: true });
+        listenForInput(window); // Team Analytics: the window listeners its counting needs (input-summary.ts)
         visibilityChangeListener(); // initial setup other event listeners
         window.addEventListener('visibilitychange', visibilityChangeListener);
 

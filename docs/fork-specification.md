@@ -13,8 +13,8 @@ to the repository root.
 | Upstream import | `mirror-cvat.sh`, `cvat/` | Filtered Git subtree containing frontend build inputs and deployment components |
 | Task progress | Eight UI files listed below | Per-stage/state job counts, legend and progress segments |
 | Organization issues/comments | `cvat/cvat/apps/engine/rules/issues.rego`, `cvat/cvat/apps/engine/rules/comments.rego` (patched in place inside the import) | Broader actions and listing for members of the resource organization who hold at least the `worker` global role |
-| Build and deployment | `build-ui.sh`, `docker-compose.override.yml` | Custom UI image and server-side OPA mounts |
-| Verification | `verify/` | Frontend regression tests, policy tests and legacy live verification harnesses |
+| Build and deployment | `build-ui.sh`, `build-server.sh`, `Dockerfile.server` | Custom UI image, and the fork server image that delivers the patched policies (BUILD-1) |
+| Verification | `verify/` | Frontend regression tests, the policy test and the policy bundle check, the Team Analytics seams, and the test stack on Kubernetes (`verify/team-analytics-stack/`) that runs the live checks |
 | Mechanical formatting | `ruff.toml` | Formatting convention for the fork's own Python. It is not applied inside the import: `cvat/components/analytics/clickhouse/init.py` equals upstream's file |
 | Team Analytics | `team-analytics/`, `build-team-analytics-service.sh`, the page and logging directories under `cvat/cvat-ui/src/`, wiring in eleven UI files (TA-1) | Work figures per annotator and project from CVAT's own events, read by a separate service |
 
@@ -141,7 +141,23 @@ business validation. An unassigned worker can have issue API permission yet
 still be unable to open the job in the UI. Canvas verification therefore needs
 a worker who can access the job.
 
+The patched files reach a server only inside the fork server image (BUILD-1);
+nothing mounts them, and there is no second copy of them. Because the added
+rule has no scope whitelist, any scope a later upstream release adds to either
+policy is granted to members at or above the floor as soon as the policies are
+merged with that release. The upgrade procedure has the review step.
+
 ## BUILD-1: Packaging and policy delivery
+
+The fork ships three images, each built by a script in this repository from the
+working tree. None of them is pulled from a registry; each must be present on
+the node that runs it.
+
+| Image | Built by | Content |
+| --- | --- | --- |
+| UI | `build-ui.sh` | Upstream `cvat/Dockerfile.ui` with the fork's UI changes |
+| Fork server image | `build-server.sh`, `Dockerfile.server` | The stock release server image with the import's two patched policies copied over the stock ones ([ADR 0004](adr/0004-a-fork-server-image-that-adds-only-the-patched-policies.md)) |
+| Team Analytics service | `build-team-analytics-service.sh`, `team-analytics/Dockerfile` | The stock release server image with the service code and SQL (TA-1) |
 
 `build-ui.sh` compiles the frontend inside upstream `cvat/Dockerfile.ui`. Preserve
 its selected Node image override through the named BuildKit context, disabled
@@ -150,28 +166,39 @@ The script's `IMAGE` and `NODE_IMAGE` variables are supported overrides;
 `SAVE=1` additionally exports a compressed image archive, while the default
 only builds the image. Consult the script for current defaults.
 
-The custom image tag belongs only to `cvat_ui`. Backend services and workers
-use the matching stock upstream release through `CVAT_VERSION`; never use the
-custom UI suffix as the backend version. Align the build script, deployment
-override and frontend verification override when changing the default image.
+The fork server image is the stock release image named by `BASE_IMAGE`, with
+`issues.rego` and `comments.rego` from `cvat/cvat/apps/engine/rules/` copied
+over the stock files at `/opt/cvat/cvat/apps/engine/rules/`, with the stock
+files' owner and mode, and nothing else: no package, no Python change, no
+configuration change. That directory of the import is the whole build context.
+`build-server.sh` never pulls or pushes: the stock base must already be local,
+and the build runs without network. `IMAGE` and `BASE_IMAGE` are its supported
+overrides; it refuses an `IMAGE` equal to `BASE_IMAGE`, so the stock tag is
+never overwritten. `SAVE=1` additionally exports a compressed image archive.
 
-The deployment overlay mounts both copied policies read-only into
-`cvat_server`, under `/opt/cvat/cvat/apps/engine/rules/`. The server packages
-and serves `/api/auth/rules`; mounting files only into `cvat_opa` is insufficient.
-Restart/recreate the intended server after rule changes to invalidate its
-cached bundle, then verify OPA has loaded the changed bundle.
+The chart has one backend image setting, so the server, every worker and the
+initializer run the fork server image. The custom UI suffix is never a backend
+tag, and the Team Analytics service keeps its own image on the stock base, so a
+change to analytics code never rolls out the CVAT backend.
 
-The mount target must be the directory the server builds its bundle from.
-Upstream moved the installed sources from `/home/django` to `/opt/cvat` in
-2.72.0. A mount to a directory the server does not read raises no error and
-leaves the stock rules in force, so confirm the target in the release's server
-image and inspect the served bundle for both files.
+The policies are patched in place inside the import (IAM-1). The server packages
+the bundle it serves at `/api/auth/rules` from its installed rules directory, so
+the copy must land in the directory the server builds that bundle from. Upstream
+moved the installed sources from `/home/django` to `/opt/cvat` in 2.72.0; a copy
+to a directory the server does not read raises no error and leaves the stock
+policies in force. The bundle check finds that:
+`verify/policy_bundle.sh from-image IMAGE` builds the bundle with the server's
+own builder in a one-off container of the image, without network, and
+`verify/policy_bundle.sh check` compares each of the two policies in a bundle
+given on stdin, by itself and byte for byte, with the import's file (with
+`check <tag>`, with the file at that import tag). The test stack applies the
+same check to the bundle the running server serves (`run.sh check-policies`)
+and also requires the patch marker in each policy; its render check refuses a
+backend image other than the fork server image.
 
-The deployment overlay expects `opa/` beside the deployment's base Compose
-file. Compose resolves relative mounts from the first Compose file, so simply
-combining `cvat/docker-compose.yml` with the root override from this checkout
-does not satisfy that layout. The OPA verification overlay uses an absolute
-`OPA_RULES` path for this reason.
+Rebuild the fork server image whenever a policy changes and on every upstream
+upgrade, and run the backend on the rebuilt image: a running server caches the
+bundle it built.
 
 ## TA-1: Team Analytics
 
@@ -216,9 +243,10 @@ Behavior to preserve:
   it, and stopping the statement would mean tracking and killing it by query
   id.
 - One ClickHouse client without a session serves the HTTP threads and the
-  refresh loop; the cutover search at start and in the daily check goes
-  through a second one, which gives up after hearing nothing from ClickHouse
-  for a few seconds longer than the search's limit. A request body is read and dropped, or the
+  refresh loop. The cutover search has one more client for each of its two
+  limits, so two more in all: one for the search at start and one for the
+  search in the daily check. Each gives up after hearing nothing from
+  ClickHouse for a few seconds longer than its search's limit. A request body is read and dropped, or the
   connection is closed
   after the answer, so a body is never answered as a request.
 - Its routes are under `/team-analytics-api/v1/`. Every request is checked
@@ -334,10 +362,13 @@ Behavior to preserve:
   that event from the `events` table, then every row of the `cutover` table
   in the totals database, and then to restart the service or wait for the
   daily check, which finds the cutover again. Until then there is no cutover
-  and every period reads as legacy. The search reads every recorded event
-  before the stored cutover, or all of them while none is stored, so its cost
-  grows with that history; what it cost at the volume of the design
-  measurements is in `docs/evidence/2026-11-14-cutover-search-cost.md`. The
+  and every period reads as legacy. The search reads the recorded events in
+  time order and stops at the first shape-tagged one. Once a cutover is stored
+  it finds none, so it reads every recorded event before the stored cutover;
+  while none is stored it reads up to the first tagged event, or all of them
+  when there is none. Its cost therefore grows with the history before the
+  cutover. What it cost at the volume of the design measurements, in each of
+  these cases, is in `docs/evidence/2026-11-14-cutover-search-cost.md`. The
   search at start and in the daily check runs with limits that ClickHouse
   enforces on the statement: 23 s at start, 60 s in the daily check, and
   512 MiB of memory in both. ClickHouse stops a search that reaches one; that
@@ -369,6 +400,39 @@ Behavior to preserve:
   one `drag:object` with `group` = `move` and the objects moved in its count;
   CVAT's own drag of the grabbed object is still logged, carries `group` =
   `grabbed` and is no operation.
+- Effect of the group event on CVAT's own logging (for the owner to weigh
+  against "CVAT's own event logging unchanged"): nothing CVAT logged is
+  removed, reordered or delayed, and nothing fails for the annotator. A group
+  drag adds the one group `drag:object` beside CVAT's own drag of the grabbed
+  object. A move of the selection box, which CVAT did not log, now adds one
+  `drag:object` where CVAT logged nothing. The logger merges consecutive
+  frame-change records, and any other record ends that merging, as CVAT's own
+  drags already do: frame steps either side of such a move become two
+  `change:frame` rows where they were one. CVAT's own analytics read the added
+  `drag:object` rows like any other drag. The server's working time is
+  unchanged. The stock serializer accepts `count` on any scope.
+- Known limit of the group event: the grabbed mark is set as soon as the group
+  record is handed to the logger, whether or not the logger later refuses it.
+  If the group record is refused after the mark is set, the grabbed object's
+  drag is still no operation and the gesture's objects are lost from the
+  figures. No real path to this is known: the stock logger refuses only a
+  payload that is not an object. If the group logging throws instead, no mark
+  is set and the grabbed drag counts as before. The two records keep their
+  order (group record first).
+- A frame-navigation hotkey counts one hotkey action for each frame change its
+  own handler starts that shows another frame. A change counts as the key's
+  when `changeFrameAsync` starts in the key's own turn: while its handler runs
+  or in the microtasks after it, where the frame and annotation searches
+  resolve. A press whose handler starts no change (nothing found, no further
+  key frame, the first or last frame, navigation blocked, a repeat while the
+  frame loads) counts nothing, and a change started later by anything else (a
+  playback step, the frame number field, the slider, a search already
+  running) is never credited to it. Known limit: a frame search waits for the
+  server while cvat-core's frame meta is being fetched or saved (its hourly
+  reload during a frame load, a save after frames were deleted or restored,
+  or meta not yet loaded). A key pressed then starts its change after its
+  turn, and that change counts nothing. This undercounts by at most one per
+  such press and never credits the wrong key.
 - Known limit of the stored totals: a changed counting rule (the redo rule,
   the group-move rule) does not recompute hours already stored. The trailing
   refresh window follows the new rule from the next refresh. An older day
@@ -382,7 +446,18 @@ Behavior to preserve:
   the same, since the events carry no group. Hours whose events came from a UI
   with the group event but were stored by a service without the group-move
   rule hold a group drag as two alignments and a selection-box move as one;
-  computing them again gives one per object moved.
+  computing them again gives one per object moved. Under that old rule the
+  grabbed object's drag also keeps its object reference, so a later drag of
+  the same object continues its run: a group drag of two boxes followed by a
+  drag of the grabbed box is stored as 2 alignments under the old rule and 3
+  under the new one.
+- Known limit of stored hotkey counts: the input summary carries only counts.
+  Summaries recorded before the frame-navigation rule, or later by a browser
+  still running an older UI bundle (until the page is reloaded), hold one
+  count per invocation of a frame-navigation key, a held key on a slow frame
+  included. They stay in the raw records as counted then, and no recount can
+  correct them, since the raw records do not say which frames moved. A period
+  that spans the deployment mixes both rules.
 - Known limits of a refresh window shorter than a day
   (`TEAM_ANALYTICS_REFRESH_WINDOW_HOURS` below 24): today's hours before the
   window are computed by the history step once each has left the window. A
@@ -436,12 +511,12 @@ table are under `cvat/cvat-ui/src/`.
 
 | File | Responsibility / upstream changes to inspect |
 | --- | --- |
-| `components/cvat-app.tsx` | `/team-analytics` route (lazy page with its own error boundary); window capture listener calling `inputEvent` for key presses and clicks |
+| `components/cvat-app.tsx` | `/team-analytics` route (lazy page with its own error boundary); one call `listenForInput(window)` in `componentDidMount`, which attaches the logging's own capture listeners for key presses and clicks (upstream's listener is unchanged) |
 | `components/header/header.tsx` | Former "Analytics" link renamed "Grafana"; "Team Analytics" link shown by `canOpenTeamAnalytics` from the analytics plugin flag, `user.groups` and the current organization role |
 | `components/annotation-page/annotation-page.tsx` | `trackInputJob(job)` where the job logger is set; on unmount `untrackInputJob().then(saveLogs)` |
 | `utils/mousetrap-react.tsx` | `hotkeyUsed(action, event)` before every shortcut handler |
-| `components/annotation-page/canvas/views/canvas2d/canvas-wrapper.tsx` | Shape fields on draw, canvas paste, drag and resize; `drawingStarted`/`drawingEnded` for the input method; `groupMoved` for the group move event |
-| `actions/annotation-actions.ts` | Shape fields on propagate, single and selection delete, and multi paste |
+| `components/annotation-page/canvas/views/canvas2d/canvas-wrapper.tsx` | Shape fields on draw, canvas paste, drag and resize; `drawingStarted`/`drawingEnded` for the input method; `groupMoved(job, e.detail)` in the `canvas.groupmoved` handler before its first `await` (the grabbed object's drag then gets the group mark through the drag's shape fields) |
+| `actions/annotation-actions.ts` | Shape fields on propagate, single and selection delete, and multi paste; in `changeFrameAsync`, `frameRequested()` at its start and `frameShown(hotkey, frame, toFrame)` just before `CHANGE_FRAME_SUCCESS` |
 | `components/annotation-page/standard-workspace/objects-side-bar/labels-list.tsx` | Class change record for label hotkeys |
 | `containers/annotation-page/standard-workspace/objects-side-bar/object-item.tsx` | Class change record for the sidebar label select |
 | `components/annotation-page/canvas/views/canvas2d/selection-context-menu.tsx` | Class change record for the selection context menu (selector gained the job) |
@@ -466,7 +541,30 @@ it:
 - the project list filter on `id` that the page uses for project names;
 - CVAT's `#root` minimum width and header layout;
 - the shortcut action names in the UI keymaps, which the page shows with the
-  viewer's own keys.
+  viewer's own keys;
+- the canvas's order for a group move (`cvat-canvas`, `canvasView.ts`): it
+  dispatches `canvas.groupmoved` and then, when the gesture began on an
+  object, that object's `canvas.dragshape`, synchronously in one task, and the
+  wrapper's group-moved handler calls `groupMoved` before its first `await`.
+  The grabbed mark lasts only to the end of that task. If upstream reorders the
+  two or defers the drag, the grabbed drag loses its mark and counts again (a
+  group of three becomes four alignments); if it logs a drag per member, every
+  member but one counts again. Either happens with every suite green: both
+  suites hand-order the calls, and the handler declares its own detail type,
+  so a renamed field is no type error either.
+  The stack run's group drag (ticket 27: a group drag made in the browser and
+  read back from the events table) is what catches it;
+- frame changes: the shown frame changes only through `changeFrameAsync`, and
+  nothing between a navigation shortcut's handler and the start of
+  `changeFrameAsync` waits for a later task (the top bar's frame search and
+  `searchAnnotationsAsync`'s annotation search answer in microtasks once the
+  frame meta is loaded). A new path that shows a frame leaves the module's
+  last shown frame stale, so the next key may be counted for a frame it did
+  not move or not counted for one it did; a handler that comes to wait for a
+  later task makes its key count nothing. Neither fails a suite, since the
+  harness drives the top bar over supplied searches. The stack run's
+  held-key step (ticket 27: a navigation key held on a slow frame, its count
+  compared with CVAT's `change:frame` events) is what catches it.
 
 A new upstream event type, scope, call site or shortcut action needs a
 decision on whether it is an operation. A rename breaks the figures silently.
@@ -502,11 +600,11 @@ rules is recorded with the dated evidence.
 | UI-C | Empty page makes no jobs request; zero total and zero fetched jobs render no segments | Same regression suite |
 | UI-D | Paginated job collection covers the page, and stale success/failure cannot overwrite a new query | Mocked thunk/reducer tests; live API for actual pagination |
 | UI-E | Failed summary fetch preserves task display and the upstream progress fallback | Mocked failure tests; browser for complete task-item fallback |
-| IAM-A | Unassigned organization members with at least the `worker` global role can act on issues/comments and list the organization's resources; below the floor the result is stock's | `verify/opa_issues_test.rego` through `verify/policy_test.sh`; live API matrix |
-| IAM-B | Nonmembers, removed members, other organizations and sandbox/context mismatches do not gain access from the patch | Same policy suite; live negative cases |
+| IAM-A | Unassigned organization members with at least the `worker` global role can act on issues/comments and list the organization's resources; below the floor the result is stock's | `verify/opa_issues_test.rego` through `verify/policy_test.sh`; the stack's issue and comment matrix (`run.sh check-issues`) |
+| IAM-B | Nonmembers, removed members, other organizations and sandbox/context mismatches do not gain access from the patch | Same policy suite; the stack's matrix for a nonmember, another organization's member, each organization's members on the other's issue, the personal workspace and an account with no global role. A removed member is covered by the policy suite only |
 | IAM-C | Sandbox behavior and upstream filter shape remain compatible with the target release | Stock-versus-patched policy suite with target helpers |
-| BUILD-A | Built image serves the changed UI without stale bundles/source maps; backend uses stock release | Image inspection and browser verification |
-| BUILD-B | Both served rule files match the intended overlay and real requests exhibit the patched behavior | Bundle inspection plus live API, not marker presence alone |
+| BUILD-A | Built image serves the changed UI without stale bundles/source maps; the backend runs the fork server image, which differs from the stock release only in the two policies | Image inspection and browser verification; the stack's render check |
+| BUILD-B | Both served policy files equal the import's, each by itself, and real requests exhibit the patched behavior | `verify/policy_bundle.sh` on the image, `run.sh check-policies` on the served bundle, and `run.sh check-issues`; not marker presence alone |
 
 The frontend suite executes real TypeScript, Redux and server-rendered React
 with mocked boundaries. Its optional `BROWSER_BIN` check renders the real summary
@@ -517,21 +615,24 @@ wiring, complete page layout or a live server. Policy tests evaluate synthetic
 inputs using upstream helper rules; they do not prove bundle delivery or
 Django/API integration.
 
-The current live OPA checker prints observations rather than asserting every
-expected HTTP outcome. Its bundle marker check can pass when only one rule has
-the marker. Inspect the actual results and both rule contents. The frontend
-seed covers a subset of the stage/state matrix. These harnesses alone do not
-establish every acceptance scenario.
+The live checks run on the test stack (`verify/team-analytics-stack/`), each
+judging its own outcome. The issue and comment matrix runs every row through
+the real API with real accounts, one of them with no global role, against the
+fork server image; the stock column is checked against the policy engine only
+(`run.sh check-issue-policies stock`), not against a running stock server. The
+task progress check creates a job in every stage and state and checks the
+legend, segments, colours and total in a browser on the stack's UI image.
 
 ## Changes that do not need reimplementation
 
 The remaining ClickHouse delta is formatting only. Preserve upstream semantics
 when resolving it; formatting is not a product requirement. Earlier submodule,
 patch-series and custom-Dockerfile workflows have been replaced by the subtree
-and upstream Dockerfile build. The old HTML head fix is absent from the current
+and upstream Dockerfile build of the UI. The old HTML head fix is absent from the current
 baseline diff, and upstream Google Fonts links are retained. Reapply current
 behavior, not every historical commit.
 
-Infrastructure migration is a separate pending task governed by
-[`INFRA_MIGRATION.md`](../INFRA_MIGRATION.md). The existing Compose verification
-files describe the current implementation, not completion of that migration.
+Live verification runs only on the Kubernetes test stack; the earlier Compose
+overlay, its launchers and the copied policies are gone.
+[`INFRA_MIGRATION.md`](../INFRA_MIGRATION.md) records that outcome and what is
+still needed before the notice can be deleted.

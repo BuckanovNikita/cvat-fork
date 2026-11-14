@@ -1,0 +1,139 @@
+== in_order: EXPLAIN PLAN actions = 1
+Expression (Projection)
+Actions: INPUT :: 0 -> toStartOfHour(toDateTime(timestamp, \'Etc/UTC\')) DateTime(\'Etc/UTC\') : 0
+Positions: 0
+  Limit (preliminary LIMIT (without OFFSET))
+  Limit 1
+  Offset 0
+    Sorting (Sorting for ORDER BY)
+    Prefix sort description: timestamp ASC
+    Result sort description: timestamp ASC
+    Limit 1
+      Expression (Before ORDER BY)
+      Actions: INPUT : 0 -> timestamp DateTime64(3, \'Etc/UTC\') : 0
+               COLUMN Const(String) -> \'Etc/UTC\' String : 1
+               FUNCTION toDateTime(timestamp : 0, \'Etc/UTC\' :: 1) -> toDateTime(timestamp, \'Etc/UTC\') DateTime(\'Etc/UTC\') : 2
+               FUNCTION toStartOfHour(toDateTime(timestamp, \'Etc/UTC\') :: 2) -> toStartOfHour(toDateTime(timestamp, \'Etc/UTC\')) DateTime(\'Etc/UTC\') : 1
+      Positions: 0 1
+        ReadFromMergeTree (default.events)
+        ReadType: InOrder
+        Parts: 13
+        Granules: 4454
+        Prewhere info
+        Need filter: 1
+          Prewhere filter
+          Prewhere filter column: and(equals(source, \'client\'), isNotNull(user_id), isNotNull(job_id), or(in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')), and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\'))), JSONHas(ifNull(payload, \'\'), \'shape_type\'), less(timestamp, _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\'))) (removed)
+          Actions: INPUT : 0 -> scope String : 0
+                   INPUT : 1 -> obj_name Nullable(String) : 1
+                   INPUT : 2 -> source String : 2
+                   INPUT : 3 -> timestamp DateTime64(3, \'Etc/UTC\') : 3
+                   INPUT : 4 -> job_id Nullable(UInt64) : 4
+                   INPUT : 5 -> user_id Nullable(UInt64) : 5
+                   INPUT : 6 -> payload Nullable(String) : 6
+                   COLUMN Const(String) -> \'client\' String : 7
+                   COLUMN Const(Set) -> __set Set : 8
+                   COLUMN Const(String) -> \'debug:info\' String : 9
+                   COLUMN Const(String) -> \'team_analytics:class_change\' String : 10
+                   COLUMN Const(String) -> \'\' String : 11
+                   COLUMN Const(String) -> \'shape_type\' String : 12
+                   COLUMN Const(DateTime64) -> _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\') DateTime64(3, \'Etc/UTC\') : 13
+                   FUNCTION isNotNull(job_id :: 4) -> isNotNull(job_id) UInt8 : 14
+                   FUNCTION isNotNull(user_id :: 5) -> isNotNull(user_id) UInt8 : 4
+                   FUNCTION equals(source :: 2, \'client\' :: 7) -> equals(source, \'client\') UInt8 : 5
+                   FUNCTION in(scope : 0, __set :: 8) -> in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')) UInt8 : 7
+                   FUNCTION equals(scope :: 0, \'debug:info\' :: 9) -> equals(scope, \'debug:info\') UInt8 : 8
+                   FUNCTION equals(obj_name :: 1, \'team_analytics:class_change\' :: 10) -> equals(obj_name, \'team_analytics:class_change\') Nullable(UInt8) : 9
+                   FUNCTION ifNull(payload :: 6, \'\' :: 11) -> ifNull(payload, \'\') String : 10
+                   FUNCTION less(timestamp : 3, _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\') :: 13) -> less(timestamp, _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\')) UInt8 : 11
+                   FUNCTION and(equals(scope, \'debug:info\') :: 8, equals(obj_name, \'team_analytics:class_change\') :: 9) -> and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\')) Nullable(UInt8) : 13
+                   FUNCTION JSONHas(ifNull(payload, \'\') :: 10, \'shape_type\' :: 12) -> JSONHas(ifNull(payload, \'\'), \'shape_type\') UInt8 : 9
+                   FUNCTION or(in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')) :: 7, and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\')) :: 13) -> or(in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')), and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\'))) Nullable(UInt8) : 12
+                   FUNCTION and(equals(source, \'client\') :: 5, isNotNull(user_id) :: 4, isNotNull(job_id) :: 14, or(in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')), and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\'))) :: 12, JSONHas(ifNull(payload, \'\'), \'shape_type\') :: 9, less(timestamp, _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\')) :: 11) -> and(equals(source, \'client\'), isNotNull(user_id), isNotNull(job_id), or(in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')), and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\'))), JSONHas(ifNull(payload, \'\'), \'shape_type\'), less(timestamp, _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\'))) Nullable(UInt8) : 13
+          Positions: 13 3
+== in_order: EXPLAIN PIPELINE
+(Expression)
+ExpressionTransform
+  (Limit)
+  Limit
+    (Sorting)
+    MergingSortedTransform 14 → 1
+      (Expression)
+      ExpressionTransform × 14
+        (ReadFromMergeTree)
+        ExpressionTransform × 14
+          MergeTreeSelect(pool: ReadPoolInOrder, algorithm: InOrder) × 14 0 → 1
+== aggregate: EXPLAIN PLAN actions = 1
+Expression ((Projection + Before ORDER BY))
+Actions: INPUT : 0 -> min(timestamp) DateTime64(3, \'Etc/UTC\') : 0
+         COLUMN Const(String) -> \'Etc/UTC\' String : 1
+         FUNCTION toDateTime(min(timestamp) :: 0, \'Etc/UTC\' :: 1) -> toDateTime(min(timestamp), \'Etc/UTC\') DateTime(\'Etc/UTC\') : 2
+         FUNCTION toStartOfHour(toDateTime(min(timestamp), \'Etc/UTC\') :: 2) -> toStartOfHour(toDateTime(min(timestamp), \'Etc/UTC\')) DateTime(\'Etc/UTC\') : 1
+Positions: 1
+  Filter (HAVING)
+  Filter column: greater(count(), 0) (removed)
+  Actions: INPUT :: 0 -> min(timestamp) DateTime64(3, \'Etc/UTC\') : 0
+           INPUT : 1 -> count() UInt64 : 1
+           COLUMN Const(UInt8) -> 0 UInt8 : 2
+           FUNCTION greater(count() :: 1, 0 :: 2) -> greater(count(), 0) UInt8 : 3
+  Positions: 0 3
+    Aggregating
+    Keys: 
+    Aggregates:
+        min(timestamp)
+          Function: min(DateTime64(3, \'Etc/UTC\')) → DateTime64(3, \'Etc/UTC\')
+          Arguments: timestamp
+        count()
+          Function: count() → UInt64
+          Arguments: none
+    Skip merging: 0
+      Expression (Before GROUP BY)
+      Actions: INPUT :: 0 -> timestamp DateTime64(3, \'Etc/UTC\') : 0
+      Positions: 0
+        ReadFromMergeTree (default.events)
+        ReadType: Default
+        Parts: 13
+        Granules: 4454
+        Prewhere info
+        Need filter: 1
+          Prewhere filter
+          Prewhere filter column: and(equals(source, \'client\'), isNotNull(user_id), isNotNull(job_id), or(in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')), and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\'))), JSONHas(ifNull(payload, \'\'), \'shape_type\'), less(timestamp, _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\'))) (removed)
+          Actions: INPUT : 0 -> scope String : 0
+                   INPUT : 1 -> obj_name Nullable(String) : 1
+                   INPUT : 2 -> source String : 2
+                   INPUT : 3 -> timestamp DateTime64(3, \'Etc/UTC\') : 3
+                   INPUT : 4 -> job_id Nullable(UInt64) : 4
+                   INPUT : 5 -> user_id Nullable(UInt64) : 5
+                   INPUT : 6 -> payload Nullable(String) : 6
+                   COLUMN Const(String) -> \'client\' String : 7
+                   COLUMN Const(Set) -> __set Set : 8
+                   COLUMN Const(String) -> \'debug:info\' String : 9
+                   COLUMN Const(String) -> \'team_analytics:class_change\' String : 10
+                   COLUMN Const(String) -> \'\' String : 11
+                   COLUMN Const(String) -> \'shape_type\' String : 12
+                   COLUMN Const(DateTime64) -> _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\') DateTime64(3, \'Etc/UTC\') : 13
+                   FUNCTION isNotNull(job_id :: 4) -> isNotNull(job_id) UInt8 : 14
+                   FUNCTION isNotNull(user_id :: 5) -> isNotNull(user_id) UInt8 : 4
+                   FUNCTION equals(source :: 2, \'client\' :: 7) -> equals(source, \'client\') UInt8 : 5
+                   FUNCTION in(scope : 0, __set :: 8) -> in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')) UInt8 : 7
+                   FUNCTION equals(scope :: 0, \'debug:info\' :: 9) -> equals(scope, \'debug:info\') UInt8 : 8
+                   FUNCTION equals(obj_name :: 1, \'team_analytics:class_change\' :: 10) -> equals(obj_name, \'team_analytics:class_change\') Nullable(UInt8) : 9
+                   FUNCTION ifNull(payload :: 6, \'\' :: 11) -> ifNull(payload, \'\') String : 10
+                   FUNCTION less(timestamp : 3, _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\') :: 13) -> less(timestamp, _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\')) UInt8 : 11
+                   FUNCTION and(equals(scope, \'debug:info\') :: 8, equals(obj_name, \'team_analytics:class_change\') :: 9) -> and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\')) Nullable(UInt8) : 13
+                   FUNCTION JSONHas(ifNull(payload, \'\') :: 10, \'shape_type\' :: 12) -> JSONHas(ifNull(payload, \'\'), \'shape_type\') UInt8 : 9
+                   FUNCTION or(in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')) :: 7, and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\')) :: 13) -> or(in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')), and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\'))) Nullable(UInt8) : 12
+                   FUNCTION and(equals(source, \'client\') :: 5, isNotNull(user_id) :: 4, isNotNull(job_id) :: 14, or(in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')), and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\'))) :: 12, JSONHas(ifNull(payload, \'\'), \'shape_type\') :: 9, less(timestamp, _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\')) :: 11) -> and(equals(source, \'client\'), isNotNull(user_id), isNotNull(job_id), or(in(scope, (\'draw:object\', \'paste:object\', \'propagate:object\', \'drag:object\', \'resize:object\', \'delete:object\')), and(equals(scope, \'debug:info\'), equals(obj_name, \'team_analytics:class_change\'))), JSONHas(ifNull(payload, \'\'), \'shape_type\'), less(timestamp, _CAST(\'1794614400\', \'DateTime64(3, \\\'Etc/UTC\\\')\'))) Nullable(UInt8) : 13
+          Positions: 13 3
+== aggregate: EXPLAIN PIPELINE
+(Expression)
+ExpressionTransform × 2
+  (Filter)
+  FilterTransform × 2
+    (Aggregating)
+    Resize 2 → 2
+      AggregatingTransform × 2
+        StrictResize 2 → 2
+          (Expression)
+          ExpressionTransform × 2
+            (ReadFromMergeTree)
+            MergeTreeSelect(pool: ReadPool, algorithm: Thread) × 2 0 → 1
