@@ -165,7 +165,7 @@ domTest('choosing the period already shown adds no history entry, so Back still 
 });
 
 domTest('changing the period keeps other parts of the address', async () => {
-    const page = await openPage({ address: '/team-analytics?project=4&view=annotators' });
+    const page = await openPage({ address: '/team-analytics?project=4&org=team-org&view=annotators' });
     await page.click('Month');
     await page.click('Week');
     const address = new URLSearchParams(page.history.location.search);

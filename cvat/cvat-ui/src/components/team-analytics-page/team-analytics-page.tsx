@@ -36,7 +36,8 @@ export default function TeamAnalyticsPage(): JSX.Element {
     // hotkeys are labelled with the viewer's own keymap
     const shortcuts = useSelector((state: CombinedState) => state.shortcuts);
     const labels = useMemo(() => hotkeyLabels(shortcuts), [shortcuts]);
-    const [address, changeAddress] = useAddress(history);
+    // filters picked in another organization are not applied (filters.ts)
+    const [address, changeAddress] = useAddress(history, organization);
     const timeZone = useMemo(viewerTimeZone, []);
     const [state, setState] = useState<PageState>({ kind: 'loading' });
     const [pending, setPending] = useState(false);

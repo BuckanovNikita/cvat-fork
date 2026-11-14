@@ -429,7 +429,7 @@ domTest('the period, the shape switch and the filters still work inside a full v
         await click(button(view.container.querySelector('.cvat-team-analytics-filters'), 'All shapes'));
         await view.settle();
         assert.equal(listRequests(requests).at(-1).get('shapes'), 'all');
-        await act(async () => { history.push('/team-analytics?view=split&rows=projects&period=two_weeks&annotator=11'); });
+        await act(async () => { history.push('/team-analytics?view=split&rows=projects&period=two_weeks&annotator=11&org=team-org'); });
         await view.settle();
         const last = listRequests(requests).at(-1);
         assert.deepEqual([last.get('by'), last.get('annotator'), last.get('org')], ['projects', '11', 'team-org']);
@@ -573,7 +573,7 @@ domTest('a list that cannot be updated keeps the previous rows dimmed and says s
     });
     await opened(Page, async (view) => {
         assert.equal(listRows(view.container).length, 12);
-        await act(async () => { history.push('/team-analytics?view=annotators&project=1'); });
+        await act(async () => { history.push('/team-analytics?view=annotators&project=1&org=team-org'); });
         await view.settle();
         assert.ok(fullView(view.container).classList.contains('cvat-team-analytics-pending'));
         assert.match(fullView(view.container).querySelector('.cvat-team-analytics-full-failed').textContent,

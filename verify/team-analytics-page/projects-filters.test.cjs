@@ -145,12 +145,16 @@ test('project names come from the CVAT API through cvat-core, one request for th
 
 const { createMemoryHistory } = dependency('history');
 
-function mountPage({ search = '', names = async () => ({}), answer = () => ({ body: OVERVIEW }) } = {}) {
+function mountPage({
+    search = '', names = async () => ({}), answer = () => ({ body: OVERVIEW }), organization = 'team-org',
+} = {}) {
     const history = createMemoryHistory({ initialEntries: [`/team-analytics${search}`] });
     const { fetch, requests } = suppliedFetch(answer);
     const lookups = [];
     const Page = loadPage('team-analytics-page.tsx', {
-        'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
+        'react-redux': {
+            useSelector: (select) => select({ organizations: { current: organization ? { slug: organization } : null } }),
+        },
         'react-router': { useHistory: () => history },
         './service': { ...loadPage('service.ts'), fetchService: fetch },
         './project-names': {
@@ -196,18 +200,18 @@ domTest('clicking a row filters the whole page; clicking it again or the clear c
 
         await click(rowNamed(view.container, 'project', 'Retail shelves'));
         await view.settle();
-        assert.equal(history.location.search, '?project=2&period=week');
+        assert.equal(history.location.search, '?project=2&org=team-org&period=week');
         assert.deepEqual(filterParams(requests.at(-1)), ['2', null]);
         assert.match(view.container.querySelector('.cvat-team-analytics-filter-project').textContent, /Retail shelves/);
 
         await click(rowNamed(view.container, 'annotator', 'bob'));
         await view.settle();
-        assert.equal(history.location.search, '?project=2&period=week&annotator=12');
+        assert.equal(history.location.search, '?project=2&org=team-org&period=week&annotator=12');
         assert.deepEqual(filterParams(requests.at(-1)), ['2', '12'], 'the two filters combine');
 
         await click(rowNamed(view.container, 'project', 'Retail shelves'));
         await view.settle();
-        assert.equal(history.location.search, '?period=week&annotator=12');
+        assert.equal(history.location.search, '?org=team-org&period=week&annotator=12');
 
         await click(view.container.querySelector('.cvat-team-analytics-filter-annotator .cvat-team-analytics-filter-clear'));
         await view.settle();
@@ -216,7 +220,7 @@ domTest('clicking a row filters the whole page; clicking it again or the clear c
 
         await act(async () => { history.goBack(); });
         await view.settle();
-        assert.equal(history.location.search, '?period=week&annotator=12', 'Back restores the previous filter');
+        assert.equal(history.location.search, '?org=team-org&period=week&annotator=12', 'Back restores the previous filter');
         assert.deepEqual(filterParams(requests.at(-1)), [null, '12']);
     });
 });
@@ -224,7 +228,7 @@ domTest('clicking a row filters the whole page; clicking it again or the clear c
 domTest('a shared address opens with its filters; a filter change keeps the period and other keys', async () => {
     const overview = { ...OVERVIEW, filters: { project: 0, annotator: { user_id: 40, user_name: 'zoe' } } };
     const { history, requests, Page } = mountPage({
-        search: '?period=month&month=2026-10&project=0&annotator=40&tab=x', answer: () => ({ body: overview }),
+        search: '?period=month&month=2026-10&project=0&annotator=40&org=team-org&tab=x', answer: () => ({ body: overview }),
     });
     await opened(Page, async (view) => {
         assert.deepEqual(filterParams(requests[0]), ['0', '40']);
@@ -232,7 +236,7 @@ domTest('a shared address opens with its filters; a filter change keeps the peri
             'ProjectNo project×Annotatorzoe×');
         await click(view.container.querySelector('.cvat-team-analytics-filter-project .cvat-team-analytics-filter-clear'));
         await view.settle();
-        assert.equal(history.location.search, '?period=month&month=2026-10&annotator=40&tab=x');
+        assert.equal(history.location.search, '?period=month&month=2026-10&annotator=40&org=team-org&tab=x');
         const params = new URL(requests.at(-1).url, 'http://localhost').searchParams;
         assert.deepEqual([params.get('period'), params.get('month'), params.get('project'), params.get('annotator')],
             ['month', '2026-10', null, '40']);
@@ -240,11 +244,49 @@ domTest('a shared address opens with its filters; a filter change keeps the peri
 });
 
 domTest('project names are asked of CVAT for the shown and selected projects; a failed lookup shows identifiers', async () => {
-    const { lookups, Page } = mountPage({ search: '?project=7', names: async () => { throw new Error('403'); } });
+    const { lookups, Page } = mountPage({ search: '?project=7&org=team-org', names: async () => { throw new Error('403'); } });
     await opened(Page, async (view) => {
         assert.deepEqual([...lookups.at(-1)].sort(), [1, 2, 7]);
         assert.deepEqual([...view.container.querySelectorAll('.cvat-team-analytics-project-row .cvat-team-analytics-name')]
             .map((element) => element.textContent), ['Project #1', 'Project #2', 'No project']);
         assert.match(view.container.querySelector('.cvat-team-analytics-filter-project').textContent, /Project #7/);
+    });
+});
+
+// the last overview request (trends, details and status requests carry the filters too)
+const lastOverview = (requests) => requests.filter((request) => request.url.includes('/overview?')).at(-1);
+
+// Filters belong to the organization they were picked in: the address names it (`org`), and filters of
+// another organization, or of an address that names none, are never applied to the current one.
+domTest('filters picked in one organization are not applied in another', async () => {
+    const { history, requests, Page } = mountPage({ search: '?period=week&project=5&annotator=12&org=org-a' });
+    await opened(Page, async (view) => {
+        assert.deepEqual(filterParams(lastOverview(requests)), [null, null]);
+        const chips = view.container.querySelector('.cvat-team-analytics-filter-chips').textContent;
+        assert.match(chips, /All projects/);
+        assert.match(chips, /All annotators/);
+
+        // a filter picked now belongs to the current organization
+        await click(rowNamed(view.container, 'annotator', 'bob'));
+        await view.settle();
+        const address = new URLSearchParams(history.location.search);
+        assert.equal(address.get('org'), 'team-org');
+        assert.equal(address.get('project'), null);
+        assert.deepEqual(filterParams(lastOverview(requests)), [null, '12']);
+    });
+});
+
+domTest('an address with filters but no organization applies them only without an organization', async () => {
+    const underOrganization = mountPage({ search: '?project=5&annotator=12' });
+    await opened(underOrganization.Page, async () => {
+        assert.deepEqual(filterParams(lastOverview(underOrganization.requests)), [null, null]);
+    });
+    const instance = mountPage({ search: '?project=5&annotator=12', organization: null });
+    await opened(instance.Page, async () => {
+        assert.deepEqual(filterParams(lastOverview(instance.requests)), ['5', '12']);
+    });
+    const own = mountPage({ search: '?project=5&org=team-org' });
+    await opened(own.Page, async () => {
+        assert.deepEqual(filterParams(lastOverview(own.requests)), ['5', null], 'a link of the same organization keeps its filter');
     });
 });
