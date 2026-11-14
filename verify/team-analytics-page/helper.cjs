@@ -12,44 +12,25 @@ const pageDir = path.join(cvatRoot, 'cvat-ui/src/components/team-analytics-page'
 const dependency = createRequire(path.join(cvatRoot, 'package.json'));
 const ts = dependency('typescript');
 
-// jsdom (locked in cvat/yarn.lock as an optional dependency of fabric) must exist before react-dom
-// is first loaded, so that the client renderer sees a DOM. Tests that mount check `domAvailable`.
-// jsdom probes the optional native `canvas` package, whose binary is not built here: hide it.
-function loadJsdom() {
-    const Module = require('node:module');
-    const resolveFilename = Module._resolveFilename;
-    Module._resolveFilename = function resolve(request, ...rest) {
-        if (request === 'canvas') {
-            throw Object.assign(new Error("Cannot find module 'canvas'"), { code: 'MODULE_NOT_FOUND' });
-        }
-        return resolveFilename.call(this, request, ...rest);
-    };
-    try {
-        return dependency('jsdom');
-    } catch {
-        return null;
-    } finally {
-        Module._resolveFilename = resolveFilename;
-    }
-}
-const jsdom = loadJsdom();
-const domAvailable = !!jsdom;
-if (jsdom) {
-    const dom = new jsdom.JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/team-analytics' });
-    dom.window.matchMedia = dom.window.matchMedia || (() => ({
-        matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
-    }));
-    // Expose the DOM API (window, document, ShadowRoot, ...) as Node globals, keeping Node's own.
-    for (const key of Object.getOwnPropertyNames(dom.window)) {
-        if (!(key in globalThis) && !key.startsWith('_')) {
-            Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: dom.window[key] });
-        }
-    }
-    for (const key of ['window', 'document', 'navigator']) {
+// jsdom must exist before react-dom is first loaded, so that the client renderer sees a DOM. It is the
+// harness's own dependency (../browser-environment.cjs): when it does not load, this file fails to load
+// and the suite with it. No test is skipped for want of a DOM.
+const { JSDOM } = require('../browser-environment.cjs');
+
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/team-analytics' });
+dom.window.matchMedia = dom.window.matchMedia || (() => ({
+    matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
+}));
+// Expose the DOM API (window, document, ShadowRoot, ...) as Node globals, keeping Node's own.
+for (const key of Object.getOwnPropertyNames(dom.window)) {
+    if (!(key in globalThis) && !key.startsWith('_')) {
         Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: dom.window[key] });
     }
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 }
+for (const key of ['window', 'document', 'navigator']) {
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: dom.window[key] });
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const React = dependency('react');
 const { renderToStaticMarkup } = dependency('react-dom/server');
@@ -159,5 +140,5 @@ function suppliedFetch(answer) {
 }
 
 module.exports = {
-    React, act, dependency, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
 };
