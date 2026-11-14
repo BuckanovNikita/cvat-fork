@@ -116,8 +116,11 @@ class FakeCvat:
     def __init__(self) -> None:
         self.users: dict[str, FakeUser] = {}  # sessionid -> user
         self.organizations: dict[str, int] = {}  # slug -> id
+        self.membership_ids: dict[tuple[str, str], int] = {}  # (username, slug) -> membership id
         self.requests: list[dict] = []
         self.down = False
+        # path -> (status, body): a fixed answer instead of the usual one (e.g. a malformed 200)
+        self.overrides: dict[str, tuple[int, object]] = {}
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -131,7 +134,7 @@ class FakeCvat:
                 url = urlsplit(self.path)
                 query = {k: v[-1] for k, v in parse_qs(url.query, keep_blank_values=True).items()}
                 fake.requests.append({"path": url.path, "query": query, "headers": dict(self.headers.items())})
-                status, body = fake.answer(url.path, query, self.headers)
+                status, body = fake.overrides.get(url.path) or fake.answer(url.path, query, self.headers)
                 data = json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
@@ -151,6 +154,8 @@ class FakeCvat:
         self.users[session] = user
         for slug, (org_id, _, _) in user.memberships.items():
             self.organizations[slug] = org_id
+            # membership ids grow in the order memberships are listed: the first is the oldest
+            self.membership_ids.setdefault((user.username, slug), len(self.membership_ids) + 1)
         return user
 
     def _caller(self, headers) -> FakeUser | None:
@@ -179,7 +184,7 @@ class FakeCvat:
             visible = [s for s in self.organizations if is_admin or s in user.memberships]
             if "slug" in query:
                 visible = [s for s in visible if s == query["slug"]]
-            return 200, self._page([{"id": self.organizations[s], "slug": s, "name": s} for s in visible])
+            return 200, self._page([{"id": self.organizations[s], "slug": s, "name": s} for s in visible], path, query)
         if path == "/api/memberships":
             if slug and not is_admin and slug not in user.memberships:
                 return 403, {"detail": "You do not have permission to perform this action."}
@@ -193,15 +198,26 @@ class FakeCvat:
                 for s, (org_id, role, active) in owner.memberships.items():
                     if sandbox and not active:
                         continue
+                    if query.get("role") not in (None, role):  # CVAT's `role` simple filter
+                        continue
                     if (not slug or s == slug) and query.get("user") in (None, owner.username):
-                        rows.append({"id": len(rows) + 1, "organization": org_id, "role": role, "is_active": active,
+                        number = self.membership_ids.setdefault((owner.username, s), len(self.membership_ids) + 1)
+                        rows.append({"id": number, "organization": org_id,
+                                     "role": role, "is_active": active,
                                      "user": {"id": owner.id, "username": owner.username}})
-            return 200, self._page(rows)
+            # MembershipViewSet: ordering = "-id", newest first
+            return 200, self._page(sorted(rows, key=lambda row: -row["id"]), path, query)
         return 404, {"detail": "Not found."}
 
-    @staticmethod
-    def _page(rows: list[dict]) -> dict:
-        return {"count": len(rows), "next": None, "previous": None, "results": rows}
+    def _page(self, rows: list[dict], path: str = "", query: dict | None = None) -> dict:
+        """One page as CVAT's pagination gives it: `page_size` (default 10, at most 500) and `page`, with `next`."""
+        query = query or {}
+        size = min(int(query.get("page_size") or 10), 500)
+        number = int(query.get("page") or 1)
+        start = (number - 1) * size
+        more = start + size < len(rows)
+        following = f"{self.url}{path}?{urlencode({**query, 'page': number + 1})}" if more else None
+        return {"count": len(rows), "next": following, "previous": None, "results": rows[start:start + size]}
 
 
 # --- the stack a test runs against -------------------------------------------------------------------

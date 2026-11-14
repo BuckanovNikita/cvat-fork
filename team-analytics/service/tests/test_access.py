@@ -155,6 +155,38 @@ class AccessTest(StackTestCase):
         self.assertEqual(status, 503, body)
         self.assertEqual(body, {"error": "cvat_unavailable"})
 
+    def test_a_maintainer_with_many_newer_memberships_is_still_asked_to_select_an_organization(self):
+        # CVAT pages memberships, newest first; the one maintainer membership is the oldest of 102
+        memberships = {"org-old": (90, "maintainer", True)}
+        memberships.update({f"org-{n}": (100 + n, "worker", True) for n in range(101)})
+        self.stack.cvat.add_user("veteran", FakeUser(10, "veteran", memberships=memberships))
+        self.assertEqual(self.assertRefused("veteran")["error"], "organization_required")
+        # and a member who reads no organization among as many is still refused
+        self.stack.cvat.add_user("crowd", FakeUser(12, "crowd", memberships={
+            f"org-{n}": (100 + n, "worker", True) for n in range(101)}))
+        self.assertEqual(self.assertRefused("crowd")["error"], "forbidden")
+
+    def test_an_answer_of_cvat_that_cannot_be_used_is_a_refusal_with_nothing_read(self):
+        unusable = {
+            "/api/users/self": [(200, []), (200, {"username": "maintainer"}), (200, {"id": "x", "username": "m"}),
+                                (200, {"id": 3, "username": "maintainer", "groups": "administrators"})],
+            "/api/organizations": [(200, []), (200, {"results": "org-a"}), (200, {"results": [{"slug": "org-a"}]})],
+            "/api/memberships": [(200, []), (200, {"count": 1}), (200, {"results": [None]})],
+        }
+        minutes = 0
+        for path, answers in unusable.items():
+            for answer in answers:
+                with self.subTest(path=path, answer=answer):
+                    # a new minute each time, so that no answer is reused from the cache
+                    minutes += 2
+                    self.stack.now = NOW + timedelta(minutes=minutes)
+                    self.stack.cvat.overrides = {path: answer}
+                    status, body = self.stack.overview("maintainer", org="org-a")
+                    self.assertEqual((status, body), (503, {"error": "cvat_unavailable"}))
+        # the malformed answers were not kept: once CVAT answers properly again, the maintainer reads
+        self.stack.cvat.overrides = {}
+        self.assertEqual(self.names("maintainer", org="org-a"), ["alice"])
+
 
 class CvatUnreachableTest(StackTestCase):
     def setUp(self) -> None:

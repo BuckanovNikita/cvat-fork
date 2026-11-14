@@ -65,28 +65,31 @@ class Access:
         if not credentials:
             raise Refused(401, "not_authenticated")
         me = self._get("/api/users/self", credentials, {})
-        user_id, username = int(me["id"]), str(me["username"])
-        is_admin = "admin" in (me.get("groups") or [])
+        user_id, username = me["id"], me["username"]
+        is_admin = "admin" in (me.get("groups") or [])  # a list of names (checked in _usable)
         if not org_slug:
             if is_admin:
                 return Scope(org_id=None, user_id=user_id, username=username)
             # Without an organization CVAT lists only the caller's own active memberships. An
             # owner or maintainer of some organization is asked to select it; anyone else is refused.
-            memberships = self._get("/api/memberships", credentials, {"user": username})
-            if any(self._reads(membership, user_id) for membership in memberships.get("results", [])):
-                raise Refused(403, "organization_required")
+            # CVAT pages the list, so it is asked per reading role (its `role` filter): any row of the
+            # first page answers, however many other memberships the caller has.
+            for role in READING_ROLES:
+                memberships = self._get("/api/memberships", credentials, {"user": username, "role": role})
+                if any(self._reads(membership, user_id) for membership in memberships["results"]):
+                    raise Refused(403, "organization_required")
             raise Refused(403, "forbidden")
 
         organizations = self._get("/api/organizations", credentials, {"slug": org_slug})
-        matches = [org for org in organizations.get("results", []) if org.get("slug") == org_slug]
+        matches = [org for org in organizations["results"] if org["slug"] == org_slug]
         if len(matches) != 1:
             raise Refused(403, "forbidden")
-        org_id = int(matches[0]["id"])
+        org_id = matches[0]["id"]
         if is_admin:
             return Scope(org_id=org_id, user_id=user_id, username=username)
 
         memberships = self._get("/api/memberships", credentials, {"org": org_slug, "user": username})
-        for membership in memberships.get("results", []):
+        for membership in memberships["results"]:
             if self._reads(membership, user_id) and membership.get("organization") == org_id:
                 return Scope(org_id=org_id, user_id=user_id, username=username)
         raise Refused(403, "forbidden")
@@ -131,6 +134,32 @@ class Access:
         if response.status_code != 200:
             raise Refused(503, "cvat_unavailable")
         try:
-            return response.json()
+            answer = response.json()
         except ValueError as error:
             raise Refused(503, "cvat_unavailable") from error
+        # an answer the rules cannot be applied to is a refusal, and is never cached
+        if not _usable(path, answer):
+            raise Refused(503, "cvat_unavailable")
+        return answer
+
+
+def _is_id(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _usable(path: str, answer: Any) -> bool:
+    """Whether CVAT's 200 answer has the shape `Access.scope` reads."""
+    if not isinstance(answer, dict):
+        return False
+    if path == "/api/users/self":
+        groups = answer.get("groups")
+        return (_is_id(answer.get("id")) and isinstance(answer.get("username"), str)
+                and (groups is None or (isinstance(groups, list) and all(isinstance(g, str) for g in groups))))
+    results = answer.get("results")
+    if not isinstance(results, list) or not all(isinstance(row, dict) for row in results):
+        return False
+    if path == "/api/organizations":
+        return all(_is_id(row.get("id")) and isinstance(row.get("slug"), str) for row in results)
+    if path == "/api/memberships":
+        return all(isinstance(row.get("user") or {}, dict) for row in results)
+    return True
