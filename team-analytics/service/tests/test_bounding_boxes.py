@@ -275,7 +275,10 @@ def group_move(end, objects: int, *, rectangles: int | None = None, duration_ms:
 
 
 class GroupMoveTest(OperationsCase):
-    """A group move is one alignment for each object moved, sharing the gesture's time equally."""
+    """A group move is one alignment for each object moved, sharing the gesture's time equally.
+
+    The gesture takes 5 s and begins 1 s after the job was opened: its time is the 6 s since then.
+    """
 
     t = "2026-11-13 10:00:00"
 
@@ -286,7 +289,7 @@ class GroupMoveTest(OperationsCase):
         t = self.t
         self.stack.add_events([
             client("load:job", seconds(t, 0)),
-            *group_move(seconds(t, 6), 3, duration_ms=6_000),
+            *group_move(seconds(t, 6), 3, duration_ms=5_000),
         ])
 
         row = self.alignment()
@@ -296,7 +299,7 @@ class GroupMoveTest(OperationsCase):
 
     def test_the_grabbed_drag_at_the_same_millisecond_is_not_counted_again(self):
         t = self.t
-        group, grabbed = group_move(seconds(t, 6), 3, duration_ms=6_000)
+        group, grabbed = group_move(seconds(t, 6), 3, duration_ms=5_000)
         grabbed["timestamp"] = group["timestamp"]
         self.stack.add_events([client("load:job", seconds(t, 0)), group, grabbed])
 
@@ -307,7 +310,7 @@ class GroupMoveTest(OperationsCase):
         t = self.t
         self.stack.add_events([
             client("load:job", seconds(t, 0)),
-            *group_move(seconds(t, 6), 3, duration_ms=6_000, grabbed=None),
+            *group_move(seconds(t, 6), 3, duration_ms=5_000, grabbed=None),
         ])
 
         row = self.alignment()
@@ -317,7 +320,7 @@ class GroupMoveTest(OperationsCase):
         t = self.t
         self.stack.add_events([
             client("load:job", seconds(t, 0)),
-            *group_move(seconds(t, 6), 3, rectangles=2, shape_type="mixed", duration_ms=6_000),
+            *group_move(seconds(t, 6), 3, rectangles=2, shape_type="mixed", duration_ms=5_000),
         ])
 
         boxes = self.alignment(shapes="bounding_boxes")
