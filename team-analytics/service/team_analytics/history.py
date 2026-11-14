@@ -122,6 +122,7 @@ class History:
         now = self._clock()
         params = {"before": _text(_day_start(now.astimezone(UTC).date()))}
         days = [row["neighbour"] for row in self._sql.rows("control/history_changed_days.sql", params)]
+        self._refresher.ensure_lease()
         if days:
             self._sql.statements("control/history_mark_pending.sql", {
                 "days": [day.isoformat() for day in days], "version": self._version(), "at": _instant(now),
@@ -151,6 +152,7 @@ class History:
         return day
 
     def _record(self, first: date, days: int, raw_rows: int, version: int, now: datetime) -> None:
+        self._refresher.ensure_lease()
         self._sql.statements("control/history_record_days.sql", {
             "first": first.isoformat(), "days": days, "raw_rows": raw_rows, "version": version, "at": _instant(now),
         })
