@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 (First lint run on the fork's UI code).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Test first, at the boundary where the UI sends events: a frame-navigation hotkey pressed or held while a frame is loading adds nothing to the summary. This fails today.
 - [x] One pressed at the first or last frame, or while navigation is blocked, adds nothing.
@@ -16,3 +16,5 @@
 ## Comments
 
 2026-11-14: Done on `ticket/21-frame-nav`; evidence in `docs/evidence/2026-11-14-frame-navigation-hotkeys.md`. All criteria were seen at seam 2 (`verify/team-analytics-logging/frame-navigation.test.cjs`), with no browser. Limits: the third criterion was driven for next and previous frame; that the other eight navigation names reach the same frame change was read. For the fourth, the slider's change on mousedown and the `mousedown` listener in `cvat-app.tsx` are not run by a test; ticket 27's browser run should check them (see the evidence).
+
+2026-11-14: Resolved by merge `1f97c696` into `feat/team-analytics-page`; evidence in `docs/evidence/2026-11-14-frame-navigation-hotkeys.md`. On the merged tree: ESLint and the type check exit 0, seam 2 63 pass and seam 3 209 pass with 0 skipped, task progress 20 pass and 1 skipped. The browser checks named above go to ticket 27.
