@@ -218,13 +218,22 @@ Behavior to preserve:
   buckets follow the same rule; the bucket that holds the cutover is not
   legacy. An empty period (no job work in the scope) shows only the empty
   state: no legacy notice and no partly-legacy notice.
-- Known limits of the stored cutover: it is found only once a shape-tagged
-  hour reaches the stored totals, so a processed period can read as legacy
-  until then (for example right after an upgrade that adds the `cutover`
-  table, or while recent work is all in 3D jobs, which are never tagged). An
-  event that arrives after the cutover was stored cannot move it. To correct a
-  wrong value, delete the row from the `cutover` table in the totals database;
-  the next refresh finds it again.
+- Known limits of the stored cutover: the service looks for it in the
+  recorded events when it starts and in the daily check, and stores every hour
+  it finds; the earliest stored hour is the cutover. An earlier shape-tagged
+  event that arrives late therefore moves the cutover only at the next daily
+  check or start, and the periods in between read as legacy until then. A
+  later event never moves it. A shape-tagged event with a wrongly early date
+  moves the cutover to its hour, and deleting the stored value does not undo
+  that: the next search finds the same event. The correction is to remove
+  that event from the `events` table, then every row of the `cutover` table
+  in the totals database, and then to restart the service or wait for the
+  daily check, which finds the cutover again. Until then there is no cutover
+  and every period reads as legacy. The search reads every recorded event
+  before the stored cutover, or all of them while none is stored, so its cost
+  grows with that history; what it cost at the volume of the design
+  measurements is in `docs/evidence/2026-11-14-cutover-search-cost.md`. If the
+  search fails at start, the service starts without it.
 - New measurements travel inside existing client event types (ADR 0002):
   payload fields on draw, paste, propagate, drag, resize and delete, plus three
   `debug:info` records (`team_analytics:class_change`,
