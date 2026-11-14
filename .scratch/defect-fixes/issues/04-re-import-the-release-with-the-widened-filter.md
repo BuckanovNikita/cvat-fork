@@ -4,14 +4,14 @@
 
 **Blocked by:** 03 (Prove the widened import's path list).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The mirror is rebuilt with the path list proven in ticket 03, unchanged, and the current release is pulled into the import from it.
 - [x] Every path the import held before, except the Compose file, is unchanged by the pull, the fork's own edits included.
 - [x] Every new path equals the recorded upstream commit byte for byte.
 - [x] The existing release tags still point at the earlier filtered commit. The new filtered commit has its own tag, and the documented way to list the fork's changes inside the import compares against that tag.
 - [x] The old and new identifiers of the import are recorded in a dated baseline evidence file.
-- [ ] The UI image builds from the import as before.
+- [x] The UI image builds from the import as before.
 - [x] The three fast frontend suites and the type check pass.
 
 ## Comments
@@ -21,3 +21,5 @@
 2026-11-14: The UI image build is outstanding. It was not allowed while the machine's user was busy; the orchestrator runs it when the machine is free. The merge changed none of the build's inputs.
 
 2026-11-14: Merged into `feat/team-analytics-page` in merge `8860b71`; evidence `docs/evidence/2026-11-14-widened-import-baseline.md`. On the merged tree the import holds 50 added paths and the deleted Compose file, the import tree equals `cvat-v2.82.0-widened` outside `cvat-ui/`, and the three fast frontend suites pass. The ticket stays open: the UI image build is still outstanding and runs when the machine is free.
+
+2026-11-15: The UI image build ran once the machine was free: `IMAGE=cvat/ui:v2.82.0-team-analytics ./build-ui.sh` at `3dc1a7bc` exited 0 (image `sha256:310e9bbc6a47`), recorded in `docs/evidence/2026-11-14-widened-import-baseline.md`. With that the last criterion is shown. Resolved on `feat/team-analytics-page` by merge `8860b71`.
