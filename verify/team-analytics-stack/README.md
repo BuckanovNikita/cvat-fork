@@ -5,33 +5,40 @@
 все тикеты Team Analytics (ADR 0003).
 
 ```bash
-IMAGE=cvat/ui:v2.82.0-team-analytics ./build-ui.sh                       # образы из текущей версии
+IMAGE=cvat/server:v2.82.0-fork-policies ./build-server.sh                # образы из текущей версии
+IMAGE=cvat/ui:v2.82.0-team-analytics ./build-ui.sh
 IMAGE=cvat/team-analytics:v2.82.0 ./build-team-analytics-service.sh
 verify/team-analytics-stack/run.sh up      # поднять, загрузить данные, выполнить проверки
 verify/team-analytics-stack/run.sh down    # удалить всё созданное (успешно и когда ничего нет)
 verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда up упал)
 ```
 
-Это теги по умолчанию (`TA_UI_IMAGE`, `TA_SERVICE_IMAGE` в `stack.env`); образ UI должен
-быть собран из проверяемой версии, иначе проверка страницы не пройдёт. Остальные подкоманды
-(`seed`, `check-event`, `check-tracer`, `forward`, `status`, `fetch-chart`) описаны в шапке
-`run.sh`. Ручных шагов нет.
+Это теги по умолчанию (`TA_SERVER_IMAGE`, `TA_UI_IMAGE`, `TA_SERVICE_IMAGE` в `stack.env`);
+образы должны быть собраны из проверяемой версии, иначе проверки политик и страницы не
+пройдут. Остальные подкоманды (`seed`, `check-event`, `check-tracer`, `check-final`,
+`check-policies`, `forward`, `status`, `preflight`, `build-chart`, `render`, `check-render`,
+`check-bundle`) описаны в шапке `run.sh`; `preflight` выполняет всё, что `up` делает до
+первого изменения в кластере, и ничего не создаёт и не скачивает. Ручных шагов нет.
 
 ## Что нужно от машины
 
 - Docker Desktop с включённым Kubernetes (контекст `docker-desktop`), `kubectl`, `helm` 3,
   `curl`, `python3`, `ss`, `setsid`.
-- Доступ в сеть при первом запуске: архив исходников upstream (codeload.github.com),
+- Доступ в сеть при первой сборке чарта и при каждом изменении чарта или `Chart.lock`:
   репозитории чартов зависимостей (charts.bitnami.com, helm.vector.dev,
-  grafana.github.io, nuclio.github.io, helm.traefik.io), Docker Hub для одобренных
+  grafana.github.io, nuclio.github.io, helm.traefik.io); Docker Hub для одобренных
   образов. Grafana при каждом старте скачивает плагин ClickHouse; проверки от Grafana не
   зависят.
 - Образы, которые `run.sh` скачивает сам, по одному и с `nice` (одобрены владельцем,
-  список в `stack.env`, `TA_APPROVED_PULLS`): `cvat/server:v2.82.0`,
-  `apache/kvrocks:2.15.0`, `cvat/clickhouse:23.12.2-debian-11-r0`,
-  `cvat/postgresql:15.2.0-debian-11-r0`, `redis:7.2.11`, `grafana/grafana:10.1.5`,
-  `busybox:1.36.1`.
-- Образы, которые должны уже быть локально (никогда не скачиваются):
+  список в `stack.env`, `TA_APPROVED_PULLS`): `apache/kvrocks:2.15.0`,
+  `cvat/clickhouse:23.12.2-debian-11-r0`, `cvat/postgresql:15.2.0-debian-11-r0`,
+  `redis:7.2.11`, `grafana/grafana:10.1.5`, `busybox:1.36.1`. Стоковый
+  `cvat/server:v2.82.0` остаётся в списке одобренных, но стенд его не запускает: он нужен
+  локально как основа образа сервера форка и образа сервиса (скрипты сборки его не
+  скачивают) и для набора тестов сервиса. Рендер, в котором он есть, — отказ установки.
+- Образы, которые должны уже быть локально (никогда не скачиваются): образ сервера форка
+  (`TA_SERVER_IMAGE`, собирается `./build-server.sh`, ADR 0004; без него `up` и `preflight`
+  останавливаются первым же шагом, до сборки чарта и до кластера),
   `openpolicyagent/opa:1.12.2`, `timberio/vector:0.26.0-alpine`, прокси
   `nginx:1.27-alpine` (`TA_PROXY_IMAGE`), образ UI (`TA_UI_IMAGE`, собирается
   `./build-ui.sh`) и образ сервиса (`TA_SERVICE_IMAGE`, собирается
@@ -48,11 +55,19 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
   `LimitRange` (`namespace.yaml`). Пропавшее пространство создаётся заново; старше
   `TA_MAX_REUSE_HOURS` (36 ч) — пересоздаётся, потому что чистильщик кластера удаляет
   пространства через 48 ч. Чужое пространство с тем же именем не трогается.
-- Релиз чарта CVAT из upstream-коммита `02bd74f…` (`stack.env`) со значениями
-  `values.yaml`: аналитика включена, из воркеров только utils и webhooks. Чарт лежит в
-  кэше `${XDG_CACHE_HOME:-~/.cache}/cvat-fork/team-analytics/`, вне импорта `cvat/`;
-  версии зависимостей закреплены `Chart.lock` и `chart-deps.sha256` (дата и источник —
-  `docs/evidence/2026-11-13-team-analytics-test-stack.md`).
+- Релиз чарта CVAT из импорта (`cvat/helm-chart` и компонент `cvat/components/analytics`,
+  на который ссылается его `analytics`) со значениями `values.yaml`: аналитика включена,
+  из воркеров только utils и webhooks; сервер, все воркеры и инициализатор работают на
+  образе сервера форка (`TA_SERVER_IMAGE`). Helm собирает зависимости в копии чарта в
+  рабочем каталоге `${XDG_CACHE_HOME:-~/.cache}/cvat-fork/team-analytics/` (`TA_CACHE_DIR`;
+  импорт не меняется), каталог сборки назван по хешу файлов чарта и `Chart.lock`.
+  Версии зависимостей закреплены `Chart.lock` и `chart-deps.sha256` (дата и источник —
+  `docs/evidence/2026-11-13-team-analytics-test-stack.md`); архив с другим хешем — отказ.
+- Проверка политик (`run.sh check-policies`, часть `up` сразу после `port-forward`): стенд
+  забирает бандл политик, который сервер отдаёт OPA (`/api/auth/rules`), и проверяет
+  `issues.rego` и `comments.rego` каждый отдельно: файл должен совпадать с файлом импорта
+  байт в байт (`verify/policy_bundle.sh check`) и содержать отметку патча
+  `Local patch (role floor)`. Если хоть одна из двух политик стоковая — отказ.
 - Обратный прокси `ta-proxy` (`proxy.yaml`): `/api`, `/admin`, `/static`, `/django-rq`,
   `/profiler` — бэкенд CVAT; `/analytics` — Grafana за проверкой доступа CVAT;
   `/team-analytics-api` — сервис Team Analytics; всё остальное — UI. Адрес:
@@ -89,6 +104,8 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
   панель ошибки и то, что разметка рисуется и сохраняется; после этого сервис
   запускается снова.
 
-Ничего кластерного не создаётся (рендер проверяется на каждом запуске), хранилище —
+Ничего кластерного не создаётся (рендер проверяется на каждом запуске: кластерные объекты,
+образы вне одобренного списка, принудительное скачивание и серверный образ, отличный от
+образа форка, — отказ установки), хранилище —
 класс по умолчанию. `down` удаляет пространство имён целиком, включая тома, которые чарт
 помечает к сохранению, и останавливает только свой `port-forward` (PID и время старта).
