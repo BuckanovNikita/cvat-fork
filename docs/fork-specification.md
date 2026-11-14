@@ -231,10 +231,64 @@ Behavior to preserve:
   one. A CVAT answer without the expected shape is a 503 refusal and is never
   cached. A 401 or 403 from any endpoint puts the open page into that refusal.
 - A read of a period that is not fully processed carries no figures, whoever
-  asks: the overview, the full-view list and the details table keep their
-  envelope (period, filter echo, `processed: false`, the legacy flags) and
-  every figure in them is null. A trend bucket that is not fully processed has
-  null values. The page shows that the period is being processed.
+  asks: it keeps its envelope, says `processed: false`, and every other field
+  is null. The envelope of each endpoint:
+  - overview: `period`, `filters`, `processed`, and `operations` with only
+    its legacy flags (`legacy`, `partly_legacy`, `cutover`, `shapes`); every
+    other section is null whole, rows and all;
+  - full-view list: `period`, `processed`, `by` and the legacy flags;
+  - details table: `by`, `page_size`, `processed`, `technical_accounts` (how
+    many accounts are configured as technical) and the legacy flags; it
+    returns neither the period nor a filter echo, in any answer;
+  - trends: each bucket says whether it is processed; in every line the point
+    of a bucket that is not fully processed keeps `legacy` and
+    `hotkey_recorded` and has null values. A comparison candidate's
+    `working_time_ms` sums only the fully processed buckets and is null while
+    none is; candidates are ranked by it, then by id, so time in a bucket not
+    fully processed ranks nobody. Who is a candidate still comes from every
+    computed hour of the twelve buckets, processed or not, so that the
+    comparison can be offered while history is processed.
+
+  Each endpoint reads how far history is processed once per request, before it
+  reads any figure, so a history step that finishes during a request can only
+  make the answer say `processed: false` where it could have said true, never
+  mark figures read before the step as processed. The page shows that the
+  period is being processed.
+- Known limit of unprocessed periods: the legacy flags of an answer that is
+  not fully processed (`legacy`, `partly_legacy` and `shapes`, and
+  `hotkey_recorded` on a trend point) describe only the part already
+  processed, and can change, even to the opposite, once processing completes.
+  A caller must not read them as final while `processed` is false. The page
+  hides the shape switch while the overview's `operations.legacy` is true, so
+  the switch can appear or vanish when a period's processing completes.
+- `status` depends on who asks. An administrator, with or without an
+  organization selected, gets the whole history block: `complete`, `percent`,
+  `ready_from`, `ready_from_day`, `first_day`, `days_ready`, `days_total`,
+  `periods`, `earliest_month`, `complete_weeks`, `trends_ready`. Everyone else
+  who may read gets `complete`, `percent`, `periods`, `earliest_month`,
+  `complete_weeks` and `trends_ready`. Both get `refresh` (freshness) and
+  `cutover`. Every one of these fields describes the whole instance, not the
+  caller's organization: history is processed for the instance as a whole.
+- Known limit of `status` for a caller outside the admin group: while history
+  is processed, such a caller who polls status can work out the instance's
+  exact first event day, and so the length of its history. The percentage is
+  "days processed / days in the instance"; each time `earliest_month` changes
+  the processed days begin on that month's first day, and each time
+  `complete_weeks` changes (below twelve) on a Monday, so the processed day
+  count is known exactly at those moments and the percentage then gives the
+  total. The `processed` flags of the overview, the list and the details table
+  for any `month`, and the trends' per-bucket flags, bound the same to the
+  month or the week. After history is complete the window reopens briefly: an
+  event dated before the instance's first day makes `complete` false again for
+  a step or two, and for that time the same applies to the older history.
+  Making the percentage coarser (rounded, or not tied to the instance's day
+  counts) would blunt this; that is an open decision for the owner.
+- The details table by project lists every project in the caller's scope with
+  working time, operations or saved boxes, so a project whose only work is
+  boxes saved by a technical account has a row (no working time, its saved
+  boxes and its Model boxes). A technical account never appears in the table
+  by annotator or in any other list of people, and under an annotator filter
+  on its id its saved boxes neither list a project nor count for one.
 - The page's project and annotator filters belong to the organization named
   by `org` in the page address. Filters of another organization, or of an
   address that names none while one is selected, are not applied. Requests to

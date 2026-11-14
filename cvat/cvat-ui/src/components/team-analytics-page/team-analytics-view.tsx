@@ -236,6 +236,7 @@ export default function TeamAnalyticsView({
                     <WorkingTimeByProjectCard
                         rows={overview.by_project.rows}
                         rest={overview.by_project.rest}
+                        legacy={!!overview.by_project.legacy}
                         names={projectNames}
                         selected={filters.project}
                         onPick={pick('project')}
@@ -246,6 +247,7 @@ export default function TeamAnalyticsView({
                 <WorkingTimeByAnnotatorCard
                     rows={overview.by_annotator.rows}
                     rest={overview.by_annotator.rest}
+                    legacy={!!overview.by_annotator.legacy}
                     selected={filters.annotator}
                     onPick={pick('annotator')}
                     periodLabel={shownPeriod}
@@ -296,7 +298,10 @@ export default function TeamAnalyticsView({
                         history={history}
                         onChange={onAddressChange as (change: Partial<Address>) => void}
                     />
-                    {/* a legacy period has all shapes only: no switch */}
+                    {/* a legacy period has all shapes only: no switch. While the period is not fully processed,
+                        `legacy` describes only its processed part and can turn to the opposite once processing
+                        completes, so the switch may appear or vanish then (a recorded limit, see
+                        docs/fork-specification.md, "Known limit of unprocessed periods") */}
                     {shownOverview?.operations?.legacy ? null : (
                         <ShapeSwitch
                             shapes={(address as Address).shapes ?? DEFAULT_SHAPES}

@@ -73,7 +73,9 @@ class RunningServiceCase(StackTestCase):
 
     def overview_rows(self):
         overview = self.read("overview")
-        return None if overview is None else overview["by_annotator"]["rows"]
+        section = None if overview is None else overview["by_annotator"]
+        # null until the week reads as processed (before the first refresh, or while one lands mid-request)
+        return None if section is None else section["rows"]
 
     def wait_for(self, predicate, timeout: float = 30):
         deadline = time.monotonic() + timeout
@@ -94,7 +96,8 @@ class EntryPointTest(RunningServiceCase):
             working_time(now, 500_000, user=(99, "robot"), org=ORG),
         ])
         rows = self.wait_for(lambda rows: len(rows) > 0)
-        self.assertEqual(rows, [{"user_id": 11, "user_name": "alice", "working_time_ms": 100_000}])
+        self.assertEqual([(row["user_id"], row["user_name"], row["working_time_ms"]) for row in rows],
+                         [(11, "alice", 100_000)])
 
         self.stack.add_events([working_time(datetime.now(UTC), 50_000, user=(11, "alice"), org=ORG)])
         rows = self.wait_for(lambda rows: rows and rows[0]["working_time_ms"] == 150_000)

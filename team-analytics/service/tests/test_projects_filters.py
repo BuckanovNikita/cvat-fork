@@ -45,6 +45,12 @@ class FiltersCase(StackTestCase):
     def annotators(body: dict) -> list[tuple[str, int]]:
         return [(row["user_name"], row["working_time_ms"]) for row in body["by_annotator"]["rows"]]
 
+    @staticmethod
+    def rest(body: dict, section: str) -> tuple[int, int]:
+        # how many rows a chart does not show and their working time (their parts: test_full_view.py)
+        rest = body[section]["rest"]
+        return rest["count"], rest["working_time_ms"]
+
     def add_two_project_team(self) -> None:
         """alice: 3 h in project 1, 1 h without a project; bob: 2 h in project 2, 30 min in project 1."""
         self.stack.add_events([
@@ -62,7 +68,7 @@ class WorkingTimePerProjectTest(FiltersCase):
 
         body = self.overview()
         self.assertEqual(self.projects(body), [(1, 3 * HOUR + 30 * MINUTE), (2, 2 * HOUR), (0, HOUR)])
-        self.assertEqual(body["by_project"]["rest"], {"count": 0, "working_time_ms": 0})
+        self.assertEqual(self.rest(body, "by_project"), (0, 0))
 
 
 class FilterTest(FiltersCase):
@@ -198,12 +204,12 @@ class TopRowsTest(FiltersCase):
 
         body = self.overview()
         self.assertEqual(self.annotators(body), [(f"user{n:02}", n * MINUTE) for n in range(10, 2, -1)])
-        self.assertEqual(body["by_annotator"]["rest"], {"count": 2, "working_time_ms": 3 * MINUTE})
+        self.assertEqual(self.rest(body, "by_annotator"), (2, 3 * MINUTE))
         self.assertEqual(self.projects(body), [(n, n * MINUTE) for n in range(10, 2, -1)])
-        self.assertEqual(body["by_project"]["rest"], {"count": 2, "working_time_ms": 3 * MINUTE})
+        self.assertEqual(self.rest(body, "by_project"), (2, 3 * MINUTE))
 
     def test_nothing_in_the_period_gives_no_rows_and_an_empty_rest(self):
         self.stack.refresh()
         body = self.overview()
-        self.assertEqual(body["by_project"], {"rows": [], "rest": {"count": 0, "working_time_ms": 0}})
-        self.assertEqual(body["by_annotator"], {"rows": [], "rest": {"count": 0, "working_time_ms": 0}})
+        for section in ("by_project", "by_annotator"):
+            self.assertEqual((body[section]["rows"], self.rest(body, section)), ([], (0, 0)))

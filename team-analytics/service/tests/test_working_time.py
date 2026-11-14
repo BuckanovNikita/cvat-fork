@@ -18,7 +18,9 @@ class OrganizationLeadCase(StackTestCase):
     def annotators(self, **query) -> list[dict]:
         status, body = self.stack.overview("lead", org="org7", **query)
         self.assertEqual(status, 200, body)
-        return body["by_annotator"]["rows"]
+        # each row's operation parts are pinned against the full view in test_full_view.py
+        return [{key: row[key] for key in ("user_id", "user_name", "working_time_ms")}
+                for row in body["by_annotator"]["rows"]]
 
 
 class WorkingTimePerAnnotatorTest(OrganizationLeadCase):

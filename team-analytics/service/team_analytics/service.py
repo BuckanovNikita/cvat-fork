@@ -20,7 +20,7 @@ from team_analytics import endpoints
 from team_analytics.access import Access, Refused, Scope
 from team_analytics.config import Config
 from team_analytics.cutover import Legacy, load_cutover, look_for_cutover
-from team_analytics.history import History
+from team_analytics.history import History, HistoryState, load_state
 from team_analytics.periods import BadRequest, Span, decimal, period_span
 from team_analytics.refresh import LeaseClock, Refresher, RefreshResult
 from team_analytics.sql import Limit, Sql
@@ -66,6 +66,17 @@ class Request:
         if "cutover" not in self.cache:
             self.cache["cutover"] = load_cutover(self.sql)
         return self.cache["cutover"]
+
+    def history(self) -> HistoryState:
+        """How far history is processed (history.py), read once per request.
+
+        An endpoint that answers with figures calls this before its first figure read. A history step that
+        finishes after this reading can then only have made the figures more complete than the state says,
+        never the reverse: the answer may say `processed: false` where it could have said true, but never
+        sends figures read before the step as processed."""
+        if "history" not in self.cache:
+            self.cache["history"] = load_state(self.sql, self.now)
+        return self.cache["history"]
 
     def legacy(self, start: datetime, end: datetime) -> Legacy:
         """What the cutover makes of [start, end): pass `.params()` to read files, `.describe()` to responses."""
