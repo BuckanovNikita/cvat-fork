@@ -8,13 +8,13 @@
 
 - [x] The launcher takes the chart from the import. The download of the upstream source archive, its cache and its settings are gone.
 - [x] Chart dependencies are still built from the fork-owned lock and checked against the recorded hashes.
-- [ ] The release's backend image is the fork server image, for the server and every worker. The launcher refuses to start when that image is not present locally.
+- [x] The release's backend image is the fork server image, for the server and every worker. The launcher refuses to start when that image is not present locally.
 - [x] The render guard still refuses cluster-wide objects and pulls outside the approved list.
-- [ ] The run fetches the served policy bundle and checks each of the two policies by itself for the patch. It fails if either is the stock one.
+- [x] The run fetches the served policy bundle and checks each of the two policies by itself for the patch. It fails if either is the stock one.
 - [ ] A fresh `up` from an empty namespace passes every existing check, and `down` leaves nothing behind.
-- [ ] The captured logs of that run contain no local path.
+- [x] The captured logs of that run contain no local path.
 - [x] The stack's own description matches what the launcher now does.
-- [ ] The run is recorded in a dated evidence file.
+- [x] The run is recorded in a dated evidence file.
 
 ## Comments
 
@@ -35,3 +35,12 @@
   8. The run is added to the evidence file above (criterion 9).
 
 2026-11-14: Part one merged into `feat/team-analytics-page` as `220b3aa7`; `bash -n verify/team-analytics-stack/run.sh` passes on the merged tree, the launcher was not run. Part two, the fresh `up` and `down` of the live criteria, is outstanding, so the ticket stays open. Evidence: `docs/evidence/2026-11-14-stack-fork-image-in-tree-chart.md`.
+
+2026-11-14, part two (live run, same evidence file).
+
+- Criterion 3 shown: every backend pod of the release runs `cvat/server:v2.82.0-fork-policies` (the only other image in them is the `busybox:1.36.1` init container).
+- Criterion 5 shown: `check_policies` fetched `/api/auth/rules` through the proxy on both `up` runs and found both policies patched, each by itself. The failing verdicts are part one's stock and mixed bundles; a stock bundle was not served on the stack.
+- Criterion 6 not ticked. The fresh `up` from the empty namespace stopped at `check_final` on two expectations the service had outgrown (null rows of an unprocessed period, ticket 14; operation parts in each row, ticket 23); `final_run.py` is fixed in `1333fd89`. Every check then passed on that stack by its subcommand, and a second `up` on the same stack passed every check in one run. Still outstanding: an `up` from an empty namespace passing end to end, and `down` leaving nothing behind. `down` is kept for the end of the live work, since tickets 09, 10, 11, 25 and 26 use the running stack.
+- Criterion 7 shown on the passing run's log. The first `up` log held the home directory in the failure's Python traceback; the launcher's stderr now passes through `redact_paths`, checked on a provoked traceback.
+
+2026-11-15: Part two merged into `feat/team-analytics-page` as `be348e32`; on the merged tree `bash -n verify/team-analytics-stack/run.sh`, `py_compile` of `final_run.py` and `prek run --all-files` pass, the launcher was not run. Criterion 6 is outstanding (an `up` from an empty namespace passing end to end, and `down` leaving nothing behind), shown at the end of the live work, so the ticket stays open. Evidence: `docs/evidence/2026-11-14-stack-fork-image-in-tree-chart.md`.
