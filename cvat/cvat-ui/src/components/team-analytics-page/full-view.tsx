@@ -6,26 +6,23 @@ import './full-view.scss';
 import React, { useEffect, useState } from 'react';
 
 import {
-    FullList as ListResponse, HotkeysList, ListKind, ListRow, Overview, ProjectNames, RowsList, fetchService, loadList,
+    FullList as ListResponse, HotkeysList, ListKind, Overview, ProjectNames, RowsList, fetchService, loadList,
 } from './service';
 import { Address } from './address';
 import { FullView as FullViewKey, FullViewRows, trendOfView } from './full-views';
 import {
     MISSING, dayLabel, exactHours, formatCount, formatHours, formatSeconds, formatShare, projectName,
 } from './format';
-import { OPERATION_LOOKS } from './operations';
+import { OPERATION_LOOKS, operationParts, splitParts } from './operations';
 import { shapeWording } from './shapes';
 import { HotkeyLabels, hotkeyLabel } from './hotkeys';
 import { lookupProjectNames } from './project-names';
 import { NotProcessedNotice } from './history';
-import {
-    BarPart, FullList, FullListRow, FullTable,
-} from './full-view-list';
+import { FullList, FullListRow, FullTable } from './full-view-list';
 import WorkingTimeOverPeriodCard from './cards/working-time-over-period-card';
 
 const HOTKEY_COLOR = '#2a78d6';
 const WORKING_TIME_COLOR = '#2a78d6';
-const OPERATIONS = ['creation', 'alignment', 'class_change', 'deletion'] as const;
 
 interface Props {
     view: FullViewKey;
@@ -64,18 +61,6 @@ function Swatch({ color, name }: { color: string; name: string }): JSX.Element {
     );
 }
 
-// The parts of a row's bar: each operation's time and Other (class change left out in a legacy period).
-function operationParts(row: ListRow, name: string, legacy: boolean): BarPart[] {
-    const keys = [...OPERATIONS.filter((key) => !(legacy && key === 'class_change')), 'other'] as const;
-    return keys.map((key) => {
-        const look = OPERATION_LOOKS[key];
-        const time = row.operations[key].time_ms;
-        return {
-            key, color: look.color, grow: time, title: `${name} · ${look.name}: ${formatHours(time)}`,
-        };
-    });
-}
-
 function WorkingTimeList({
     list, kind, names, selected, onPick, onRows, summaryNoun,
 }: {
@@ -99,7 +84,7 @@ function WorkingTimeList({
             rank: index + 1,
             name,
             width: largest > 0 ? row.working_time_ms / largest : 0,
-            parts: operationParts(row, name, list.legacy),
+            parts: operationParts(row.operations, name, list.legacy),
             value: formatHours(row.working_time_ms),
             share: formatShare(row.share),
             title: `${name}: ${exactHours(row.working_time_ms)}`,
@@ -120,10 +105,9 @@ function WorkingTimeList({
             }
             legend={(
                 <Legend hint='Select a row to filter the whole page.'>
-                    {[...OPERATIONS.filter((key) => !(list.legacy && key === 'class_change')), 'other' as const]
-                        .map((key) => (
-                            <Swatch key={key} color={OPERATION_LOOKS[key].color} name={OPERATION_LOOKS[key].name} />
-                        ))}
+                    {splitParts(list.legacy).map((key) => (
+                        <Swatch key={key} color={OPERATION_LOOKS[key].color} name={OPERATION_LOOKS[key].name} />
+                    ))}
                 </Legend>
             )}
         />

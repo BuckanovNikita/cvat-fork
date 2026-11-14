@@ -236,6 +236,7 @@ export default function TeamAnalyticsView({
                     <WorkingTimeByProjectCard
                         rows={overview.by_project.rows}
                         rest={overview.by_project.rest}
+                        legacy={!!overview.by_project.legacy}
                         names={projectNames}
                         selected={filters.project}
                         onPick={pick('project')}
@@ -246,6 +247,7 @@ export default function TeamAnalyticsView({
                 <WorkingTimeByAnnotatorCard
                     rows={overview.by_annotator.rows}
                     rest={overview.by_annotator.rest}
+                    legacy={!!overview.by_annotator.legacy}
                     selected={filters.annotator}
                     onPick={pick('annotator')}
                     periodLabel={shownPeriod}

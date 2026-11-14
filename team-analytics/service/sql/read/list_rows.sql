@@ -1,7 +1,7 @@
 -- Every row of a full view for [from, to): one row per annotator ({by_project} = 0) or per project
--- ({by_project} = 1; project_id 0 = No project), largest working time first, then by name and id, the
--- same order as read/overview_by_annotator.sql and read/overview_by_project.sql, so the overview's top
--- rows are this list's first rows and its rest is everything after them.
+-- ({by_project} = 1; project_id 0 = No project), largest working time first, then by name and id. The
+-- overview's rows by annotator and by project are this list's first rows with working time and its rest
+-- is the others with working time (rows.py), so a row's operations are the same in both.
 -- The caller drops the row dimension's own filter (every annotator stays listed while one is selected);
 -- the other filter narrows as on the overview. Technical accounts are not annotators.
 -- Per row: working time and its share of all rows' working time; each operation's objects, timed objects,
