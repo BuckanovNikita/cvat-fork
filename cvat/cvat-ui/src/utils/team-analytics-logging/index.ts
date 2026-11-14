@@ -147,5 +147,5 @@ export function logRecord(
 
 // Class change record (class-change.ts): call just before the new label is assigned.
 export { recordClassChange } from './class-change';
-// Model creation record (model-creation.ts): call right after the detector's objects are created.
+// Model creation record (model-creation.ts): call once the detector's objects are known to be created.
 export { recordModelCreation } from './model-creation';
