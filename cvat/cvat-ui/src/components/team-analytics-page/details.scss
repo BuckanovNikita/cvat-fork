@@ -1,0 +1,158 @@
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+@import 'base';
+
+$details-name-width: 220px;
+
+// Details table (cards/details-table-card.tsx)
+.cvat-team-analytics-details {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: $grid-unit-size * 1.5;
+
+    // a narrow window scrolls the table sideways; the page itself never does
+    .cvat-team-analytics-table-scroll {
+        overflow-x: auto;
+        max-width: 100%;
+    }
+}
+
+.cvat-team-analytics-details-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $grid-unit-size $grid-unit-size * 2;
+}
+
+.cvat-team-analytics-details-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.cvat-team-analytics-details-search {
+    width: 220px;
+    max-width: 100%;
+    min-height: 32px;
+    padding: 0 $grid-unit-size * 1.5;
+    border: 1px solid $player-slider-color;
+    border-radius: $border-radius-base;
+    font: inherit;
+}
+
+.cvat-team-analytics-details-hint,
+.cvat-team-analytics-details-note {
+    margin: 0;
+    color: $text-color-secondary;
+    font-size: 13px;
+}
+
+// doubled class: wins over the shared .cvat-team-analytics-table rules whatever the stylesheet order
+.cvat-team-analytics-table.cvat-team-analytics-details-table {
+    width: 100%;
+    min-width: 1180px;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-variant-numeric: tabular-nums;
+
+    th,
+    td {
+        padding: $grid-unit-size $grid-unit-size * 1.25;
+        border-bottom: 1px solid $border-color-1;
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    thead th {
+        color: $text-color-secondary;
+        font-size: 12px;
+        font-weight: 400;
+    }
+
+    // the name column stays in place while the rest scrolls under it
+    .cvat-team-analytics-details-name {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        width: $details-name-width;
+        text-align: left;
+        background: $background-color-1;
+    }
+
+    tbody .cvat-team-analytics-details-name {
+        color: $text-color;
+        font-size: 14px;
+    }
+
+    .cvat-team-analytics-details-name button {
+        display: block;
+        width: 100%;
+        // the cap is on the button: a table cell's max-width is not reliable
+        max-width: $details-name-width;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        font: inherit;
+        font-weight: 600;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+.cvat-team-analytics-details-row {
+    cursor: pointer;
+
+    &:hover td {
+        background: $hover-menu-color;
+    }
+
+    // the sticky cell stays opaque so that scrolled cells do not show through it
+    &:hover .cvat-team-analytics-details-name {
+        background: linear-gradient($hover-menu-color, $hover-menu-color), $background-color-1;
+    }
+}
+
+.cvat-team-analytics-details-selected {
+    td,
+    .cvat-team-analytics-details-name {
+        background: $border-color-1;
+    }
+
+    .cvat-team-analytics-details-name button {
+        font-weight: 700;
+    }
+}
+
+.cvat-team-analytics-details-pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $grid-unit-size $grid-unit-size * 1.5;
+    font-variant-numeric: tabular-nums;
+
+    button {
+        min-height: 32px;
+        padding: 0 $grid-unit-size * 1.75;
+        border: 1px solid $player-slider-color;
+        border-radius: $border-radius-base;
+        background: $background-color-1;
+        font: inherit;
+        cursor: pointer;
+
+        &:disabled {
+            color: $text-color-secondary;
+            cursor: not-allowed;
+        }
+    }
+
+    .cvat-team-analytics-details-hint {
+        margin-left: auto;
+    }
+}
