@@ -69,3 +69,4 @@ node suite covers it with the API mocked.
   4. One of those runs with `TA_SCREENSHOT_DIR` set, to keep `task-progress-list.png`.
   5. Write the log lines, the task ids, the UI image ID and the lowest contrast per card into
      the evidence file's part two (criterion 5). Then ticket 12 may remove the Compose files.
+- 2026-11-14: Merged into `feat/team-analytics-page` as `3aa2b78b`, with no conflict. On the merged tree `bash -n` on `run.sh`, `py_compile` on `task_progress.py` and `node --check` on `task_progress_browser.cjs` passed; no launcher command was run. The ticket stays open: part two, the live run above, is outstanding. Evidence: `docs/evidence/2026-11-14-task-progress-on-stack.md`.
