@@ -724,6 +724,7 @@ check_issue_policies() {
     local policies=(cvat/apps/engine/rules/issues.rego cvat/apps/engine/rules/comments.rego
         cvat/apps/iam/rules/utils.rego cvat/apps/organizations/rules/organizations.rego)
     case "$mode" in patched | stock) ;; *) die "usage: run.sh check-issue-policies [patched|stock]" ;; esac
+    image_local "$image" || die "OPA image $image is not local (it is never pulled)"
     work="$(mktemp -d)"
     for p in "${policies[@]}"; do
         mkdir -p "$work/policies/$(dirname "$p")"
@@ -733,7 +734,8 @@ check_issue_policies() {
     python3 -I -B "$HERE/issue_matrix.py" opa-cases >"$work/cases.json"
     chmod -R a+rX "$work"
     local rc=0
-    docker run --rm --network none --cpus=1 --memory=256m -v "$work:/work:ro" "$image" \
+    # The OPA image is one of TA_LOCAL_IMAGES: never pulled, also not by this check in preflight.
+    docker run --rm --pull=never --network none --cpus=1 --memory=256m -v "$work:/work:ro" "$image" \
         eval --format json --data /work/policies --data /work/cases.json \
         "$(python3 -I -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import issue_matrix; print(issue_matrix.OPA_QUERY)' "$HERE")" \
         >"$work/answers.json" || rc=$?

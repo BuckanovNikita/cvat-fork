@@ -145,20 +145,26 @@ ticket records):
 
 ### Failing cases before, outcomes after (checks with supplied boundaries)
 
-Each was run on the integration tip's scripts first and on this branch's after. The machine
-user's namespace in these runs is written `cvat-ta-it-<user>`.
+Each was run on the integration tip's scripts first and on this branch's after, except where
+a case says its "before" was read or shown another way. The machine user's namespace in these
+runs is written `cvat-ta-it-<user>`.
 
 - Render guard, `run.sh check-render` on the reviewer's doctored copies of the real render.
   Before: accepted C (quoted kind), D (`List` of a ClusterRole), E (`- image:` unapproved),
   H (JSON ClusterRoleBinding), I (stock server image in an init container), J (`busybox`
   untagged), M (`'Always'`), N5 (local `:latest`), N6 (ConfigMap in `kube-system`), and a
   copy with a local, tagged, unlisted image. After: every one refused with its reason (B, F,
-  G, K, L, N1 to N4 refused before and after). A copy with one CRD of the chart's traefik
-  subchart (rendered with traefik on: 0 CRDs without `--include-crds`, 29 with) is refused as
-  a cluster-wide kind. Accepted: the genuine render (the reviewer's, and this branch's with
-  CRDs included, which holds none while traefik is off) and the Ingress render without the
-  backend check. `run.sh preflight` passed: both `check-issue-policies` sides 124 of 124, the
-  chart build, the render guard.
+  G, K, L, N1 to N4 refused before and after). The CRD case's "before" is the render itself:
+  `helm template` of the chart with its traefik subchart switched on gives 0 CRDs without
+  `--include-crds` and 29 with it, so the old render never held one. A copy of the genuine
+  render with one of those CRDs added is refused as a cluster-wide kind. Accepted: the genuine
+  render (the reviewer's, and this branch's with CRDs included, which holds none while
+  traefik is off). The Ingress render was accepted by `render_guard.py` called directly
+  without the backend check, not through `apply_ingress`, which creates the Ingress.
+  `run.sh preflight` at the final head passed: both `check-issue-policies` sides ("every
+  expectation matches the patched policies", "… the stock policies"), the chart build and the
+  render guard. `check-issue-policies` with an absent OPA image stops at once ("is not local")
+  where it tried a pull before.
 - Build script, on throwaway bases made from the local stock image (no pull, no push,
   network off, removed afterwards): a base whose engine rules directory is elsewhere (the
   server builds the bundle from `engine/opa_rules`) and a base whose `utils.rego` differs
@@ -179,13 +185,15 @@ user's namespace in these runs is written `cvat-ta-it-<user>`.
 - Mirror script against small local upstreams. Before: an upstream with none of the paths,
   one without tags and one without the policy files each exited 0 and replaced the mirror
   (the first with an empty one). After: each exits 1 naming what is missing, and the earlier
-  mirror stays; a complete upstream still replaces it.
+  mirror stays; a complete upstream still replaces it. Every path of `REQUIRED` is in the
+  import tag `cvat-v2.82.0-widened`'s tree.
 - Seed password: `backend_shell` with a stand-in kubectl that records its arguments and runs
   its input as `manage.py shell` does. The script read the password and the accounts; the
   arguments held neither. The old call put the password in kubectl's arguments.
 - Restart rule: `TA_NAMESPACE=sweeper-canary-20261111 run.sh status` (read only) reports that
   namespace created before the sweeper's recorded restart time; the predicate gives "no" for
-  a creation time after it and "unknown" with an unreadable cluster.
+  a creation time after it and "unknown" with an unreadable cluster. No "before" was run: the
+  old `ensure_namespace` had only the age rule, which was read.
 
 ### What held, as the reviewer found it
 
@@ -204,8 +212,12 @@ file is referenced outside history, evidence and `.scratch`.
 
 - No stack command that creates anything was run by the follow-up. The new guard on a real
   `up` render with CRDs included, the password passed through standard input to a real
-  backend pod, `check-issue-policies` inside `up` and the restart rule's recreate path are
-  first exercised by ticket 27's final run.
+  backend pod, `check-issue-policies` inside `up` and the guard on the Ingress inside
+  `apply_ingress` are first exercised by ticket 27's final run. The restart rule's recreate
+  path was not run and a fresh stack does not run it.
+- The mirror script was not run against the real upstream (no clone was allowed). It checks
+  the paths on upstream's default branch, so a path moved there refuses a refresh even when
+  the import targets an older tag.
 - The guard checks the `helm template` render. The chart and its dependencies use
   `.Capabilities` and `lookup`, so what `helm upgrade --install` creates can differ.
 - By the reviewer: an actual image build, a cold chart-dependency fetch, any live stack
