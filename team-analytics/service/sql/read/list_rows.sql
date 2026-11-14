@@ -10,7 +10,7 @@
 -- detector records of the row's annotators, and for a project also what technical accounts saved there
 -- (only without an annotator filter).
 -- Shape switch: decided once for the whole list as on the overview (bounding box rows only, unless the
--- period is legacy, {legacy_period}); `legacy` = a legacy period with job work in the scope.
+-- period is legacy, {legacy_period}); `legacy` = a legacy period with job work in the scope (`job_work`).
 WITH
     work AS (
         SELECT if({by_project:UInt8} = 1, project_id, user_id) AS id,
@@ -46,7 +46,8 @@ WITH
     (SELECT count() FROM in_scope) AS operation_rows,
     {bounding_boxes:UInt8} = 0 OR {legacy_period:UInt8} = 1 AS all_shapes,
     (SELECT sum(working_ms) FROM work) AS all_working_ms,
-    (operation_rows > 0 OR all_working_ms > 0) AND {legacy_period:UInt8} = 1 AS legacy,
+    operation_rows > 0 OR all_working_ms > 0 AS job_work,
+    job_work AND {legacy_period:UInt8} = 1 AS legacy,
     ops AS (
         SELECT id, argMax(user_name, hour) AS ops_name,
             sumIf(objects, operation = 'creation') AS creation_objects,
@@ -150,7 +151,7 @@ SELECT
     propagated_objects, propagated_timed, propagated_ms,
     if(propagated_timed > 0, propagated_ms / propagated_timed, NULL) AS propagated_average_ms,
     model_objects,
-    all_working_ms, all_shapes, legacy
+    all_working_ms, all_shapes, legacy, job_work
 FROM joined
 ORDER BY working_ms DESC, name ASC, id ASC
 SETTINGS join_use_nulls = 0

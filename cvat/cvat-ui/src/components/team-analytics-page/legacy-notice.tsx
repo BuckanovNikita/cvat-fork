@@ -4,6 +4,7 @@
 
 import React from 'react';
 
+import { hasNoJobWork } from './operations';
 import { OperationsFigures } from './service';
 
 // Shown for a legacy period: it ends before the cutover to the new activity logging (the first shape-tagged
@@ -30,13 +31,15 @@ export function cutoverDay(cutover: string, timeZone?: string): string {
     });
 }
 
-// The notice the shown period needs: legacy, partly legacy (naming the cutover day), or none.
+// The notice the shown period needs: legacy, partly legacy (naming the cutover day), or none. A period with no
+// job work in the scope shows only the empty state, so neither notice.
 export function LegacyNotices({ operations, timeZone }: {
-    operations?: Pick<OperationsFigures, 'legacy' | 'partly_legacy' | 'cutover'>;
+    operations?: OperationsFigures;
     timeZone?: string;
 }): JSX.Element | null {
-    if (operations?.legacy) return <LegacyNotice />;
-    if (operations?.partly_legacy && operations.cutover) {
+    if (!operations || hasNoJobWork(operations)) return null;
+    if (operations.legacy) return <LegacyNotice />;
+    if (operations.partly_legacy && operations.cutover) {
         return <PartlyLegacyNotice cutover={operations.cutover} timeZone={timeZone} />;
     }
     return null;

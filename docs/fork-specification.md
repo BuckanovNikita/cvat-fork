@@ -173,7 +173,12 @@ Behavior to preserve:
   Its Kubernetes manifests and environment are in `team-analytics/k8s/`.
   One refresh or history step runs at a time across replicas, under a lease in
   ClickHouse. The lease is renewed while a step runs and released on every
-  failure path; a failed release is tried again. On SIGTERM the service
+  failure path; a failed release is tried again. A replica that can no longer
+  prove it holds the lease (its renewals failed or came back after the lease
+  could have expired) stops its step before the next write, so nothing it
+  computed is marked or becomes visible. A claim renewed after it expired is
+  never live again. The wait for a hanging renewal at release is bounded
+  (2 s). On SIGTERM the service
   finishes the step in progress and releases the lease before exiting. A
   replica killed mid-step would block the others until the lease expires.
 - One ClickHouse client without a session serves the HTTP threads and the
@@ -193,15 +198,20 @@ Behavior to preserve:
   address that names none while one is selected, are not applied. Requests to
   CVAT for project names and the details project search stay bounded: names
   go 100 ids per request, and the search sends one table page of ids.
-- Legacy rule: the cutover is the hour of the first shape-tagged operation on
-  the instance, read from the stored totals and reported by `status`. A
+- Legacy rule: the cutover is the hour of the first shape-tagged operation
+  event on the instance, reported by `status`. The step that first stores a
+  shape-tagged hour finds it with one bounded aggregate over the raw events and
+  stores it in the totals database before its hours become visible; requests
+  read the stored value, which never moves. Until it is stored there is no
+  cutover. A
   period that ends at or before it, or any period while there is none, is a
   legacy period (all shapes, the legacy notice, class change and hotkey use
   not recorded, saved boxes in place of Model). A period that begins at or
   after it is never legacy. A period that holds it is partly legacy: figures
   as usual, the shape switch stays, and the page names the cutover day. Trend
   buckets follow the same rule; the bucket that holds the cutover is not
-  legacy. An empty period shows the empty state.
+  legacy. An empty period (no job work in the scope) shows only the empty
+  state: no legacy notice and no partly-legacy notice.
 - New measurements travel inside existing client event types (ADR 0002):
   payload fields on draw, paste, propagate, drag, resize and delete, plus three
   `debug:info` records (`team_analytics:class_change`,

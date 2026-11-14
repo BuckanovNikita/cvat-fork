@@ -50,10 +50,10 @@ def _rows(request: Request, by: str) -> dict:
         params.update(has_annotator=0, annotator=0)
     rows = request.sql.rows("read/list_rows.sql", params)
     all_shapes = not scope["bounding_boxes"] or legacy.legacy_period
-    first = rows[0] if rows else {"all_shapes": all_shapes, "legacy": False, "all_working_ms": 0}
+    first = rows[0] if rows else {"all_shapes": all_shapes, "legacy": False, "job_work": False, "all_working_ms": 0}
     return {
         "legacy": bool(first["legacy"]),
-        **legacy.describe(),
+        **legacy.describe(job_work=bool(first["job_work"])),
         "shapes": "all" if first["all_shapes"] else "bounding_boxes",
         "total": {"count": len(rows), "working_time_ms": int(first["all_working_ms"] or 0)},
         "rows": [

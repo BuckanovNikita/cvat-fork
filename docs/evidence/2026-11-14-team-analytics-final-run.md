@@ -276,6 +276,54 @@ and were not reproduced live; request desync behind a keep-alive production ingr
 not tested live (seam 1 shows one answer per request on the service itself); the C10
 latency gain was measured on the seam 1 ClickHouse only.
 
+## Second review round, 2026-11-14
+
+An independent reviewer read the review-fix commits and reported three findings, all from
+reading the code. Branch `ta/review-fixes-2`, from `feat/team-analytics-page` at `dca82a3`.
+Each finding was reproduced by a test that failed before its fix.
+
+| Finding | Outcome |
+| --- | --- |
+| F1 (medium): two replicas could hold the refresh lease at once. A renewal that failed for longer than the lease let the claim expire. Another replica then claimed it, and the first replica's next renewal brought its old claim back. | Fixed, `a130954`. A replica can lose the lease when its renewals fail or come back too late. It then stops its step before its next write, so it marks no hours. A claim renewed after it expired is never live again (`lock_holder.sql`). The wait for a hanging renewal at release is bounded at 2 s. New `LostLeaseTest` in `tests/test_lease.py` (3 tests) failed first. |
+| F2 (low): an empty period that holds the cutover showed the partly-legacy notice | Fixed, `f241f98`. The overview, details and full view answer `partly_legacy` only when the scope has job work. The page shows neither notice when there is no job work. The seam 1 test failed first for all three endpoints, and so did the seam 3 test in `cutover.test.cjs`. |
+| F3 (low): the cutover was provisional while history was processed | Fixed, `2c900d3`. The cutover is stored in table `cutover` of the totals database. The step that first stores a shape-tagged hour finds the cutover before it marks its hours. It runs one aggregate over the raw tagged operation events, bounded above by that hour plus one hour. Requests read the stored value, which never moves. `WhileHistoryIsProcessedTest` in `tests/test_cutover.py` (2 tests) failed first: it reported 2026-11-12 instead of 2026-11-02, and then 2026-10-25 after an earlier event was added. |
+
+Tests at `2c900d3` (supplied boundaries):
+
+| Check | Result |
+| --- | --- |
+| Seam 1, `verify/team_analytics_service.sh` | 265 tests, OK (1392 s) |
+| Seam 1, `tests.test_lease` and `tests.test_cutover` on `clickhouse/clickhouse-server:23.11-alpine` | 17 tests, OK (after the lease test change below) |
+| Seam 2, `node --test verify/team_analytics_logging.cjs` | 55 tests, all pass |
+| Seam 3, `node --test verify/team_analytics_page.cjs` | 206 tests, all pass |
+| `node --test verify/task_progress.cjs` with `BROWSER_BIN` set to Chrome | 21 tests, all pass |
+| Type check, `tsc -p cvat-ui/tsconfig.json` | exit 0 |
+
+After the run, the hanging-renewal test got an 8 s lease, so a stalled renewal leaves room for a
+whole refresh on a slow host. This changed the test only. `tests.test_lease` passed again on both
+ClickHouse images.
+
+The stack was upgraded in place, without `down`. `run.sh up` ran from the fix branch with UI image
+`cvat/ui:v2.82.0-team-analytics-review-fixes-2-2c900d3` and service image
+`cvat/team-analytics:v2.82.0-review-fixes-2-2c900d3`, both built at `2c900d3`. It ran
+08:39:42-08:44:46 UTC and ended with exit 0 and "final run passed"
+([`run-up-review-fixes-2.log`](2026-11-14-team-analytics-final-run/run-up-review-fixes-2.log)).
+The stack was left running.
+
+Checks by hand on the upgraded stack:
+
+- Before the upgrade, the totals' earliest shape-tagged hour and the raw events' earliest tagged
+  operation hour were both 2026-09-11 08:00. After it, table `cutover` held one row,
+  2026-09-11 08:00, stored at 08:40:24 UTC during the upgrade. As
+  `ta-admin`, `status` reported `cutover: {at: 2026-09-11T08:00:00+00:00}` and history complete.
+- As `ta-admin`, ta-org-a over the year (which holds the cutover) reported
+  `partly_legacy: true`. The same year with a project filter matching no work reported
+  `legacy: false`, `partly_legacy: false` and zero working time.
+
+Not verified live: lease loss and a hanging renewal (seam 1 only, with injected renewal failures);
+the cutover being found while history is still incomplete (the stack's history was already
+complete, so the live value only shows that the stored value matches the earlier one).
+
 ## What remains unverified
 
 - Detector use from the real UI with a deployed model function: only its record was sent,
