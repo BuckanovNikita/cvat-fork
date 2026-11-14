@@ -24,7 +24,8 @@ function perMethod(methods: CreationMethods): string {
 }
 
 // Headline figures for the scope: objects created and the average time to create one, with the
-// average of each creation method beneath it when the response has them.
+// average of each creation method beneath it when the response has them. Model objects are shown beside
+// the objects created, never inside them.
 function CreationHeadlineCards({ figures, methods }: Props): JSX.Element {
     const creation = operationRow(figures, 'creation');
     const objects = creation?.objects ?? 0;
@@ -37,7 +38,9 @@ function CreationHeadlineCards({ figures, methods }: Props): JSX.Element {
             >
                 <Text type='secondary'>{`${nouns} created`}</Text>
                 <div className='cvat-team-analytics-headline-value'>{shortCount(objects)}</div>
-                <Text type='secondary'>by annotators</Text>
+                <Text type='secondary'>
+                    {methods?.model ? `by annotators · plus ${shortCount(methods.model.objects)} by model` : 'by annotators'}
+                </Text>
             </section>
             <section className='cvat-team-analytics-card cvat-team-analytics-average-creation'>
                 <Text type='secondary'>{`Avg time per ${noun}`}</Text>
