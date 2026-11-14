@@ -451,7 +451,8 @@ class RunningServiceTest(HistoryCase):
                 time.sleep(0.5)
             self.assertTrue(history and history["complete"], history)
             rows = self.read(port, "overview", "&period=two_weeks")["by_annotator"]["rows"]
-            self.assertEqual(rows, [{"user_id": ALICE[0], "user_name": "alice", "working_time_ms": 101_000}])
+            self.assertEqual([(row["user_id"], row["user_name"], row["working_time_ms"]) for row in rows],
+                             [(ALICE[0], "alice", 101_000)])
         finally:
             process.terminate()
             try:
