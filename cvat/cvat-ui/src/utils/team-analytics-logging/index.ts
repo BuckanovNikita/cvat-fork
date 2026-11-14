@@ -111,22 +111,24 @@ export function alignmentFields(job: LoggingJob | null | undefined, object: Logg
 /**
  * Sends one `debug:info` record through the job's logger (so it carries project, task and job),
  * fire-and-forget. `count`, when given, must be an integer >= 0 and goes to the event's count column.
+ * The returned promise settles (never rejects) once the logger holds the record, so a caller that saves
+ * the logs right after can wait for it.
  */
 export function logRecord(
     job: LoggingJob | null | undefined,
     name: RecordName,
     payload: Record<string, string | number | boolean | Record<string, number>> = {},
     count?: number,
-): void {
-    guarded(undefined, () => {
-        if (!instrumented(job) || !Object.values(RECORD).includes(name)) return;
+): Promise<void> {
+    return guarded(Promise.resolve(), () => {
+        if (!instrumented(job) || !Object.values(RECORD).includes(name)) return Promise.resolve();
         const record: Record<string, unknown> = { ...payload, obj_name: name };
         if (count !== undefined) {
-            if (!isInteger(count) || count < 0) return;
+            if (!isInteger(count) || count < 0) return Promise.resolve();
             record.count = count;
         }
         delete record.client_id;
-        job.logger.log(EventScope.debugInfo, record).catch((error: unknown) => {
+        return job.logger.log(EventScope.debugInfo, record).then(() => undefined, (error: unknown) => {
             if (!switchedOff()) recordFailure(error);
         });
     });

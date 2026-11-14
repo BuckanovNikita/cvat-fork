@@ -10,7 +10,10 @@
 #   run.sh check-event    send a client event through the API and find it in ClickHouse
 #   run.sh check-tracer   load working time as real accounts, wait for the scheduled refresh,
 #                         check the service's figures and refusals, then the page in a browser
-#   run.sh forward        (re)start the port-forward of a running stack
+#   run.sh check-final    the final run: the real UI annotates in a browser and its records arrive,
+#                         figures for that work and for loaded volume, every account and endpoint,
+#                         the page, then the page and annotation with the service stopped
+#   run.sh forward       (re)start the port-forward of a running stack
 #   run.sh status         what exists now
 #   run.sh fetch-chart    only download the chart and build its pinned dependencies
 set -euo pipefail
@@ -222,11 +225,16 @@ apply_service() {
         sed -e "s|image: cvat/team-analytics:v2.82.0|image: $TA_SERVICE_IMAGE|" \
             -e "s|imagePullPolicy: IfNotPresent|imagePullPolicy: Never|" \
             -e "s|http://cvat-backend-service:8080|http://$TA_RELEASE-backend-service:8080|" \
-            -e "s|TEAM_ANALYTICS_REFRESH_INTERVAL_S: \"600\"|TEAM_ANALYTICS_REFRESH_INTERVAL_S: \"$TA_REFRESH_INTERVAL_S\"|")"
+            -e "s|TEAM_ANALYTICS_REFRESH_INTERVAL_S: \"600\"|TEAM_ANALYTICS_REFRESH_INTERVAL_S: \"$TA_REFRESH_INTERVAL_S\"|" \
+            -e "s|TEAM_ANALYTICS_TECHNICAL_ACCOUNTS: \"\"|TEAM_ANALYTICS_TECHNICAL_ACCOUNTS: \"$TA_TECHNICAL_ACCOUNTS\"|")"
     grep -q "image: $TA_SERVICE_IMAGE\$" <<<"$rendered" && grep -q "INTERVAL_S: \"$TA_REFRESH_INTERVAL_S\"" <<<"$rendered" \
+        && grep -q "TECHNICAL_ACCOUNTS: \"$TA_TECHNICAL_ACCOUNTS\"" <<<"$rendered" \
         || die "could not set the service image or refresh interval in team-analytics/k8s"
     log "applying the Team Analytics service ($TA_SERVICE_IMAGE, refresh every $TA_REFRESH_INTERVAL_S s)"
     "${K[@]}" -n "$TA_NAMESPACE" apply -f - <<<"$rendered" >&2
+    # the service reads its ConfigMap at start: a changed configuration restarts it on a rerun
+    "${K[@]}" -n "$TA_NAMESPACE" patch deploy team-analytics --type merge -p \
+        "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"ta-stack/config-revision\":\"$(sha256sum <<<"$rendered" | cut -c1-12)\"}}}}}" >&2
 }
 
 apply_proxy() {
@@ -326,7 +334,7 @@ check_tracer() {
     }
     # log lines start with the container's UTC time, so they compare as text
     refreshes_since() {
-        "${K[@]}" -n "$TA_NAMESPACE" logs "$pod" | grep ' refreshed ' | awk -v t="$1" '$1 " " substr($2, 1, 8) >= t' | wc -l
+        "${K[@]}" -n "$TA_NAMESPACE" logs "$pod" | { grep ' refreshed ' || true; } | awk -v t="$1" '$1 " " substr($2, 1, 8) >= t' | wc -l
     }
     started="$(container_started)"
     seeded_at="$(date -u '+%Y-%m-%d %H:%M:%S')"
@@ -339,12 +347,57 @@ check_tracer() {
         [ "$refreshes" -ge 1 ] && break
         sleep 5
     done
-    "${K[@]}" -n "$TA_NAMESPACE" logs "$pod" | grep ' refreshed ' | tail -n 3 >&2
+    "${K[@]}" -n "$TA_NAMESPACE" logs "$pod" | { grep ' refreshed ' || true; } | tail -n 3 >&2
     log "service container running since $started; $refreshes scheduled refreshes since the load at $seeded_at UTC"
     [ -n "$started" ] && [ "$started" = "$(container_started)" ] && [ "$refreshes" -ge 1 ] \
         || die "the figures did not come from a scheduled refresh of the running service"
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
         nice -n19 node "$HERE/browser_check.cjs"
+}
+
+# The final run (ticket 18): the real UI annotates in a browser and its records reach the events
+# table; the figures for that work and for loaded volume; every account against every endpoint; the
+# page in a browser; then, with the service stopped, the error panel and annotation unaffected.
+# Every run annotates a new project, so it can be repeated on the same stack.
+final_py() {
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
+        TA_NAMESPACE="$TA_NAMESPACE" TA_RELEASE="$TA_RELEASE" python3 -I -B "$HERE/final_run.py" "$@"
+}
+final_browser() {
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
+        nice -n19 node "$HERE/final_browser.cjs" "$@"
+}
+service_replicas() {
+    "${K[@]}" -n "$TA_NAMESPACE" scale deploy/team-analytics --replicas="$1" >&2
+    if [ "$1" = 0 ]; then
+        "${K[@]}" -n "$TA_NAMESPACE" wait --for=delete pod -l app.kubernetes.io/name=team-analytics --timeout=5m >&2
+    else
+        "${K[@]}" -n "$TA_NAMESPACE" rollout status deploy/team-analytics --timeout=10m >&2
+    fi
+}
+
+check_final() {
+    local state="$STATE_DIR/final-ui.json" page="$STATE_DIR/final-page.json"
+    mkdir -p "$STATE_DIR"
+    log "final run: synthetic volume in ta-org-v (history fills while the browser works)"
+    final_py load-volume
+    log "final run: the real UI annotates a new job in ta-org-c"
+    final_py prepare-ui >"$state"
+    final_browser annotate "$state"
+    final_py check-ui-records "$state"
+    log "final run: figures, access, page"
+    final_py check-ui-figures "$state" $((TA_REFRESH_INTERVAL_S * 5 + 120))
+    final_py check-volume 1200
+    final_py check-access
+    final_py page-context "$state" >"$page"
+    final_browser page "$page"
+    log "final run: the service stopped"
+    trap 'service_replicas 1' EXIT
+    service_replicas 0
+    final_browser service-down "$state"
+    service_replicas 1
+    trap - EXIT
+    log "final run passed"
 }
 
 # ---------------------------------------------------------------- teardown
@@ -386,6 +439,8 @@ up() {
     render >"$RENDERED"
     guard_render "$RENDERED"
     pull_images "$RENDERED"
+    rm -f "$RENDERED"
+    trap - EXIT
     ensure_namespace
     install_chart
     apply_service
@@ -395,7 +450,8 @@ up() {
     seed
     check_event
     check_tracer
-    log "up: $BASE_URL (accounts: see README.md, password \$TA_SEED_PASSWORD)"
+    check_final
+    log "up:$BASE_URL (accounts: see README.md, password \$TA_SEED_PASSWORD)"
 }
 
 case "${1:-}" in
@@ -405,8 +461,9 @@ case "${1:-}" in
     seed) seed ;;
     check-event) check_event ;;
     check-tracer) check_tracer ;;
+    check-final) check_final ;;
     forward) start_port_forward ;;
     status) status ;;
     fetch-chart) build_chart; echo "$CHART_DIR" ;;
-    *) sed -n '5,15p' "$0" >&2; exit 2 ;;
+    *) sed -n '5,18p' "$0" >&2; exit 2 ;;
 esac

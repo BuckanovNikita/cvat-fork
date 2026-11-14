@@ -45,8 +45,10 @@ async function launch(profile) {
     }
     let nextId = 0;
     const pending = new Map();
+    const listeners = new Set(); // DevTools events (final_browser.cjs watches network responses)
     socket.onmessage = ({ data }) => {
         const message = JSON.parse(data);
+        if (message.method) listeners.forEach((listener) => listener(message));
         const waiter = pending.get(message.id);
         if (!waiter) return;
         pending.delete(message.id);
@@ -68,7 +70,7 @@ async function launch(profile) {
         await exited;
         clearTimeout(timer);
     };
-    return { send, close, chrome };
+    return { send, close, chrome, listeners };
 }
 
 async function openPage(browser) {
@@ -108,24 +110,24 @@ async function openPage(browser) {
         fs.mkdirSync(SHOTS, { recursive: true });
         fs.writeFileSync(path.join(SHOTS, `${name}.png`), Buffer.from(data, 'base64'));
     };
-    return { evaluate, waitFor, goto, type, screenshot };
+    return { evaluate, waitFor, goto, type, screenshot, send, sessionId };
 }
 
 const LINK = '[...document.querySelectorAll(".cvat-header a, .cvat-header button")]'
     + '.find((e) => e.textContent.trim() === "Team Analytics")';
 
-// Signs in through the login form with ta-org-a as the organization CVAT opens with.
-async function signIn(browser, username) {
+// Signs in through the login form with ta-org-a (or `org`) as the organization CVAT opens with.
+async function signIn(browser, username, org = ORG) {
     const page = await openPage(browser);
     await page.goto(`${BASE}/auth/login`);
-    await page.evaluate(`localStorage.setItem("currentOrganization", ${JSON.stringify(ORG)})`);
+    await page.evaluate(`localStorage.setItem("currentOrganization", ${JSON.stringify(org)})`);
     await page.type('#credential', username);
     await page.type('#password', PASSWORD);
     await page.evaluate('document.querySelector(".cvat-credentials-action-button").click()');
     await page.waitFor('location.pathname !== "/auth/login" && !!document.querySelector(".cvat-header")', `${username} signed in`);
     await page.waitFor(
-        `document.querySelector(".cvat-header-menu-user-dropdown-organization")?.textContent.trim() === ${JSON.stringify(ORG)}`,
-        `${username} in ${ORG}`,
+        `document.querySelector(".cvat-header-menu-user-dropdown-organization")?.textContent.trim() === ${JSON.stringify(org)}`,
+        `${username} in ${org}`,
     );
     return page;
 }
@@ -187,7 +189,11 @@ async function main() {
     }
 }
 
-main().catch((error) => {
-    process.stderr.write(`browser check failed: ${error.message}\n`);
-    process.exit(1);
-});
+module.exports = { launch, openPage, signIn, check, sleep, log };
+
+if (require.main === module) {
+    main().catch((error) => {
+        process.stderr.write(`browser check failed: ${error.message}\n`);
+        process.exit(1);
+    });
+}

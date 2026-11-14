@@ -246,6 +246,8 @@ $trend-control-border: $player-slider-color;
 .cvat-team-analytics-trend-values {
     margin-top: $grid-unit-size;
     font-size: 13px;
+    // a column per compared line: in a narrow card the values scroll sideways inside it
+    overflow-x: auto;
 
     summary {
         cursor: pointer;

@@ -7,7 +7,11 @@
     "ta-worker": {"admin": false},
     "ta-outsider": {"admin": false},
     "ta-owner-b": {"admin": false},
-    "ta-maintainer-b": {"admin": false}
+    "ta-maintainer-b": {"admin": false},
+    "ta-owner-c": {"admin": false},
+    "ta-worker-c": {"admin": false},
+    "ta-bot": {"admin": false},
+    "ta-owner-v": {"admin": false}
   },
   "organizations": {
     "ta-org-a": {
@@ -24,6 +28,20 @@
       "members": {
         "ta-owner-b": "owner",
         "ta-maintainer-b": "maintainer"
+      }
+    },
+    "ta-org-c": {
+      "name": "Team Analytics C (final run, real UI)",
+      "members": {
+        "ta-owner-c": "owner",
+        "ta-worker-c": "worker",
+        "ta-bot": "maintainer"
+      }
+    },
+    "ta-org-v": {
+      "name": "Team Analytics V (final run, volume)",
+      "members": {
+        "ta-owner-v": "owner"
       }
     }
   }

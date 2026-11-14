@@ -266,6 +266,10 @@ def check_tracer(timeout_s: int) -> None:
     for username, org, want_status, want_body in cases:
         status, body = Session(username).call(OVERVIEW + urllib.parse.quote(org))
         got = figures(body) if status == 200 else body.get("error") if isinstance(body, dict) else body
+        if status == 200 and not org:
+            # instance scope also holds the final run's organizations (final_run.py), whose people
+            # work less than these annotators, so the tracer rows lead the list
+            got = got[: len(want_body)]
         check(
             (status, got) == (want_status, want_body),
             f"{username} org={org!r}: {status} {got}, expected {want_status} {want_body}",

@@ -157,6 +157,52 @@ Check policy compilation with the same target helpers. If strict OPA lint fails,
 compare stock and patched rules before classifying an inherited warning. Retain
 the stock-versus-patched distinction in the recorded result.
 
+### Team Analytics
+
+Account for every file in the TA-1 integration map. Check the upstream
+dependencies listed there against the target release: the `events` table
+schema, the server's allowed client scopes and working-time calculation,
+Vector's field allowlist, the cvat-core logger and plugin wrapper, saved
+annotation event names, the memberships policy, the project `id` filter,
+CVAT's minimum app width, and the shortcut action names. A changed name breaks
+figures without an error, so compare them, not only the build.
+
+Run the three seams. They need only Docker and `cvat/node_modules`:
+
+```bash
+verify/team_analytics_service.sh               # service against a real ClickHouse
+node --test verify/team_analytics_logging.cjs  # events the UI logging sends
+node --test verify/team_analytics_page.cjs     # page with supplied responses
+```
+
+The service tests run in a container of the stock server image. Set
+`CLICKHOUSE_IMAGE` to the ClickHouse version of the target chart. If the
+server image's Python or `clickhouse_connect` changed, check that the service
+still needs nothing beyond them.
+
+Then build both images from the integrated tree and run the stack once
+(`verify/team-analytics-stack/README.md`; reserved host port 8490):
+
+```bash
+IMAGE=cvat/ui:<tag> ./build-ui.sh
+IMAGE=cvat/team-analytics:<tag> ./build-team-analytics-service.sh
+TA_UI_IMAGE=cvat/ui:<tag> TA_SERVICE_IMAGE=cvat/team-analytics:<tag> \
+    TA_SCREENSHOT_DIR=<dir> verify/team-analytics-stack/run.sh cycle
+```
+
+For a new release, update the stack's pinned upstream commit, `Chart.lock`,
+`chart-deps.sha256` and the approved image list in `stack.env` together. `cycle`
+brings up a disposable CVAT and the service in their own namespace. It sends
+events, waits for the service's own scheduled refresh, and checks figures and
+refusals for every role. Its final run has the real UI annotate in headless
+Chrome and finds each new record in ClickHouse. It checks the figures for that
+work and for a synthetic hundred annotators and forty long-named projects. It
+drives the page (period, filters, full view, trend comparison, narrow window)
+and stops the service to check the error panel and annotation. Then the stack
+is torn down. Inspect the screenshots as well as the exit status. The
+detector record is sent through the API, because the stack runs no model
+function. Record what ran and what stayed unverified in dated evidence.
+
 ### Packaging and integration
 
 Check shell syntax and render applicable Compose configurations without starting

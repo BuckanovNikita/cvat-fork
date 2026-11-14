@@ -1,0 +1,7 @@
+down start 2026-11-14 04:50:21 UTC
+[ta-stack] stopping port-forward (pid 3154515)
+[ta-stack] deleting namespace cvat-ta-it-nkt (with every volume claim in it)
+namespace "cvat-ta-it-nkt" deleted
+[ta-stack] nothing of cvat-ta-it-nkt remains
+exit 0
+down end 2026-11-14 04:51:14 UTC
