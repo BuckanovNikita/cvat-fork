@@ -13,21 +13,29 @@
 #   run.sh check-final    the final run: the real UI annotates in a browser and its records arrive,
 #                         figures for that work and for loaded volume, every account and endpoint,
 #                         the page, then the page and annotation with the service stopped
-#   run.sh forward       (re)start the port-forward of a running stack
+#   run.sh check-policies fetch the policy bundle the running server serves and check both
+#                         patched policies in it, each by itself
+#   run.sh forward        (re)start the port-forward of a running stack
 #   run.sh status         what exists now
-#   run.sh fetch-chart    only download the chart and build its pinned dependencies
+#   run.sh preflight      what up does before it touches the cluster: the server image check,
+#                         the chart build and the render checks; creates and pulls nothing
+#   run.sh build-chart    only build the import's chart with its pinned dependencies
+#   run.sh render         print the chart render that up checks and installs (unchecked)
+#   run.sh check-render F apply up's render checks to the render in file F
+#   run.sh check-bundle   check a policy bundle (tar.gz) given on stdin as check-policies does,
+#                         e.g. one from verify/policy_bundle.sh from-image IMAGE
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVICE_K8S="$HERE/../../team-analytics/k8s"
+ROOT="$(cd "$HERE/../.." && pwd)"
+SERVICE_K8S="$ROOT/team-analytics/k8s"
+# The chart of the import, and the analytics component its analytics link points to.
+IMPORT_DIR="$ROOT/cvat"
+CHART_PATHS=(helm-chart components/analytics)
 # shellcheck source=stack.env
 . "$HERE/stack.env"
 
 MANAGED_BY=cvat-fork-team-analytics-stack
-UPSTREAM_DIR="$TA_CACHE_DIR/upstream-$TA_UPSTREAM_COMMIT"
-LOCK_SUM="$(sha256sum "$HERE/Chart.lock" | cut -c1-12)"
-BUILD_DIR="$TA_CACHE_DIR/build-$TA_UPSTREAM_COMMIT-$LOCK_SUM"
-CHART_DIR="$BUILD_DIR/helm-chart"
 STATE_DIR="$TA_CACHE_DIR/state/$TA_NAMESPACE"
 PF_STATE="$STATE_DIR/port-forward"
 BASE_URL="http://localhost:$TA_HOST_PORT"
@@ -67,29 +75,35 @@ esac
 
 # ---------------------------------------------------------------- chart
 
-# Downloads helm-chart/ and the components/analytics/ it links to from the pinned upstream
-# commit into the cache (once).
-fetch_upstream() {
-    [ -f "$UPSTREAM_DIR/helm-chart/Chart.yaml" ] && return 0
-    mkdir -p "$TA_CACHE_DIR"
-    local tmp top="cvat-$TA_UPSTREAM_COMMIT"
-    tmp="$(mktemp -d "$TA_CACHE_DIR/fetch.XXXXXX")"
-    log "downloading upstream $TA_UPSTREAM_COMMIT (once)"
-    nice -n19 curl -fsSL "$TA_UPSTREAM_ARCHIVE_URL" -o "$tmp/src.tar.gz"
-    nice -n19 tar -xzf "$tmp/src.tar.gz" -C "$tmp" --wildcards "$top/helm-chart/*" "$top/components/analytics/*"
-    rm -rf "$UPSTREAM_DIR"
-    mv "$tmp/$top" "$UPSTREAM_DIR"
-    rm -rf "$tmp"
+# A hash of the import's chart files as they are in the working tree, and of the pinned lock.
+# The build directory is named by it, so a change to either builds the chart afresh.
+chart_source_sum() {
+    {
+        tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - -C "$IMPORT_DIR" "${CHART_PATHS[@]}"
+        cat "$HERE/Chart.lock"
+    } | sha256sum | cut -c1-16
 }
 
-# Copies the pristine chart, adds the pinned Chart.lock and downloads exactly the locked
-# dependency versions (helm dependency build refuses a lock that does not match Chart.yaml).
+# Sets CHART_DIR to the build of the import's chart, building it first when needed: a copy of
+# the chart and of the analytics component it links to (helm dependency build writes into the
+# chart directory; the import stays untouched), the pinned Chart.lock, and exactly the locked
+# dependency versions (helm dependency build refuses a lock that does not match Chart.yaml),
+# checked against chart-deps.sha256.
 build_chart() {
-    fetch_upstream
-    [ -f "$BUILD_DIR/.complete" ] && return 0
-    local tmp
+    local sum build tmp p
+    [ -f "$IMPORT_DIR/helm-chart/Chart.yaml" ] || die "no chart in the import at $(show_path "$IMPORT_DIR/helm-chart")"
+    sum="$(chart_source_sum)"
+    build="$TA_CACHE_DIR/chart-$sum"
+    CHART_DIR="$build/helm-chart"
+    [ -f "$build/.complete" ] && return 0
+    mkdir -p "$TA_CACHE_DIR"
     tmp="$(mktemp -d "$TA_CACHE_DIR/build.XXXXXX")"
-    cp -a "$UPSTREAM_DIR/." "$tmp/"
+    for p in "${CHART_PATHS[@]}"; do
+        mkdir -p "$tmp/$(dirname "$p")"
+        cp -a "$IMPORT_DIR/$p" "$tmp/$p"
+    done
+    [ -z "$(find "$tmp/helm-chart" -maxdepth 1 \( -name Chart.lock -o -name charts \))" ] \
+        || die "the import's chart directory holds a Chart.lock or charts/; the lock is the stack's own"
     cp "$HERE/Chart.lock" "$tmp/helm-chart/Chart.lock"
     log "building chart dependencies from the pinned Chart.lock"
     # A private repository list, so the user's own helm repositories stay untouched.
@@ -108,15 +122,17 @@ build_chart() {
         || die "chart dependency archives differ from chart-deps.sha256"
     [ "$(find "$tmp/helm-chart/charts" -name '*.tgz' | wc -l)" = "$(wc -l <"$HERE/chart-deps.sha256")" ] \
         || die "unexpected chart dependency archives"
-    rm -rf "$BUILD_DIR"
-    mv "$tmp" "$BUILD_DIR"
-    touch "$BUILD_DIR/.complete"
+    [ "$(chart_source_sum)" = "$sum" ] || die "the import's chart changed during the build"
+    rm -rf "$build"
+    mv "$tmp" "$build"
+    touch "$build/.complete"
 }
 
 helm_args() {
     local ui_repo="${TA_UI_IMAGE%:*}" ui_tag="${TA_UI_IMAGE##*:}"
     printf '%s\n' "$TA_RELEASE" "$CHART_DIR" --namespace "$TA_NAMESPACE" \
         -f "$HERE/values.yaml" \
+        --set "cvat.backend.image=${TA_SERVER_IMAGE%:*}" --set "cvat.backend.tag=${TA_SERVER_IMAGE##*:}" \
         --set "cvat.frontend.image=$ui_repo" --set "cvat.frontend.tag=$ui_tag" \
         --set "grafana.grafana\.ini.server.root_url=$BASE_URL/analytics"
 }
@@ -145,6 +161,23 @@ guard_render() {
     [ "$bad" = 0 ] || die "render refused"
 }
 
+# The backend (server, workers, initializer and their init containers) runs the fork server
+# image and no other server image: a render that falls back to the stock image is refused,
+# although that image may be local and is approved.
+check_backend_image() {
+    local rendered="$1" image found=0 bad=0
+    for image in $(render_images "$rendered"); do
+        image="$(normalize_image "$image")"
+        if [ "$image" = "$TA_SERVER_IMAGE" ]; then
+            found=1
+        elif [ "${image%%[:@]*}" = cvat/server ]; then
+            log "server image other than the fork server image in render: $image"; bad=1
+        fi
+    done
+    [ "$found" = 1 ] || { log "the fork server image $TA_SERVER_IMAGE is not in the render"; bad=1; }
+    [ "$bad" = 0 ] || die "render refused"
+}
+
 render_images() { grep -h '^ *image: ' "$1" | sed -E 's/^ *image: *"?([^"]+)"?.*/\1/' | sort -u; }
 normalize_image() { local i="${1#docker.io/}"; echo "${i#library/}"; }
 image_local() { docker image inspect "$1" >/dev/null 2>&1 || docker image inspect "$(normalize_image "$1")" >/dev/null 2>&1; }
@@ -153,6 +186,13 @@ approved() {
     n="$(normalize_image "$1")"
     for a in $TA_APPROVED_PULLS; do [ "$a" = "$n" ] && return 0; done
     return 1
+}
+
+# The fork server image (ADR 0004, build-server.sh) is in no registry: without it locally the
+# release could not start, so up stops here, before anything is built, pulled or created.
+check_server_image() {
+    image_local "$TA_SERVER_IMAGE" \
+        || die "fork server image $TA_SERVER_IMAGE is not local (IMAGE=$TA_SERVER_IMAGE ./build-server.sh); it is never pulled"
 }
 
 # Pulls missing approved images one at a time, at low priority.
@@ -422,6 +462,44 @@ check_final() {
     log "final run passed"
 }
 
+# ---------------------------------------------------------------- policies
+
+# The policies the running server serves to OPA (/api/auth/rules, the bundle the chart's OPA
+# polls) are checked one at a time: each must equal the import's patched file
+# (verify/policy_bundle.sh check) and carry the patch's marker, so a bundle in which either
+# policy is the stock one fails.
+POLICY_MARKER='Local patch (role floor)'
+check_bundle() {
+    local work name status=0
+    work="$(mktemp -d)"
+    cat >"$work/bundle.tar.gz"
+    "$ROOT/verify/policy_bundle.sh" check <"$work/bundle.tar.gz" >&2 || status=1
+    mkdir "$work/bundle"
+    tar -xzf "$work/bundle.tar.gz" -C "$work/bundle" || status=1
+    for name in issues.rego comments.rego; do
+        if ! grep -qF "$POLICY_MARKER" "$IMPORT_DIR/cvat/apps/engine/rules/$name"; then
+            log "the import's $name lacks the patch marker '$POLICY_MARKER'"; status=1
+        elif ! grep -qF "$POLICY_MARKER" "$work/bundle/rules/$name" 2>/dev/null; then
+            log "rules/$name in the bundle is not the patched policy (missing, or the stock one)"; status=1
+        else
+            log "rules/$name in the bundle is the patched policy"
+        fi
+    done
+    rm -rf "$work"
+    [ "$status" = 0 ] || die "policy bundle check failed"
+    log "policy bundle check passed"
+}
+
+check_policies() {
+    local bundle rc=0
+    bundle="$(mktemp)"
+    curl -fsS "$BASE_URL/api/auth/rules" -o "$bundle" || { rm -f "$bundle"; die "could not fetch $BASE_URL/api/auth/rules"; }
+    log "checking the policy bundle served at $BASE_URL/api/auth/rules"
+    (check_bundle <"$bundle") || rc=$?
+    rm -f "$bundle"
+    [ "$rc" = 0 ] || exit "$rc"
+}
+
 # ---------------------------------------------------------------- teardown
 
 teardown() {
@@ -454,12 +532,20 @@ status() {
     return 0
 }
 
-up() {
+# What up does before its first change to the cluster or to the local images: the server image,
+# the chart build, the render and its checks. Leaves the render in RENDERED for pull_images.
+preflight() {
+    check_server_image
     build_chart
     RENDERED="$(mktemp)"
     trap 'rm -f "$RENDERED"' EXIT
     render >"$RENDERED"
     guard_render "$RENDERED"
+    check_backend_image "$RENDERED"
+}
+
+up() {
+    preflight
     pull_images "$RENDERED"
     rm -f "$RENDERED"
     trap - EXIT
@@ -469,6 +555,7 @@ up() {
     apply_proxy
     wait_ready
     start_port_forward
+    check_policies
     seed
     check_event
     check_tracer
@@ -484,8 +571,14 @@ case "${1:-}" in
     check-event) check_event ;;
     check-tracer) check_tracer ;;
     check-final) check_final ;;
+    check-policies) check_policies ;;
+    check-bundle) check_bundle ;;
     forward) start_port_forward ;;
     status) status ;;
-    fetch-chart) build_chart; show_path "$CHART_DIR" ;;
-    *) sed -n '5,18p' "$0" >&2; exit 2 ;;
+    preflight) preflight; log "preflight passed; nothing was created or pulled" ;;
+    build-chart) build_chart; show_path "$CHART_DIR" ;;
+    render) build_chart; render ;;
+    check-render) [ -f "${2:-}" ] || die "usage: run.sh check-render FILE"
+        guard_render "$2"; check_backend_image "$2"; log "render accepted" ;;
+    *) sed -n '5,/^set -euo/p' "$0" | sed '$d' >&2; exit 2 ;;
 esac
