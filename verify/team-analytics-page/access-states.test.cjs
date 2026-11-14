@@ -2,10 +2,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, domAvailable, loadPage, mount, suppliedFetch,
+    React, loadPage, mount, suppliedFetch,
 } = require('./helper.cjs');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 async function visit(organization, answer) {
     const { fetch, requests } = suppliedFetch(() => answer);
@@ -25,7 +23,7 @@ async function visit(organization, answer) {
 
 const ROLES = /This page is for administrators and for owners and maintainers of the current organization\./;
 
-domTest('an ordinary annotator without an organization sees that the page is not available and for whom', async () => {
+test('an ordinary annotator without an organization sees that the page is not available and for whom', async () => {
     const { text, requests } = await visit(null, { status: 403, body: { error: 'forbidden' } });
     assert.equal(new URL(requests[0].url, 'http://localhost').searchParams.get('org'), '');
     assert.match(text, /Team analytics is not available/);
@@ -34,7 +32,7 @@ domTest('an ordinary annotator without an organization sees that the page is not
     assert.doesNotMatch(text, /All organizations and personal workspaces/);
 });
 
-domTest('a worker or supervisor of the selected organization sees that the page is not available', async () => {
+test('a worker or supervisor of the selected organization sees that the page is not available', async () => {
     const { text, html } = await visit('team-org', { status: 403, body: { error: 'forbidden' } });
     assert.match(text, /Team analytics is not available/);
     assert.match(text, ROLES);
@@ -42,7 +40,7 @@ domTest('a worker or supervisor of the selected organization sees that the page 
     assert.doesNotMatch(html, /cvat-team-analytics-annotator-row/);
 });
 
-domTest('an owner or maintainer without an organization is asked to select one, with no scope claimed', async () => {
+test('an owner or maintainer without an organization is asked to select one, with no scope claimed', async () => {
     const { text, html } = await visit(null, { status: 403, body: { error: 'organization_required' } });
     assert.ok(html.includes('cvat-team-analytics-select-organization'));
     assert.match(text, /Select an organization/);
@@ -51,14 +49,14 @@ domTest('an owner or maintainer without an organization is asked to select one, 
     assert.doesNotMatch(text, /not available/);
 });
 
-domTest('an ended session asks to sign in again instead of naming the roles', async () => {
+test('an ended session asks to sign in again instead of naming the roles', async () => {
     const { text, html } = await visit('team-org', { status: 401, body: { error: 'not_authenticated' } });
     assert.ok(html.includes('cvat-team-analytics-signed-out'));
     assert.match(text, /Sign in again/);
     assert.doesNotMatch(text, ROLES);
 });
 
-domTest('when CVAT cannot be reached behind the service the page shows the error panel, no figures', async () => {
+test('when CVAT cannot be reached behind the service the page shows the error panel, no figures', async () => {
     const { text, html } = await visit('team-org', { status: 503, body: { error: 'cvat_unavailable' } });
     assert.ok(html.includes('cvat-team-analytics-error'));
     assert.match(text, /Team analytics could not be loaded/);
@@ -93,7 +91,7 @@ async function visitOpenPage(answers, search = '') {
     }
 }
 
-domTest('a refusal of the trends, details, list or status request takes the whole page to that refusal', async (t) => {
+test('a refusal of the trends, details, list or status request takes the whole page to that refusal', async (t) => {
     const cases = [
         ['trends', { status: 403, body: { error: 'forbidden' } }, '', /Team analytics is not available/],
         ['details', { status: 401, body: { error: 'not_authenticated' } }, '', /Sign in again/],
@@ -112,7 +110,7 @@ domTest('a refusal of the trends, details, list or status request takes the whol
     }
 });
 
-domTest('a trends request that fails without a refusal keeps the figures shown', async () => {
+test('a trends request that fails without a refusal keeps the figures shown', async () => {
     const page = await visitOpenPage({ trends: { status: 503, body: { error: 'cvat_unavailable' } } });
     assert.match(page.text, /alice/);
     assert.match(page.text, /Trends could not be loaded/);
