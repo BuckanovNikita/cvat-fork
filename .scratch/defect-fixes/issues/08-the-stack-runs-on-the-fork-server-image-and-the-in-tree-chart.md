@@ -33,3 +33,5 @@
   6. `verify/team-analytics-stack/run.sh down` prints "nothing of ... remains"; afterwards `get ns` finds no namespace and `get pv` no volume bound to it (criterion 6).
   7. `grep -c -i -F "$HOME" <log>` and `grep -c -i -F "/home/$(id -un)" <log>` print 0 (criterion 7).
   8. The run is added to the evidence file above (criterion 9).
+
+2026-11-14: Part one merged into `feat/team-analytics-page` as `220b3aa7`; `bash -n verify/team-analytics-stack/run.sh` passes on the merged tree, the launcher was not run. Part two, the fresh `up` and `down` of the live criteria, is outstanding, so the ticket stays open. Evidence: `docs/evidence/2026-11-14-stack-fork-image-in-tree-chart.md`.
