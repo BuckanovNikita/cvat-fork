@@ -139,3 +139,19 @@ specification (TA-1, "Known limit of the stored totals") says so.
 - The whole seam 1 suite: it is run on the integration branch after this
   package's tickets are merged.
 - The second ClickHouse image.
+
+## Independent review, 2026-11-15
+
+An independent review of the counting changes of tickets 19, 21 and 22 found the
+group-move rule sound through the read interface (a group record and its grabbed
+drag either side of a window or hour edge give 3 alignments once; a duplicated
+group record counts twice, as any duplicated record does). Three of its findings
+concern this ticket, all recorded in documents with no code change: the canvas's
+dispatch order as an upstream dependency (fork specification and
+`docs/upstream-upgrade.md`), the old rule's effect on a group drag followed by a
+drag of the grabbed box (stored as 2 under the old rule, 3 under the new), and
+two limits for the owner: a refused group record after the mark is set loses
+the gesture's objects, and a selection-box move adds one `drag:object` to
+CVAT's own log. The review and what was done about each finding are in
+`docs/evidence/2026-11-14-frame-navigation-hotkeys.md` ("Independent review,
+2026-11-15").

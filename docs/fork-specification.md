@@ -356,6 +356,39 @@ Behavior to preserve:
   one `drag:object` with `group` = `move` and the objects moved in its count;
   CVAT's own drag of the grabbed object is still logged, carries `group` =
   `grabbed` and is no operation.
+- Effect of the group event on CVAT's own logging (for the owner to weigh
+  against "CVAT's own event logging unchanged"): nothing CVAT logged is
+  removed, reordered or delayed, and nothing fails for the annotator. A group
+  drag adds the one group `drag:object` beside CVAT's own drag of the grabbed
+  object. A move of the selection box, which CVAT did not log, now adds one
+  `drag:object` where CVAT logged nothing. The logger merges consecutive
+  frame-change records, and any other record ends that merging, as CVAT's own
+  drags already do: frame steps either side of such a move become two
+  `change:frame` rows where they were one. CVAT's own analytics read the added
+  `drag:object` rows like any other drag. The server's working time is
+  unchanged. The stock serializer accepts `count` on any scope.
+- Known limit of the group event: the grabbed mark is set as soon as the group
+  record is handed to the logger, whether or not the logger later refuses it.
+  If the group record is refused after the mark is set, the grabbed object's
+  drag is still no operation and the gesture's objects are lost from the
+  figures. No real path to this is known: the stock logger refuses only a
+  payload that is not an object. If the group logging throws instead, no mark
+  is set and the grabbed drag counts as before. The two records keep their
+  order (group record first).
+- A frame-navigation hotkey counts one hotkey action for each frame change its
+  own handler starts that shows another frame. A change counts as the key's
+  when `changeFrameAsync` starts in the key's own turn: while its handler runs
+  or in the microtasks after it, where the frame and annotation searches
+  resolve. A press whose handler starts no change (nothing found, no further
+  key frame, the first or last frame, navigation blocked, a repeat while the
+  frame loads) counts nothing, and a change started later by anything else (a
+  playback step, the frame number field, the slider, a search already
+  running) is never credited to it. Known limit: a frame search waits for the
+  server while cvat-core's frame meta is being fetched or saved (its hourly
+  reload during a frame load, a save after frames were deleted or restored,
+  or meta not yet loaded). A key pressed then starts its change after its
+  turn, and that change counts nothing. This undercounts by at most one per
+  such press and never credits the wrong key.
 - Known limit of the stored totals: a changed counting rule (the redo rule,
   the group-move rule) does not recompute hours already stored. The trailing
   refresh window follows the new rule from the next refresh. An older day
@@ -369,7 +402,18 @@ Behavior to preserve:
   the same, since the events carry no group. Hours whose events came from a UI
   with the group event but were stored by a service without the group-move
   rule hold a group drag as two alignments and a selection-box move as one;
-  computing them again gives one per object moved.
+  computing them again gives one per object moved. Under that old rule the
+  grabbed object's drag also keeps its object reference, so a later drag of
+  the same object continues its run: a group drag of two boxes followed by a
+  drag of the grabbed box is stored as 2 alignments under the old rule and 3
+  under the new one.
+- Known limit of stored hotkey counts: the input summary carries only counts.
+  Summaries recorded before the frame-navigation rule, or later by a browser
+  still running an older UI bundle (until the page is reloaded), hold one
+  count per invocation of a frame-navigation key, a held key on a slow frame
+  included. They stay in the raw records as counted then, and no recount can
+  correct them, since the raw records do not say which frames moved. A period
+  that spans the deployment mixes both rules.
 - Known limits of a refresh window shorter than a day
   (`TEAM_ANALYTICS_REFRESH_WINDOW_HOURS` below 24): today's hours before the
   window are computed by the history step once each has left the window. A
@@ -412,12 +456,12 @@ table are under `cvat/cvat-ui/src/`.
 
 | File | Responsibility / upstream changes to inspect |
 | --- | --- |
-| `components/cvat-app.tsx` | `/team-analytics` route (lazy page with its own error boundary); window capture listener calling `inputEvent` for key presses and clicks |
+| `components/cvat-app.tsx` | `/team-analytics` route (lazy page with its own error boundary); one call `listenForInput(window)` in `componentDidMount`, which attaches the logging's own capture listeners for key presses and clicks (upstream's listener is unchanged) |
 | `components/header/header.tsx` | Former "Analytics" link renamed "Grafana"; "Team Analytics" link shown by `canOpenTeamAnalytics` from the analytics plugin flag, `user.groups` and the current organization role |
 | `components/annotation-page/annotation-page.tsx` | `trackInputJob(job)` where the job logger is set; on unmount `untrackInputJob().then(saveLogs)` |
 | `utils/mousetrap-react.tsx` | `hotkeyUsed(action, event)` before every shortcut handler |
-| `components/annotation-page/canvas/views/canvas2d/canvas-wrapper.tsx` | Shape fields on draw, canvas paste, drag and resize; `drawingStarted`/`drawingEnded` for the input method; `groupMoved` for the group move event |
-| `actions/annotation-actions.ts` | Shape fields on propagate, single and selection delete, and multi paste |
+| `components/annotation-page/canvas/views/canvas2d/canvas-wrapper.tsx` | Shape fields on draw, canvas paste, drag and resize; `drawingStarted`/`drawingEnded` for the input method; `groupMoved(job, e.detail)` in the `canvas.groupmoved` handler before its first `await` (the grabbed object's drag then gets the group mark through the drag's shape fields) |
+| `actions/annotation-actions.ts` | Shape fields on propagate, single and selection delete, and multi paste; in `changeFrameAsync`, `frameRequested()` at its start and `frameShown(hotkey, frame, toFrame)` just before `CHANGE_FRAME_SUCCESS` |
 | `components/annotation-page/standard-workspace/objects-side-bar/labels-list.tsx` | Class change record for label hotkeys |
 | `containers/annotation-page/standard-workspace/objects-side-bar/object-item.tsx` | Class change record for the sidebar label select |
 | `components/annotation-page/canvas/views/canvas2d/selection-context-menu.tsx` | Class change record for the selection context menu (selector gained the job) |
@@ -442,7 +486,30 @@ it:
 - the project list filter on `id` that the page uses for project names;
 - CVAT's `#root` minimum width and header layout;
 - the shortcut action names in the UI keymaps, which the page shows with the
-  viewer's own keys.
+  viewer's own keys;
+- the canvas's order for a group move (`cvat-canvas`, `canvasView.ts`): it
+  dispatches `canvas.groupmoved` and then, when the gesture began on an
+  object, that object's `canvas.dragshape`, synchronously in one task, and the
+  wrapper's group-moved handler calls `groupMoved` before its first `await`.
+  The grabbed mark lasts only to the end of that task. If upstream reorders the
+  two or defers the drag, the grabbed drag loses its mark and counts again (a
+  group of three becomes four alignments); if it logs a drag per member, every
+  member but one counts again. Either happens with every suite green: both
+  suites hand-order the calls, and the handler declares its own detail type,
+  so a renamed field is no type error either.
+  The stack run's group drag (ticket 27: a group drag made in the browser and
+  read back from the events table) is what catches it;
+- frame changes: the shown frame changes only through `changeFrameAsync`, and
+  nothing between a navigation shortcut's handler and the start of
+  `changeFrameAsync` waits for a later task (the top bar's frame search and
+  `searchAnnotationsAsync`'s annotation search answer in microtasks once the
+  frame meta is loaded). A new path that shows a frame leaves the module's
+  last shown frame stale, so the next key may be counted for a frame it did
+  not move or not counted for one it did; a handler that comes to wait for a
+  later task makes its key count nothing. Neither fails a suite, since the
+  harness drives the top bar over supplied searches. The stack run's
+  held-key step (ticket 27: a navigation key held on a slow frame, its count
+  compared with CVAT's `change:frame` events) is what catches it.
 
 A new upstream event type, scope, call site or shortcut action needs a
 decision on whether it is an operation. A rename breaks the figures silently.

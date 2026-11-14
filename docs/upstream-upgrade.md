@@ -307,6 +307,21 @@ annotation event names, the memberships policy, the project `id` filter,
 CVAT's minimum app width, and the shortcut action names. A changed name breaks
 figures without an error, so compare them, not only the build.
 
+Two of those dependencies are orders of execution that no suite can see,
+because both suites drive them in a fixed order. Read them in the target
+release and confirm them in the stack run below:
+
+- The canvas sends `canvas.groupmoved` and then the grabbed object's
+  `canvas.dragshape` synchronously in one task, and the wrapper calls
+  `groupMoved` before its handler's first `await`. If not, a group drag counts
+  extra alignments with no error. The stack run's group drag, read back from
+  the events table, shows it (ticket 27).
+- The shown frame changes only through `changeFrameAsync`, and no navigation
+  shortcut's handler waits for a later task before starting it. If not,
+  navigation keys are counted for the wrong frames or stop counting. The stack
+  run's held navigation key, compared with CVAT's `change:frame` events, shows
+  it (ticket 27).
+
 Run the three seams. The service seam needs only Docker. The two frontend
 seams need `cvat/node_modules` and the harness's dependencies
 (`npm ci --prefix verify`, under "Frontend" above); without the latter they fail
