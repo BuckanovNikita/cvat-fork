@@ -57,9 +57,11 @@ class EntryPointTest(StackTestCase):
                           headers={"Cookie": "sessionid=lead"})
         try:
             with urlopen(request, timeout=5) as response:
-                return json.loads(response.read())["by_annotator"]["rows"]
+                section = json.loads(response.read())["by_annotator"]
         except (URLError, ConnectionError):
             return None
+        # null until the week reads as processed (before the first refresh, or while one lands mid-request)
+        return None if section is None else section["rows"]
 
     def wait_for(self, predicate, timeout: float = 30):
         deadline = time.monotonic() + timeout

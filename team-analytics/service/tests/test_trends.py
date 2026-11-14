@@ -304,6 +304,19 @@ class ProcessedTest(TrendsCase):
         # not computed yet)
         self.assertEqual(candidates(), [(BOB[0], 2 * HOUR), (ALICE[0], HOUR)])
 
+        # history goes on to compute the 3rd: Alice's five hours there are stored, but their week (from the
+        # 2nd) is not processed while the days before the 3rd back to Carol's are not, so they count for nothing
+        self.stack.cvat.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
+        for _ in range(20):
+            self.stack.service.step()
+            status, body = self.stack.get("/team-analytics-api/v1/status", "admin", org="org7")
+            self.assertEqual(status, 200, body)
+            if body["history"]["ready_from_day"] == "2026-11-03":
+                break
+        self.assertEqual(body["history"]["ready_from_day"], "2026-11-03")
+        self.assertEqual([bucket["processed"] for bucket in self.trends()["buckets"]], [False] * 11 + [True])
+        self.assertEqual(candidates(), [(BOB[0], 2 * HOUR), (ALICE[0], HOUR)])
+
         for _ in range(60):
             self.stack.service.step()
         self.assertEqual([bucket["processed"] for bucket in self.trends()["buckets"]], [True] * 12)
