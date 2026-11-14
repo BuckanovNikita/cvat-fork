@@ -141,6 +141,35 @@ test('project names come from the CVAT API through cvat-core, one request for th
     assert.equal(asked.length, 1);
 });
 
+test('names of thousands of projects are asked in bounded requests; a failed one leaves only its own unnamed', async () => {
+    const asked = [];
+    const core = {
+        projects: {
+            async get({ filter, pageSize }) {
+                const ids = JSON.parse(filter).in[1];
+                asked.push({ ids, pageSize, url: `/api/projects?filter=${encodeURIComponent(filter)}&page_size=${pageSize}` });
+                if (ids.includes(1500)) throw new Error('request rejected');
+                return Object.assign(ids.map((id) => ({ id, name: `Project ${id}` })), { count: ids.length });
+            },
+        },
+    };
+    const { lookupProjectNames } = loadPage('project-names.ts', { 'cvat-core-wrapper': { getCore: () => core } });
+    const ids = Array.from({ length: 2000 }, (_, index) => 9_000_001 + index);
+    ids[1499] = 1500;
+
+    const names = await lookupProjectNames(ids);
+
+    assert.ok(asked.length > 1);
+    for (const request of asked) {
+        assert.ok(request.url.length < 4096, `a request line of ${request.url.length} characters`);
+        assert.ok(request.pageSize >= request.ids.length && request.pageSize <= 500);
+    }
+    assert.deepEqual(asked.flatMap((request) => request.ids).sort(), [...ids].sort(), 'every id asked once');
+    const failed = asked.find((request) => request.ids.includes(1500)).ids;
+    assert.equal(Object.keys(names).length, ids.length - failed.length);
+    assert.equal(names[9_000_001], 'Project 9000001');
+});
+
 // --- the mounted page: filters in the address, names from CVAT -----------------------------------
 
 const { createMemoryHistory } = dependency('history');

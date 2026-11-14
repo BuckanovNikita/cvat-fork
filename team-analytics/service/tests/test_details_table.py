@@ -98,7 +98,7 @@ class ProjectRowsTest(FiguresCase):
         body = self.details(by="projects", shapes="bounding_boxes")
 
         self.assertEqual((body["by"], body["total"]), ("projects", 2))
-        self.assertEqual(body["project_ids"], [1, 2])
+        self.assertEqual(body["project_ids"], [2, 1])  # in the table's order
         two, one = body["rows"]
         self.assertEqual(two, {
             "id": 2, "user_name": None, "annotators": 2, "sessions": 2, "working_time_ms": 3 * HOUR + 30 * MINUTE,
@@ -171,6 +171,15 @@ class PagingAndSearchTest(DetailsCase):
 
         self.assertEqual(body["total"], 10)
         self.assertEqual(self.column(body, "user_name")[:2], ["user19", "user18"])
+
+    def test_project_ids_come_in_the_tables_order_so_the_page_can_page_a_name_search(self):
+        body = self.details(by="projects")
+
+        # project 102 has the most working time (100 min), then 101 (92), then 100 (84)
+        self.assertEqual(body["project_ids"], [102, 101, 100])
+        self.assertEqual(body["project_ids"], self.column(body, "id"))
+        # a page of ids asked in that order comes back in the same order
+        self.assertEqual(self.column(self.details(by="projects", ids="101,100"), "id"), [101, 100])
 
     def test_search_text_is_matched_literally(self):
         self.assertEqual(self.details(search="user_")["total"], 0)

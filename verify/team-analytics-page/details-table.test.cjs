@@ -238,6 +238,45 @@ domTest('projects are found by the name the page shows, No project included', as
     }
 });
 
+domTest('a project search over thousands of projects asks for one page of ids at a time', async () => {
+    // project_ids come in the table's order (most working time first); the page pages the matches itself
+    const many = Array.from({ length: 2000 }, (_, index) => 9_000_001 + index);
+    const names = Object.fromEntries(many.map((id) => [id, `Shelf ${id}`]));
+    const { fetch, requests } = suppliedFetch((url) => {
+        const query = new URL(url, 'http://localhost').searchParams;
+        if (query.get('by') !== 'projects') return detailsAnswer(url);
+        const ids = query.has('ids') ? query.get('ids').split(',').filter(Boolean).map(Number) : many.slice(0, 10);
+        return {
+            body: details({
+                by: 'projects', page: 1, total: query.has('ids') ? ids.length : many.length, project_ids: many,
+                rows: ids.map((id) => row(id, { user_name: null, annotators: 1 })),
+            }),
+        };
+    });
+    const page = await mount(section(fetch, {}, names));
+    try {
+        await page.settle();
+        await click(button(page.container, 'Projects'));
+        await page.settle();
+        await type(page.container, 'shelf');
+        await page.settle();
+        const searches = () => requests.map(params).filter((query) => query.has('ids'));
+        for (const query of searches()) {
+            assert.ok(query.get('ids').split(',').length <= 10, `ids=${query.get('ids').slice(0, 60)}...`);
+        }
+        assert.equal(searches().at(-1).get('ids'), many.slice(0, 10).join(','));
+        assert.match(page.container.textContent, /1–10 of 2,000/);
+        await click(button(page.container, 'Next'));
+        await page.settle();
+        assert.equal(searches().at(-1).get('ids'), many.slice(10, 20).join(','));
+        assert.match(page.container.textContent, /11–20 of 2,000/);
+        assert.deepEqual([...page.container.querySelectorAll('tbody th')].map((th) => th.textContent),
+            many.slice(10, 20).map((id) => `Shelf ${id}`));
+    } finally {
+        await page.unmount();
+    }
+});
+
 domTest('an unreadable answer leaves a short notice', async () => {
     const { fetch } = suppliedFetch(() => ({ body: { by_annotator: { rows: [] } } }));
     const page = await mount(section(fetch));
