@@ -26,6 +26,14 @@
 #   run.sh check-render F apply up's render checks to the render in file F
 #   run.sh check-bundle   check a policy bundle (tar.gz) given on stdin as check-policies does,
 #                         e.g. one from verify/policy_bundle.sh from-image IMAGE
+#   run.sh render-ingress print the service's Ingress as up applies it (class and host set)
+#   run.sh check-ingress  one status request through the Ingress, with a session and without
+#   run.sh seed-access    (re)load the access cases' accounts (access_accounts.json)
+#   run.sh check-access [CASE]
+#                         the access cases against the real CVAT: removed-member, group-admin,
+#                         personal-workspace, header-credentials (all of them without CASE)
+#   run.sh check-ingress-gone
+#                         after down: no Ingress names the stack's host and the controller has no route
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -281,7 +289,7 @@ report_failures() {
 }
 
 # The service's own manifests (team-analytics/k8s) with the stack's image, release and refresh
-# interval. Its Ingress is not applied: the proxy is the route here. Applied before the proxy,
+# interval. Its Ingress is applied apart (apply_ingress); the proxy stays the stack's address. Applied before the proxy,
 # whose nginx resolves the service name at start.
 apply_service() {
     local rendered
@@ -520,6 +528,83 @@ check_policies() {
     [ "$rc" = 0 ] || exit "$rc"
 }
 
+# ---------------------------------------------------------------- Ingress and access cases
+
+# The service's own Ingress (team-analytics/k8s/ingress.yaml) beside the proxy, under the cluster's
+# Ingress class and the stack's host name. It is namespaced and goes with the namespace. The host is
+# a single label under k8s.docker.internal, so the platform's default certificate covers it; the host
+# does not resolve it, so the check connects to the ingress controller on 127.0.0.1:443 by that name.
+render_ingress() {
+    local rendered
+    rendered="$(sed -e "s|^  # ingressClassName: .*|  ingressClassName: $TA_INGRESS_CLASS|" \
+                    -e "s|^    - host: cvat.local\$|    - host: $TA_INGRESS_HOST|" "$SERVICE_K8S/ingress.yaml")"
+    grep -q "^  ingressClassName: $TA_INGRESS_CLASS\$" <<<"$rendered" && grep -q "^    - host: $TA_INGRESS_HOST\$" <<<"$rendered" \
+        || die "could not set the Ingress class or host in team-analytics/k8s/ingress.yaml"
+    printf '%s\n' "$rendered"
+}
+
+apply_ingress() {
+    local rendered="$STATE_DIR/ingress.yaml"
+    "${K[@]}" get ingressclass "$TA_INGRESS_CLASS" >/dev/null || die "the cluster has no Ingress class $TA_INGRESS_CLASS"
+    mkdir -p "$STATE_DIR"
+    render_ingress >"$rendered"
+    guard_render "$rendered"
+    log "applying the service's Ingress (class $TA_INGRESS_CLASS, host $TA_INGRESS_HOST)"
+    "${K[@]}" -n "$TA_NAMESPACE" apply -f "$rendered" >&2
+}
+
+access_py() {
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/access_cases.py" "$@"
+}
+
+# One status request through the Ingress with a session, and the same without one.
+check_ingress() { access_py check-ingress "$TA_INGRESS_HOST"; }
+
+# The access cases' own accounts (access_accounts.json); makes the removed member a member again.
+seed_access() {
+    log "loading the access cases' accounts"
+    "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- \
+        env TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_ACCOUNTS="$(cat "$HERE/access_accounts.json")" \
+        python manage.py shell <"$HERE/seed_access.py" >&2
+}
+
+# The four access cases against the real CVAT, each judged by access_cases.py; with an argument,
+# only that case.
+ACCESS_CASES=(removed-member group-admin personal-workspace header-credentials)
+check_access_cases() {
+    local only="${1:-}" c
+    [ -z "$only" ] || [[ " ${ACCESS_CASES[*]} " == *" $only "* ]] || die "unknown access case $only (${ACCESS_CASES[*]})"
+    seed_access
+    for c in "${ACCESS_CASES[@]}"; do
+        [ -z "$only" ] || [ "$c" = "$only" ] || continue
+        log "access case: $c"
+        if [ "$c" = personal-workspace ]; then
+            access_py "$c" "$((TA_REFRESH_INTERVAL_S * 3 + 60))"
+        else
+            access_py "$c"
+        fi
+    done
+}
+
+# After down: no Ingress anywhere names the stack's host, and the controller has no route for it.
+check_ingress_gone() {
+    local code
+    [ -z "$(ns_phase)" ] || die "namespace $TA_NAMESPACE still exists"
+    if "${K[@]}" get ingress -A -o jsonpath='{range .items[*]}{range .spec.rules[*]}{.host}{"\n"}{end}{end}' \
+        | grep -qx "$TA_INGRESS_HOST"; then
+        die "an Ingress for $TA_INGRESS_HOST remains"
+    fi
+    # the controller may answer 503 for a moment while it drops the route
+    for _ in $(seq 1 15); do
+        code="$(curl -sS -o /dev/null -w '%{http_code}' --resolve "$TA_INGRESS_HOST:443:127.0.0.1" \
+            "https://$TA_INGRESS_HOST/team-analytics-api/v1/status")" || die "no answer from the ingress controller"
+        [ "$code" = 404 ] && break
+        sleep 2
+    done
+    [ "$code" = 404 ] || die "the ingress controller answers $code for $TA_INGRESS_HOST, expected 404 (no route)"
+    log "no Ingress names $TA_INGRESS_HOST; the controller answers 404 for it"
+}
+
 # ---------------------------------------------------------------- teardown
 
 teardown() {
@@ -573,14 +658,17 @@ up() {
     install_chart
     apply_service
     apply_proxy
+    apply_ingress
     wait_ready
     start_port_forward
     check_policies
     seed
+    check_ingress
     check_event
     check_tracer
     check_task_progress
     check_final
+    check_access_cases
     log "up:$BASE_URL (accounts: see README.md, password \$TA_SEED_PASSWORD)"
 }
 
@@ -602,5 +690,10 @@ case "${1:-}" in
     render) build_chart; render ;;
     check-render) [ -f "${2:-}" ] || die "usage: run.sh check-render FILE"
         guard_render "$2"; check_backend_image "$2"; log "render accepted" ;;
+    render-ingress) render_ingress ;;
+    check-ingress) check_ingress ;;
+    seed-access) seed_access ;;
+    check-access) check_access_cases "${2:-}" ;;
+    check-ingress-gone) check_ingress_gone ;;
     *) sed -n '5,/^set -euo/p' "$0" | sed '$d' >&2; exit 2 ;;
 esac
