@@ -4,15 +4,19 @@
 
 **Blocked by:** 02 (Tracer: working time per annotator for the last week).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The period control offers Week, Two weeks, Month and Year. There is no custom range.
-- [ ] Week and Two weeks are the last 7 and 14 days ending today; Month is one calendar month; Year is the last twelve months ending today.
-- [ ] With Month selected, the team lead can step to earlier months and back; the current month is marked "to date" and no later month can be chosen.
-- [ ] Days follow the viewer's time zone.
-- [ ] A chart shows working time per day for the period, with values readable without hovering when there are few bars and axis labels thinned when there are many.
-- [ ] For Year the chart shows weeks instead of days.
-- [ ] The page shows the time of the last successful refresh and a warning once that is more than thirty minutes ago.
-- [ ] The selected period, and the month when Month is selected, are part of the page address; the browser's back button returns to the previous selection.
-- [ ] While figures for a new period load, the previous figures stay on screen dimmed.
-- [ ] The service exposes when the last refresh succeeded.
+- [x] The period control offers Week, Two weeks, Month and Year. There is no custom range.
+- [x] Week and Two weeks are the last 7 and 14 days ending today; Month is one calendar month; Year is the last twelve months ending today.
+- [x] With Month selected, the team lead can step to earlier months and back; the current month is marked "to date" and no later month can be chosen.
+- [x] Days follow the viewer's time zone.
+- [x] A chart shows working time per day for the period, with values readable without hovering when there are few bars and axis labels thinned when there are many.
+- [x] For Year the chart shows weeks instead of days.
+- [x] The page shows the time of the last successful refresh and a warning once that is more than thirty minutes ago.
+- [x] The selected period, and the month when Month is selected, are part of the page address; the browser's back button returns to the previous selection.
+- [x] While figures for a new period load, the previous figures stay on screen dimmed.
+- [x] The service exposes when the last refresh succeeded.
+
+## Comments
+
+2026-11-14: Resolved on `feat/team-analytics-page` by merge `526892e`. Review fixes that followed are in merge `401576e`. Live results, review outcomes and what remains unverified: `docs/evidence/2026-11-14-team-analytics-final-run.md`.

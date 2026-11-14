@@ -4,15 +4,19 @@
 
 **Blocked by:** 11 (Creation methods by people).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Technical accounts are a configured list that a fork maintainer can change without changing code.
-- [ ] A technical account is absent from annotator lists, sessions and working time.
-- [ ] Every single-frame rectangle a technical account saves counts as Model for the project it was saved in.
-- [ ] A re-upload by a technical account counts again, and the page says so next to the figure.
-- [ ] Boxes made with the built-in detector in the annotation view are recorded by the UI, inside an event type the stock server accepts, and count as Model for the annotator who ran it and for the project.
-- [ ] Model appears as a fourth creation method with a count and a share and no time, and is never part of the Creation operation or its average.
-- [ ] The headline figure for boxes created shows Model boxes beside it, not inside it.
-- [ ] Saved boxes are counted per annotator and per project from what the server recorded when jobs were saved.
-- [ ] For a legacy period the page shows saved boxes, labelled as all methods together.
-- [ ] A failure inside the detector recording never affects the detector's result.
+- [x] Technical accounts are a configured list that a fork maintainer can change without changing code.
+- [x] A technical account is absent from annotator lists, sessions and working time.
+- [x] Every single-frame rectangle a technical account saves counts as Model for the project it was saved in.
+- [x] A re-upload by a technical account counts again, and the page says so next to the figure.
+- [x] Boxes made with the built-in detector in the annotation view are recorded by the UI, inside an event type the stock server accepts, and count as Model for the annotator who ran it and for the project.
+- [x] Model appears as a fourth creation method with a count and a share and no time, and is never part of the Creation operation or its average.
+- [x] The headline figure for boxes created shows Model boxes beside it, not inside it.
+- [x] Saved boxes are counted per annotator and per project from what the server recorded when jobs were saved.
+- [x] For a legacy period the page shows saved boxes, labelled as all methods together.
+- [x] A failure inside the detector recording never affects the detector's result.
+
+## Comments
+
+2026-11-14: Resolved on `feat/team-analytics-page` by merge `f3f1691`. Review fixes that followed are in merge `401576e`. Live results, review outcomes and what remains unverified: `docs/evidence/2026-11-14-team-analytics-final-run.md`.

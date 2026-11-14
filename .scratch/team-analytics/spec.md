@@ -1,6 +1,6 @@
 # Team Analytics
 
-Status: ready-for-agent
+Status: resolved
 
 Vocabulary follows [`GLOSSARY.md`](../../GLOSSARY.md). Structural decisions are recorded in
 [ADR 0001](../../docs/adr/0001-thin-analytics-service-with-stored-totals.md),
@@ -458,3 +458,7 @@ The access rules get an independent review after the end-to-end run.
   that and must tolerate a missing namespace.
 - This repository is public. Everything committed here, this spec included, becomes
   public when pushed.
+
+## Comments
+
+2026-11-14: Implemented on `feat/team-analytics-page` through tickets 01-18 (`issues/`), with review fixes in merge `401576e`. Evidence: `docs/evidence/2026-11-14-team-analytics-final-run.md`. The feature's section in `docs/fork-specification.md` records the rules added during review (cutover and partly legacy periods) and the known limitations.
