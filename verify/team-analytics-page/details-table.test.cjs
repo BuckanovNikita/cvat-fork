@@ -281,7 +281,33 @@ domTest('clicking a row sets it as the page filter, kept in the address', async 
         const address = new URLSearchParams(history.location.search);
         assert.deepEqual([address.get('project'), address.get('annotator')], ['0', '100']);
         const last = detailRequests()[detailRequests().length - 1];
-        assert.deepEqual([last.get('by'), last.get('annotator'), last.get('project')], ['projects', '100', '0']);
+        // the table by project is narrowed by the annotator filter; its own filter only marks a row
+        assert.deepEqual([last.get('by'), last.get('annotator'), last.get('project')], ['projects', '100', null]);
+        assert.equal(page.container.querySelector('.cvat-team-analytics-details-row [aria-pressed="true"]').textContent, 'No project');
+    } finally {
+        await page.unmount();
+    }
+});
+
+domTest('picking a row on a later page keeps that page shown', async () => {
+    const { fetch } = suppliedFetch(detailsAnswer);
+    const { type: Section, props } = section(fetch);
+    let picked = null;
+    function Holder() {
+        const [annotator, setAnnotator] = React.useState(null);
+        picked = annotator;
+        return React.createElement(Section, { ...props, annotator, onPick: (kind, id) => setAnnotator(id) });
+    }
+    const page = await mount(React.createElement(Holder));
+    try {
+        await page.settle();
+        await click(button(page.container, 'Next'));
+        await page.settle();
+        await click(page.container.querySelectorAll('.cvat-team-analytics-details-row')[2]);
+        await page.settle();
+        assert.equal(picked, 112);
+        assert.match(page.container.textContent, /11–20 of 23/);
+        assert.equal(page.container.querySelector('.cvat-team-analytics-details-row [aria-pressed="true"]').textContent, 'user112');
     } finally {
         await page.unmount();
     }

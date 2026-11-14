@@ -46,7 +46,11 @@ export default function DetailsSection({
     // every project of the table before the search, from the last answer by project
     const [allProjects, setAllProjects] = useState<number[]>([]);
 
-    const scopeKey = [organization, period, month, project, annotator, shapes].join('|');
+    // only the filter on the other dimension narrows the table; the one on its own dimension marks a row, so
+    // picking a row keeps the page shown
+    const narrowing = by === 'annotators' ?
+        { project, annotator: null } : { project: null, annotator };
+    const scopeKey = [organization, period, month, narrowing.project, narrowing.annotator, shapes].join('|');
     // a new scope starts again from the first page
     useEffect(() => { setPage(1); }, [scopeKey]);
 
@@ -60,7 +64,7 @@ export default function DetailsSection({
         let current = true;
         setPending(true);
         loadDetails({
-            organization, timeZone, period, month, project, annotator, shapes, by, page, search: text, ids,
+            organization, timeZone, period, month, ...narrowing, shapes, by, page, search: text, ids,
         }, fetchService).then((next) => {
             if (!current) return;
             setPending(false);

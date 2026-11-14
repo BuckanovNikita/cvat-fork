@@ -50,7 +50,8 @@ $details-name-width: 220px;
     font-size: 13px;
 }
 
-.cvat-team-analytics-details-table {
+// doubled class: wins over the shared .cvat-team-analytics-table rules whatever the stylesheet order
+.cvat-team-analytics-table.cvat-team-analytics-details-table {
     width: 100%;
     min-width: 1180px;
     border-collapse: separate;
@@ -77,14 +78,20 @@ $details-name-width: 220px;
         left: 0;
         z-index: 1;
         width: $details-name-width;
-        max-width: $details-name-width;
         text-align: left;
         background: $background-color-1;
+    }
+
+    tbody .cvat-team-analytics-details-name {
+        color: $text-color;
+        font-size: 14px;
     }
 
     .cvat-team-analytics-details-name button {
         display: block;
         width: 100%;
+        // the cap is on the button: a table cell's max-width is not reliable
+        max-width: $details-name-width;
         padding: 0;
         border: 0;
         background: transparent;
