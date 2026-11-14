@@ -161,14 +161,17 @@ export interface Overview {
     processed?: boolean;
 }
 
-// How far history is processed (status section `history`), in the viewer's time zone.
+// How far history is processed (status section `history`), in the viewer's time zone. The fields marked
+// "administrators only" describe the whole instance and are absent from everyone else's status.
 export interface HistoryStatus {
     complete: boolean;
-    ready_from: string | null; // ISO time from which everything is processed; null when complete or nothing is
-    ready_from_day: string | null; // YYYY-MM-DD: the viewer's first whole processed day
-    first_day: string | null; // YYYY-MM-DD: the first day with events
-    days_ready: number;
-    days_total: number;
+    percent?: number; // whole percent of the days with events that are processed; 100 only when complete
+    // administrators only. ISO time from which everything is processed; null when complete or nothing is
+    ready_from?: string | null;
+    ready_from_day?: string | null; // administrators only. YYYY-MM-DD: the viewer's first whole processed day
+    first_day?: string | null; // administrators only. YYYY-MM-DD: the first day with events
+    days_ready?: number; // administrators only
+    days_total?: number; // administrators only
     periods: Record<string, boolean>; // period key -> wholly processed
     earliest_month: string | null; // YYYY-MM: the earliest wholly processed month (null: none, or all when complete)
     complete_weeks: number;

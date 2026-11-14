@@ -11,9 +11,11 @@ const View = loadPage('team-analytics-view.tsx').default;
 
 const FIGURES = { by_annotator: { rows: [{ user_id: 11, user_name: 'alice-figures', working_time_ms: 3600000 }] } };
 
+// An administrator's history block; a maintainer's has no first day, day counts or ready-from moment.
 function history(overrides = {}) {
     return {
         complete: false,
+        percent: 6,
         ready_from: '2026-11-02T00:00:00+00:00',
         ready_from_day: '2026-11-02',
         first_day: '2026-04-30',
@@ -61,6 +63,36 @@ test('while history is processed one progress bar shows the earliest ready date 
     assert.match(shown, /Recent days are processed first\./);
 });
 
+function maintainerHistory(overrides = {}) {
+    const block = history({ percent: 37, ...overrides });
+    for (const key of ['ready_from', 'ready_from_day', 'first_day', 'days_ready', 'days_total']) delete block[key];
+    return block;
+}
+
+test('without the day counts the progress bar reads as the percentage alone', () => {
+    const html = view({ status: { history: maintainerHistory() } });
+    const shown = text(html);
+    assert.match(shown, /Processing history/);
+    assert.match(shown, /37%/);
+    assert.match(html, /aria-valuenow="37"/);
+    assert.match(html, /width:\s*37%/);
+    assert.doesNotMatch(shown, /of \d+ days|Ready from|Nothing ready yet|undefined|NaN/);
+});
+
+test('with the day counts the line shows them and the bar the percentage from the service', () => {
+    const shown = text(view({ status: { history: history({ percent: 7 }) } }));
+    assert.match(shown, /Ready from Nov 2, 2026 · 12 of 198 days/);
+    assert.match(shown, /7%/);
+});
+
+test('without the day counts the periods are still offered only when processed', () => {
+    const periods = buttons(view({ status: { history: maintainerHistory() } }))
+        .filter((b) => ['Week', 'Two weeks', 'Month', 'Year'].includes(b.name));
+    assert.deepEqual(periods.map((b) => [b.name, b.disabled]), [
+        ['Week', false], ['Two weeks', true], ['Month', true], ['Year', true],
+    ]);
+});
+
 test('no progress bar once history is complete, or when the status is not known', () => {
     for (const status of [{ history: history({ complete: true, ready_from: null, ready_from_day: null }) }, null, {}]) {
         const html = view({ status });
@@ -70,7 +102,9 @@ test('no progress bar once history is complete, or when the status is not known'
 });
 
 test('before anything is processed the bar says nothing is ready yet', () => {
-    const shown = text(view({ status: { history: history({ ready_from: null, ready_from_day: null, days_ready: 0 }) } }));
+    const shown = text(view({ status: { history: history({
+        ready_from: null, ready_from_day: null, days_ready: 0, percent: 0,
+    }) } }));
     assert.match(shown, /Nothing ready yet · 0 of 198 days/);
     assert.match(shown, /0%/);
 });

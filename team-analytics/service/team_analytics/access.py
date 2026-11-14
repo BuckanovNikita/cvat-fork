@@ -32,11 +32,13 @@ ANSWER_TTL = timedelta(minutes=1)
 
 @dataclass(frozen=True)
 class Scope:
-    """`org_id` None means instance scope (every organization and personal workspaces)."""
+    """`org_id` None means instance scope (every organization and personal workspaces). `admin`: the caller
+    is in CVAT's admin group, whether or not an organization is named."""
 
     org_id: int | None
     user_id: int
     username: str
+    admin: bool = False
 
     @property
     def instance(self) -> bool:
@@ -69,7 +71,7 @@ class Access:
         is_admin = "admin" in (me.get("groups") or [])  # a list of names (checked in _usable)
         if not org_slug:
             if is_admin:
-                return Scope(org_id=None, user_id=user_id, username=username)
+                return Scope(org_id=None, user_id=user_id, username=username, admin=True)
             # Without an organization CVAT lists only the caller's own active memberships. An
             # owner or maintainer of some organization is asked to select it; anyone else is refused.
             # CVAT pages the list, so it is asked per reading role (its `role` filter): any row of the
@@ -86,7 +88,7 @@ class Access:
             raise Refused(403, "forbidden")
         org_id = matches[0]["id"]
         if is_admin:
-            return Scope(org_id=org_id, user_id=user_id, username=username)
+            return Scope(org_id=org_id, user_id=user_id, username=username, admin=True)
 
         memberships = self._get("/api/memberships", credentials, {"org": org_slug, "user": username})
         for membership in memberships["results"]:

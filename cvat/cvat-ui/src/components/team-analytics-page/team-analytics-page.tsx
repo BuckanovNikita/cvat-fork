@@ -152,7 +152,10 @@ export default function TeamAnalyticsPage(): JSX.Element {
                     scopeLabel={scopeLabel}
                     projectNames={projectNames}
                     historyProgress={status?.history ?
-                        `${status.history.complete}|${status.history.ready_from}` : ''}
+                        [
+                            status.history.complete, status.history.ready_from, status.history.percent,
+                            status.history.complete_weeks, status.history.earliest_month,
+                        ].join('|') : ''}
                     selection={trendsSelection}
                     full={options?.full}
                     onOpenFull={options?.onOpenFull}
