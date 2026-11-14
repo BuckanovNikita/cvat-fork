@@ -7,8 +7,10 @@ annotator's name contains (annotators only); `ids` = comma-separated project ids
 so every row stays listed for picking; the other filter is.
 
 Figures come from read/details.sql, the scope's legacy flag, applied shapes and project ids (for the page's
-name search, since only the page knows project names) from read/details_scope.sql. Like the overview, an
-unprocessed period says `processed: false` and the page withholds it.
+name search, since only the page knows project names) from read/details_scope.sql. Like the overview, a
+period not fully processed says `processed: false` and carries no figures: it keeps `by`, `page_size`,
+`processed`, `technical_accounts` and the legacy flags, and `page`, `total`, `rows` and `project_ids` are null
+(withheld.py).
 """
 
 from __future__ import annotations
@@ -16,12 +18,14 @@ from __future__ import annotations
 from team_analytics.history import load_state
 from team_analytics.periods import BadRequest, decimal
 from team_analytics.service import Request
+from team_analytics.withheld import LEGACY_FLAGS, withhold
 
 PATH = "details"
 
 PAGE_SIZE = 10
 KINDS = ("annotators", "projects")
 MAX_IDS = 5000
+ENVELOPE = frozenset({"by", "page_size", "processed", "technical_accounts"}) | LEGACY_FLAGS
 
 
 def _page(text: str) -> int:
@@ -101,4 +105,5 @@ def handle(request: Request) -> dict:
     }
     if kind == "projects":
         body["project_ids"] = [int(value) for value in summary["project_ids"]]
-    return body
+    # no figures for a period not fully processed
+    return body if body["processed"] else withhold(body, ENVELOPE)

@@ -258,7 +258,7 @@ class ProcessedTest(TrendsCase):
         # an unprocessed bucket has no value, only its flags; the processed one beside it keeps its figures
         (line,) = body["lines"]
         withheld = {"working_time_ms": None, "legacy": False, "boxes": None, "timed_boxes": None,
-                    "box_time_ms": None, "average_ms": None, "hotkey_recorded": False, "hotkey_actions": None,
+                    "box_time_ms": None, "average_ms": None, "hotkey_recorded": True, "hotkey_actions": None,
                     "mouse_actions": None, "hotkey_share": None}
         self.assertEqual(line["points"][:11], [withheld] * 11)
         self.assertEqual(line["points"][11]["working_time_ms"], HOUR)

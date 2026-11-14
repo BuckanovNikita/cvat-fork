@@ -6,9 +6,10 @@ offered as candidates; `ids` = up to five comma-separated ids of that kind. With
 the scope under both filters; with ids one line per id, where the compared dimension replaces its own filter.
 `period` and `month` are ignored. The last bucket is the current, incomplete week or month.
 
-Each bucket says whether it is processed; like a period, an unprocessed bucket's figures are partial and the
-page withholds them. Figures come from read/trends.sql; candidates (everyone of the compared kind with work
-in the twelve buckets) from read/trends_candidates.sql.
+Each bucket says whether it is processed; like a period, a bucket not fully processed carries no figures:
+in every line its point keeps the flags `legacy` and `hotkey_recorded` and every value is null (withheld.py).
+Figures come from read/trends.sql; candidates (everyone of the compared kind with work in the twelve buckets)
+from read/trends_candidates.sql.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from datetime import date, timedelta
 from team_analytics.history import load_state
 from team_analytics.periods import BadRequest, decimal, hour_floor, midnight, monday, months_before, today, zone
 from team_analytics.service import Request
+from team_analytics.withheld import withhold
 
 PATH = "trends"
 
@@ -25,6 +27,7 @@ BUCKETS = 12
 MAX_COMPARED = 5
 STEPS = ("week", "month")
 KINDS = ("annotators", "projects")
+POINT_FLAGS = frozenset({"legacy", "hotkey_recorded"})
 
 
 def _choice(request: Request, key: str, options: tuple[str, ...]) -> str:
@@ -90,13 +93,14 @@ def handle(request: Request) -> dict:
     candidates = request.sql.rows("read/trends_candidates.sql", {**span, **scope, "kind": kind})
     names = {int(row["id"]): row["name"] for row in candidates}
     state = load_state(request.sql, request.now)
+    processed = {start: state.covers(midnight(start, tz)) for start in starts}
 
     lines: list[dict] = []
     for row in rows:
         line = int(row["line"])
         if not lines or lines[-1]["key"] != line:
             lines.append({"key": line, "points": []})
-        lines[-1]["points"].append({
+        point = {
             "working_time_ms": int(row["working_time_ms"]),
             "legacy": bool(row["legacy"]),
             "boxes": _whole(row["boxes"]),
@@ -107,7 +111,9 @@ def handle(request: Request) -> dict:
             "hotkey_actions": int(row["hotkey_actions"]),
             "mouse_actions": int(row["mouse_actions"]),
             "hotkey_share": _number(row["hotkey_share"]),
-        })
+        }
+        # no figures for a bucket not fully processed
+        lines[-1]["points"].append(point if processed[row["bucket"]] else withhold(point, POINT_FLAGS))
     for line in lines:
         key = line.pop("key")
         line["id"] = key if ids else None
@@ -119,7 +125,7 @@ def handle(request: Request) -> dict:
         # the shapes the figures cover: all shapes when asked, or when all twelve buckets are before the cutover
         "shapes": "all" if rows[0]["all_shapes"] else "bounding_boxes",
         "compare": kind,
-        "buckets": [{"start": start.isoformat(), "processed": state.covers(midnight(start, tz))} for start in starts],
+        "buckets": [{"start": start.isoformat(), "processed": processed[start]} for start in starts],
         "lines": lines,
         "candidates": [
             {"id": int(row["id"]), "user_name": row["name"] if kind == "annotators" else None,
