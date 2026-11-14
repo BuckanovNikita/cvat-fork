@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Test first, through the service's read interface: with a one-hour window, an event from earlier today, before the window, is either in the figures or its period reads as not processed. This fails today.
 - [x] With the default window nothing changes: the same hours are computed and no extra work is done.
@@ -33,3 +33,5 @@ Three things a reader should know:
 - With a one-hour window, a test that only calls `stack.refresh()` never runs the history step, so its periods read `processed: false`. `AlignmentWindowTest` and `RedoAcrossWindowEdgeTest` do that and read figures; they pass today because figures are still returned for such a period. Ticket 14 removes them. It then has to make these two tests call `self.stack.service.step()` until it returns a wait of a second or more before they read. The edge they exercise stays the same.
 
 For the merge: ticket 17 works in `team_analytics/history.py` too. The new tests and the first `FillTest` test count the service's steps, with the daily check as the step after history; a ticket that adds a step changes those counts.
+
+2026-11-14: Merged into `feat/team-analytics-page` as `2fc75b4d`. On the merged tree, seam 1 `tests.test_history tests.test_status tests.test_details_table` ran 52 tests, OK. Evidence: `docs/evidence/2026-11-14-short-refresh-window.md`.
