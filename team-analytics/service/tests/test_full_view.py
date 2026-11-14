@@ -230,15 +230,22 @@ class ProcessedTest(FullViewCase):
         self.assertEqual(body["processed"], self.overview(period="year")["processed"])
         # no figures, only the envelope: the period, the kind of list and the legacy flags
         self.assertEqual(body["period"]["first_day"], "2025-11-14")
+        # `legacy: False` pins a recorded limit (docs/fork-specification.md, "Known limit of unprocessed
+        # periods"): the legacy flags of an unprocessed period describe only what is processed of it, and this
+        # Year would read as legacy once processed
         self.assertEqual({key: body[key] for key in ("by", "legacy", "partly_legacy", "cutover", "shapes")},
                          {"by": "annotators", "legacy": False, "partly_legacy": False, "cutover": None,
                           "shapes": "all"})
         self.assertEqual((body["total"], body["rows"]), (None, None))
+        # every key outside the envelope is null, so a field added later is withheld too
+        envelope = {"period", "processed", "by", "legacy", "partly_legacy", "cutover", "shapes"}
+        self.assertLessEqual({key for key, value in body.items() if value is not None}, envelope)
 
         status, body = self.stack.get(LIST, "lead", org="org7", by="hotkeys", period="year")
         self.assertEqual(status, 200, body)
         self.assertFalse(body["processed"])
         self.assertEqual((body["hotkey_actions"], body["rows"]), (None, None))
+        self.assertLessEqual({key for key, value in body.items() if value is not None}, envelope)
 
     def test_a_wholly_processed_period_keeps_its_figures(self):
         self.stack.add_events([working_time(at("2026-11-12 10:00:00"), HOUR, user=ALICE, org=ORG)])

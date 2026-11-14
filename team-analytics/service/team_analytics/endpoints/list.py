@@ -14,7 +14,6 @@ Like the overview, `processed` says whether the whole period is processed. When 
 
 from __future__ import annotations
 
-from team_analytics.history import load_state
 from team_analytics.periods import BadRequest
 from team_analytics.rows import read as read_rows
 from team_analytics.service import Request
@@ -40,10 +39,12 @@ def handle(request: Request) -> dict:
     if by not in KINDS:
         raise BadRequest(f"by must be one of {', '.join(KINDS)}")
     span = request.span()
+    # read before any figure (service.Request.history)
+    processed = request.history().covers(span.start)
     body = _hotkeys(request) if by == "hotkeys" else read_rows(request, by)
     answer = {
         "period": span.describe(),
-        "processed": load_state(request.sql, request.now).covers(span.start),
+        "processed": processed,
         "by": by,
         **body,
     }

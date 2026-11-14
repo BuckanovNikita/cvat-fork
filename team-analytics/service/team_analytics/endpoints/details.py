@@ -15,7 +15,6 @@ period not fully processed says `processed: false` and carries no figures: it ke
 
 from __future__ import annotations
 
-from team_analytics.history import load_state
 from team_analytics.periods import BadRequest, decimal
 from team_analytics.service import Request
 from team_analytics.withheld import LEGACY_FLAGS, withhold
@@ -58,6 +57,8 @@ def handle(request: Request) -> dict:
     ids = _ids(request.query.get("ids", "")) if has_ids else []
 
     span = request.span()
+    # read before any figure (service.Request.history)
+    processed = request.history().covers(span.start)
     scope = request.scope_params()
     # the table's own dimension is listed whole; the selected row is only marked by the page
     if kind == "annotators":
@@ -83,7 +84,7 @@ def handle(request: Request) -> dict:
         "legacy": bool(summary["legacy"]),
         **legacy.describe(job_work=bool(summary["job_work"])),
         "shapes": "all" if summary["all_shapes"] else "bounding_boxes",
-        "processed": load_state(request.sql, request.now).covers(span.start),
+        "processed": processed,
         "technical_accounts": len(request.config.technical_accounts),
         "rows": [{
             "id": int(row["id"]),

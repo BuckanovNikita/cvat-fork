@@ -147,6 +147,11 @@ class FillTest(HistoryCase):
         self.assertEqual(body["operations"], {"legacy": True, "partly_legacy": False, "cutover": None,
                                               "shapes": "all", "working_time_ms": None,
                                               "active_time_ms": None, "rows": None})
+        # every key outside the envelope is null, so a section or field added later is withheld too
+        self.assertLessEqual({key for key, value in body.items() if value is not None},
+                             {"period", "filters", "processed", "operations"})
+        self.assertLessEqual({key for key, value in body["operations"].items() if value is not None},
+                             {"legacy", "partly_legacy", "cutover", "shapes"})
 
         self.step(6)  # processed from 2026-11-06: this week (from the 7th) now is, with its figures
         body = self.overview()
