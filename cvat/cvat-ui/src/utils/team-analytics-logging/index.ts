@@ -97,6 +97,17 @@ export function operationFields(job: LoggingJob | null | undefined, objects: Obj
     });
 }
 
+/**
+ * Only the shape fields of `objects`, for a record that names its input method itself (class change):
+ * unlike `operationFields`, it leaves a pending drawing's input method in place.
+ */
+export function objectShapeFields(
+    job: LoggingJob | null | undefined,
+    objects: readonly (LoggedObject | null | undefined)[],
+): Fields {
+    return guarded({}, () => (instrumented(job) ? shapeFields(objects) : {}));
+}
+
 /** Fields for a drag or resize event of `object`: its shape, its reference within the job and the frame. */
 export function alignmentFields(job: LoggingJob | null | undefined, object: LoggedObject | null | undefined): Fields {
     return guarded({}, () => {

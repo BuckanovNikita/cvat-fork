@@ -250,6 +250,31 @@ test('a drawing started from a control is a mouse start, even when a key finishe
     assert.deepEqual(drawn.map((event) => event.payload.input_method), ['mouse', 'hotkey']);
 });
 
+test('a class change during a drawing leaves the drawing its own input method', { skip }, async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-13T10:00:00Z') });
+    const page = annotationPage();
+    const job = { ...page.job, labels: [{ id: 1, name: 'car' }, { id: 2, name: 'bus' }] };
+    const { component: wrapper } = canvasWrapper(page.core, job, {}, { [LOGGING]: page.logging });
+    page.window.document.getElementById('popover-shape').addEventListener('click', () => wrapper.onCanvasDrawStart());
+    page.logging.trackInputJob(job);
+
+    page.click('popover-shape'); // the drawing starts from a control
+    page.click('canvas');
+    // before finishing, a label hotkey changes the class of the activated object
+    page.press('ctrl+z');
+    page.logging.recordClassChange(job, [objectState({ clientID: 9, label: { id: 1 } })], { id: 2 }, 'hotkey');
+    page.click('canvas');
+    wrapper.onCanvasShapeDrawn({
+        detail: { state: { shapeType: 'rectangle', points: [0, 0, 5, 5] }, duration: 900, continue: false },
+    });
+
+    const sent = await page.core.sent();
+    const [change] = sent.filter((event) => event.obj_name === 'team_analytics:class_change');
+    assert.equal(change.payload.input_method, 'hotkey');
+    const [drawn] = sent.filter((event) => event.scope === 'draw:object');
+    assert.equal(drawn.payload.input_method, 'mouse');
+});
+
 test('a deletion confirmed in a dialog keeps the method that started it', { skip }, async (t) => {
     t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-13T10:00:00Z') });
     const page = annotationPage();
