@@ -124,4 +124,5 @@ ends the step without it and is exercised by a test; the first answer is shown o
 service started as `python -m team_analytics`. The statement now reads the events in
 order and stops at the first match, so the figures of
 [`2026-11-14-cutover-search-cost.md`](2026-11-14-cutover-search-cost.md) were measured on
-the earlier aggregate; the new statement's cost at that scale was not measured.
+the earlier aggregate. The new statement's cost at that scale was measured on 2026-11-15,
+in the section of that date in the same file.

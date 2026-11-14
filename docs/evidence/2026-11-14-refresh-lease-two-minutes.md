@@ -113,8 +113,8 @@ The follow-up is on branch `fix/refresh-review`, from `0d2661d6` on.
    Done (`e4da0c70`, tests corrected in `57dda6d7` and `4e2127eb`): the search at start
    and in the daily check runs with ticket 17's limits as settings of the statement
    (`max_execution_time` 23 s at start and 60 s in the daily check, `max_memory_usage`
-   512 MiB, `timeout_overflow_mode` throw), through a second client whose read timeout
-   is the limit plus 5 s. A search stopped at start lets the service start without
+   512 MiB, `timeout_overflow_mode` throw), through a client of its own for each limit
+   (two more clients) whose read timeout is the limit plus 5 s. A search stopped at start lets the service start without
    it, as a failed one did; in the daily check the step now ends without it, and a lost
    lease still stops the step. The refresh's own search (`find_cutover`) keeps no
    limit, since failing it would fail the refresh before its hours are offered.
@@ -158,11 +158,14 @@ The follow-up is on branch `fix/refresh-review`, from `0d2661d6` on.
      `clickhouse/clickhouse-server:23.11-alpine` (23.11.5).
    The reviewer's cheaper query was tried: read the events in timestamp order and stop at
    the first match. Every cutover test passed unchanged on it (22 tests, default image,
-   tree `57dda6d7` with the statement replaced), and it was adopted in `c3edcd58`. Its
-   cost at the benchmark's scale was not measured again. It saves reading only on a
-   search while no cutover is stored: every search after that finds no match and reads
-   every row before the stored cutover, as the aggregate did; whether reading them in
-   order takes longer at scale was not measured.
+   tree `57dda6d7` with the statement replaced), and it was adopted in `c3edcd58`. It
+   saves reading only on a search while no cutover is stored: every search after that
+   finds no match and reads every row before the stored cutover, as the aggregate did.
+   Its cost at the benchmark's scale was not measured with this follow-up; it was
+   measured on 2026-11-15 (`2026-11-14-cutover-search-cost.md`, section of that date):
+   reading in order takes about as long as the aggregate where nothing matches (2.6 %
+   longer in the steady state, with more memory), and the
+   statement stops after a fraction of a second where the first tagged record is early.
    The related low point, a stop signal during a long daily search leaving the lease
    held: not changed, recorded as a known limit in `docs/fork-specification.md`.
    Releasing the lease from the signal while the step's statement still runs in

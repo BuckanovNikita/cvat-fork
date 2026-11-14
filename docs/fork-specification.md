@@ -216,9 +216,10 @@ Behavior to preserve:
   it, and stopping the statement would mean tracking and killing it by query
   id.
 - One ClickHouse client without a session serves the HTTP threads and the
-  refresh loop; the cutover search at start and in the daily check goes
-  through a second one, which gives up after hearing nothing from ClickHouse
-  for a few seconds longer than the search's limit. A request body is read and dropped, or the
+  refresh loop. The cutover search has one more client for each of its two
+  limits, so two more in all: one for the search at start and one for the
+  search in the daily check. Each gives up after hearing nothing from
+  ClickHouse for a few seconds longer than its search's limit. A request body is read and dropped, or the
   connection is closed
   after the answer, so a body is never answered as a request.
 - Its routes are under `/team-analytics-api/v1/`. Every request is checked
@@ -334,10 +335,13 @@ Behavior to preserve:
   that event from the `events` table, then every row of the `cutover` table
   in the totals database, and then to restart the service or wait for the
   daily check, which finds the cutover again. Until then there is no cutover
-  and every period reads as legacy. The search reads every recorded event
-  before the stored cutover, or all of them while none is stored, so its cost
-  grows with that history; what it cost at the volume of the design
-  measurements is in `docs/evidence/2026-11-14-cutover-search-cost.md`. The
+  and every period reads as legacy. The search reads the recorded events in
+  time order and stops at the first shape-tagged one. Once a cutover is stored
+  it finds none, so it reads every recorded event before the stored cutover;
+  while none is stored it reads up to the first tagged event, or all of them
+  when there is none. Its cost therefore grows with the history before the
+  cutover. What it cost at the volume of the design measurements, in each of
+  these cases, is in `docs/evidence/2026-11-14-cutover-search-cost.md`. The
   search at start and in the daily check runs with limits that ClickHouse
   enforces on the statement: 23 s at start, 60 s in the daily check, and
   512 MiB of memory in both. ClickHouse stops a search that reaches one; that
