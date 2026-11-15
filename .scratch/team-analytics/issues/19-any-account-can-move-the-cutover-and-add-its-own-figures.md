@@ -16,7 +16,7 @@ The correction for a wrongly early event is documented (remove the event from th
 - Should the cutover search ignore events dated before a configured date (when the new UI was deployed)?
 - Or should the cutover be an administrator's setting rather than found by search?
 - Or does the documented correction stay the only remedy, with the trust model stated?
-- Is a self-reported figure acceptable for what the page is used for, or should some figures be checked against what CVAT itself stores (for example, that a job exists and the person is assigned to it)?
+- Is a self-reported figure acceptable for what the page is used for, or should some figures be checked against what CVAT itself stores (for example, that a job exists and the person is assigned to it)? (Added by the implementer; the review's options are the first two.)
 
 ## Comments
 

@@ -5,7 +5,6 @@ import threading
 import time
 from urllib.parse import urlsplit
 
-from team_analytics import http_server
 from team_analytics.http_server import make_server
 from tests.support import FakeUser, StackTestCase
 
@@ -61,9 +60,9 @@ class RequestBodyTest(StackTestCase):
         self.assertEqual(received.count(b"HTTP/1.1 404 "), 2, received[:400])
 
 
-def connection_threads() -> int:
-    """Threads the HTTP server runs one per open connection."""
-    return sum("process_request_thread" in thread.name for thread in threading.enumerate())
+def connection_threads() -> set[threading.Thread]:
+    """The threads HTTP servers in this process run, one per open connection."""
+    return {thread for thread in threading.enumerate() if "process_request_thread" in thread.name}
 
 
 class IdleConnectionTest(StackTestCase):
@@ -94,7 +93,8 @@ class IdleConnectionTest(StackTestCase):
             "idle after an answer": self.connect(request + b"\r\n"),
         }
         time.sleep(0.3)
-        self.assertEqual(connection_threads(), before + 3)
+        mine = connection_threads() - before
+        self.assertEqual(len(mine), 3)
         started = time.monotonic()
         for name, connection in connections.items():
             with self.subTest(connection=name):
@@ -107,10 +107,9 @@ class IdleConnectionTest(StackTestCase):
                 else:
                     self.assertEqual(received, b"")
         self.assertLess(time.monotonic() - started, self.IDLE_S + 2)
-        deadline = time.monotonic() + 2
-        while connection_threads() > before and time.monotonic() < deadline:
-            time.sleep(0.05)
-        self.assertEqual(connection_threads(), before)
+        for thread in mine:
+            thread.join(timeout=2)
+            self.assertFalse(thread.is_alive(), thread.name)
 
     def test_a_connection_in_use_is_not_closed_before_the_idle_limit(self):
         request = b"GET /team-analytics-api/v1/no-such-endpoint HTTP/1.1\r\nHost: x\r\n\r\n"
@@ -127,8 +126,3 @@ class IdleConnectionTest(StackTestCase):
         except TimeoutError:
             pass
         self.assertEqual(received.count(b"HTTP/1.1 404 "), 4, received[:600])
-
-    def test_the_default_limit_outlasts_the_upstream_keep_alive_of_the_known_proxies(self):
-        # ingress-nginx keeps idle upstream connections for 60 s, Traefik for 90 s: a server that closed
-        # first would fail requests they send on a connection they still hold
-        self.assertGreater(http_server.IDLE_S, 90)

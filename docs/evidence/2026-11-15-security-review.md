@@ -189,12 +189,14 @@ finding that waits for the owner** (issue 19 above, with the review's options as
 `http_server.py`, stated with its reason there and in the specification): a connection that sends
 nothing for that long, with no request, half a request, or after a kept-alive answer, is closed
 and its thread ends. The value is longer than the time the proxies that reuse connections keep an
-idle one (ingress-nginx 60 s, Traefik 90 s), so a reused connection is never closed under a
-proxy; the stack's nginx proxy has no upstream `keepalive` and opens one connection per request.
-Test first, through the server's boundary (`tests/test_http.py`, `IdleConnectionTest`, with a
-1 s limit given to `make_server`): before the fix the silent and half-sent connections were still
-open after 5 s (recv timed out) and the module failed; after it, six tests OK on the default
-ClickHouse image. A client that sends a byte now and then keeps its connection; the worker pool
+idle one by default (ingress-nginx 60 s, Traefik 90 s), so a reused connection is never closed
+under a proxy; the stack's nginx proxy has no upstream `keepalive` and opens one connection per
+request (read in `proxy.yaml`). Unverified: the two defaults are the controllers' documented
+defaults as known to the implementer, not read from this repository or from the cluster's
+ingress-nginx configuration. Test first, through the server's boundary (`tests/test_http.py`,
+`IdleConnectionTest`, with a 1 s limit given to `make_server`): before the fix the silent,
+half-sent and idle kept-alive connections were still open after 5 s (recv timed out) and the
+module failed; after it, the module's five tests OK on the default ClickHouse image. A client that sends a byte now and then keeps its connection; the worker pool
 and the NetworkPolicy stay out (below).
 
 **Finding 2, the rest (recorded).** A bounded worker pool needs a worker count nobody has chosen.
@@ -219,26 +221,36 @@ render (the chart render, the service, the proxy and the Ingress) contains:
   inside `projected` only `configMap`;
 - a `volumeName` anywhere is refused (a claim, a claim template, an ephemeral template);
 - an Ingress may name only the stack's own host (`TA_INGRESS_HOST`, passed by `run.sh` as
-  `--ingress-host`), in its rules and its TLS entries; a rule without a host and a default backend
-  are refused;
+  `--ingress-host`), in its rules and its TLS entries; a rule without a host, a default backend
+  and any annotation are refused (the genuine Ingress has none; an annotation such as
+  ingress-nginx's `server-alias` adds a host, a snippet adds controller configuration);
 - Endpoints and EndpointSlice: refused, because the genuine render contains neither (the cluster
   writes them for a Service with a selector);
 - Secret types: only those of the genuine render (unset, `Opaque`, `generic`), which refuses the
   service account token Secret.
 
-Not changed: the host checks and the role binding checks still refuse by list, and the
-annotations and class of an Ingress for the stack's own host are not judged. Checked without a
-cluster, as the review did: the YAML turned into kubectl's object stream with PyYAML and judged
-with the resource list an earlier review saved. The genuine chart render and the service, proxy
-and Ingress renders (made with `run.sh`'s substitutions and `stack.env`'s defaults) are accepted.
-Of 55 doctored renders (18 from the last-fixes review, 19 from the delivery review, the review's
-7, and 11 added here), 50 are refused, every one of the review's seven among them. The five
-accepted are controls meant to pass: the delivery review's genuine render, the last-fixes review's
-empty namespace, untagged pull policy and duplicate key (PyYAML keeps the last key; kubectl refuses
-duplicate keys), and an Ingress for the stack's own host. The 11 added ones: a secret, an
-ephemeral and an iSCSI volume, a projected token, a volume that is not an object, a claim template
-naming a volume, an EndpointSlice, and an Ingress with no host, with a default backend and with a
-foreign TLS host. The live `check-render` is part three. The stack's README and the specification
+The Secret type allowlist goes beyond the checks the brief named; it was added so that all seven
+of the review's renders are refused. Not changed: the host checks and the role binding checks
+still refuse by list, and the class of an Ingress for the stack's own host is not judged.
+
+Checked without a cluster, as the review did: the YAML turned into kubectl's object stream with
+PyYAML and judged with the resource list an earlier review saved. The genuine chart render is the
+file the last-fixes review saved; the allowlist was taken from it and is checked against it. No
+commit since then changes the chart (`cvat/helm-chart`), the stack's `values.yaml`, `Chart.lock`
+or chart hashes, or how `run.sh` renders the chart (read in `git log`); a live render can still
+differ, so the live `check-render` in part three is what shows it. That render and the service,
+proxy and Ingress renders (made with `run.sh`'s substitutions and `stack.env`'s defaults) are
+accepted. Of 57 doctored renders (18 from the last-fixes review, 19 from the delivery review, the
+review's 7, and 13 added here), 52 are refused, every one of the review's seven among them. Five
+are accepted. Four are controls meant to pass: the delivery review's genuine render, the
+last-fixes review's empty namespace and untagged pull policy, and an Ingress for the stack's own
+host. The fifth, the last-fixes review's duplicate-key render (an image key given twice, the
+listed image last), is a doctored render this replay cannot judge: PyYAML keeps the last key. That
+kubectl refuses duplicate keys was not rechecked here or by the review; a live `check-render` of
+that file is part three. The 13 added ones: a secret, an ephemeral and an iSCSI volume, a
+projected token, a volume that is not an object, a claim template naming a volume, an
+EndpointSlice, an Ingress with no host, with a default backend and with a foreign TLS host, and an
+Ingress for the stack's own host with a `server-alias` and with a `server-snippet` annotation. The stack's README and the specification
 say what the guard judges by allowlist and what still by list.
 
 **Finding 5 (fixed and recorded).** `build-team-analytics-service.sh` refuses a base image that is
@@ -267,8 +279,9 @@ history carries the same details, so a redaction at the tip would withdraw nothi
 
 - The owner's decision on finding 1 (issue 19).
 - With a live stack, after the stack in use is down: merge of the integration tip, the service
-  image rebuilt under its real tag, one fresh `up`, `check-render` on the live cluster, the
-  service pod shown running under the new container restrictions, and `down` leaving nothing.
+  image rebuilt under its real tag, one fresh `up`, `check-render` on the live cluster (also of
+  the last-fixes review's duplicate-key render), the service pod shown running under the new
+  container restrictions, and `down` leaving nothing.
 - The reviewer's second pass over the commits after `fe87ffaf`, these fixes included, before any
   criterion of ticket 28 is ticked.
 - The whole service suite on both ClickHouse images, after the merge (run by the orchestrator).

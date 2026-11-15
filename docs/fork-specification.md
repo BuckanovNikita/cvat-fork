@@ -281,8 +281,8 @@ Behavior to preserve:
   after the answer, so a body is never answered as a request. A connection
   that sends nothing for 120 s (no request, or a request that stops halfway)
   is closed and its thread ends. The limit is longer than the time the known
-  proxies keep an idle connection to the service for reuse (ingress-nginx
-  60 s, Traefik 90 s), so the service never closes a connection a proxy may
+  proxies keep an idle connection to the service for reuse (by default
+  ingress-nginx 60 s, Traefik 90 s), so the service never closes a connection a proxy may
   still send a request on. Known limit: the HTTP server starts one thread per
   open connection with no cap, and the manifests carry no NetworkPolicy, so
   any pod in the cluster can open connections to port 8000 (each lasting at
@@ -737,7 +737,8 @@ Before anything is applied, the launcher's render check (`render_guard.py`,
 listed in the stack's README) judges every object. What could reach another
 project on the shared cluster through storage or routes is judged by
 allowlist, against what the genuine render contains: pod volume sources,
-claims naming a volume, the hosts of an Ingress (the stack's own only),
+claims naming a volume, the hosts of an Ingress (the stack's own only, and
+no annotation, which could add one),
 hand-written Endpoints or EndpointSlices, and Secret types. The checks for
 reaching the host still refuse by list. It judges the `helm template` render,
 not what the installation creates.
