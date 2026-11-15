@@ -27,3 +27,7 @@ Team Analytics got its figures from a separate service that asked CVAT who the c
 - Worker down, ClickHouse down, or a full queue shows as an error panel on the Team Analytics page and nothing else. This has to be shown on a running stack before the service is deleted, together with a load check on CVAT's own endpoints.
 - The app depends on upstream internals that are not documented extension points: the permission base class, the periodic job list, the queue settings, the organization middleware, the entry point's component files and `core.server.request`. They are listed in the fork specification. Most changes to them fail at merge or test time.
 - The endpoints are left out of the published schema, so `cvat/schema.yml` and the SDK do not change.
+
+## Amendments, 2026-11-15 (images)
+
+- **The server image is no longer the stock release with files copied over it.** [ADR 0007](0007-the-fork-builds-its-images-from-public-bases-the-server-on-debian-12.md) replaces it with a full build of the fork's tree on public bases, on Debian 12. The consequence above that the image "is still the stock release with files copied over it, valid while the fork adds no Python dependency and changes nothing outside the copied paths; the build refuses otherwise" no longer holds. The rest of that consequence, that the image carries the fork's backend tree and a change to analytics code rolls out the backend image, stands.
