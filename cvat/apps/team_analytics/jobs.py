@@ -15,6 +15,7 @@ import logging
 import django_rq
 from django.conf import settings
 from django.core.cache import caches
+from django.db import connection
 
 from . import QUEUE, reads
 from .core.config import Config
@@ -53,8 +54,13 @@ def config() -> Config:
 
 
 def technical_account_ids() -> tuple[int, ...]:
-    """The user ids on the Technical accounts list, from Postgres (models.TechnicalAccount)."""
-    return tuple(sorted(TechnicalAccount.objects.values_list("user_id", flat=True)))
+    """The user ids on the Technical accounts list, from Postgres (models.TechnicalAccount). The
+    database connection is closed right after: the read that follows may take as long as its
+    statement limit and needs none (a later use of the ORM in the same process opens a new one)."""
+    try:
+        return tuple(sorted(TechnicalAccount.objects.values_list("user_id", flat=True)))
+    finally:
+        connection.close()
 
 
 def _engine(read_limit: Limit | None = None) -> tuple[Engine, WatchedLock]:
