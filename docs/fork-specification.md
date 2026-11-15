@@ -20,6 +20,11 @@ to the repository root.
 
 The authoritative import path selection is `PATHS` in `mirror-cvat.sh`.
 `tools/git-filter-repo` is vendored tooling, not a place for fork policy.
+It has not changed since it was added; its SHA-256 is
+`67447413e273fc76809289111748870b6f6072f08b17efe94863a92d810b7d94`, and its
+own `--version` (the start of its source's git blob id) prints `a40bce548d2c`.
+Which upstream release of git-filter-repo it is has not been identified: the
+repository records no release, and no outside request was made to match it.
 The filtered tree omits the Python backend. It carries four of its OPA policies:
 the issue and comment policies, which the fork patches in place, and their
 helpers `cvat/cvat/apps/iam/rules/utils.rego` and
@@ -164,7 +169,15 @@ its selected Node image override through the named BuildKit context, disabled
 source maps, and removal of stale local `cvat-ui/dist` output before building.
 The script's `IMAGE` and `NODE_IMAGE` variables are supported overrides;
 `SAVE=1` additionally exports a compressed image archive, while the default
-only builds the image. Consult the script for current defaults.
+only builds the image. Consult the script for current defaults. The UI build
+needs the network by design (it installs from the import's lock with
+`--immutable`), and what it starts from is pinned by tag, not by digest: the
+Node image in `build-ui.sh`, and in upstream's `Dockerfile.ui` the nginx base
+and an unpinned `corepack` install. That is upstream's build, kept as it is.
+
+`build-team-analytics-service.sh` builds as `build-server.sh` does: it never
+pulls, refuses when the base image named by `BASE_IMAGE` is not local and when
+`IMAGE` equals it, and runs the build without network.
 
 The fork server image is the stock release image named by `BASE_IMAGE`, with
 `issues.rego` and `comments.rego` from `cvat/cvat/apps/engine/rules/` copied
@@ -264,7 +277,27 @@ Behavior to preserve:
   search in the daily check. Each gives up after hearing nothing from
   ClickHouse for a few seconds longer than its search's limit. A request body is read and dropped, or the
   connection is closed
-  after the answer, so a body is never answered as a request.
+  after the answer, so a body is never answered as a request. A connection
+  that sends nothing for 120 s (no request, or a request that stops halfway)
+  is closed and its thread ends. The limit is longer than the time the known
+  proxies keep an idle connection to the service for reuse (by default
+  ingress-nginx 60 s, Traefik 90 s), so the service never closes a connection a proxy may
+  still send a request on. Known limit: the HTTP server starts one thread per
+  open connection with no cap, and the manifests carry no NetworkPolicy, so
+  any pod in the cluster can open connections to port 8000 (each lasting at
+  most the idle limit while silent, longer if it sends a byte now and then).
+  A cap needs a worker count nobody has chosen; a NetworkPolicy needs the
+  deployment's ingress controller, which the fork does not know, and a local
+  cluster may not enforce one.
+- Known limits of the service's reach into ClickHouse: it uses the chart's own
+  account from `cvat-analytics-secret`, the account CVAT writes its events
+  with, so it could write to or drop CVAT's `events` table, not only its own
+  database. A dedicated account (read on the events database, write on the
+  totals database) is a deployment decision. Its reads run without a time or
+  memory limit; only the cutover search has limits, which the owner decided.
+  A limit on reads could fail a legitimate read at scale. The container runs
+  as user 1000 without privilege escalation, with every capability dropped and
+  the runtime's default seccomp profile; its root filesystem is writable.
 - Its routes are under `/team-analytics-api/v1/`. Every request is checked
   against CVAT with the caller's own cookie or token: `/api/users/self`,
   `/api/organizations`, `/api/memberships`. Admins (the `admin` group) see any
@@ -404,6 +437,27 @@ Behavior to preserve:
   logs each time. The events table records only when an event happened, not
   when it arrived, so the search cannot be narrowed to the records added since
   the last one.
+- Trust model: every figure is reported by the browser of the person it
+  describes. The service checks who may read figures, not whether the events
+  behind them are true. An account that can send client events can add figures
+  for itself: working time, sessions, operations, creations, Model creations,
+  class changes and hotkey counts, at any past hour and under any project or
+  task id, inside each organization it belongs to; it cannot write under
+  another person's name. Any account, with no organization and no global role,
+  can move the instance's cutover earlier with one shape-tagged event dated
+  early: at the next daily check or start that hour is the cutover for every
+  organization, and the periods after it read as not legacy. The correction is
+  the one above (remove the event, then the stored value). How this is known:
+  the service's half was run on its test harness (a forged event from an
+  account outside every organization moved the cutover and changed another
+  organization's figures); the CVAT half was read, not run (stock CVAT allows
+  every authenticated caller to send events, sets the user and organization of
+  a client event from the request, and takes the job, task and project ids,
+  counts, durations, payload and time from the client). Whether to bound
+  the cutover search (for example by a configured earliest date, or by an
+  administrator's setting) is open for the owner: the search is the owner's
+  decision (ticket 17 of the defect fixes), and the question is filed as
+  `.scratch/team-analytics/issues/19-any-account-can-move-the-cutover-and-add-its-own-figures.md`.
 - New measurements travel inside existing client event types (ADR 0002):
   payload fields on draw, paste, propagate, drag, resize and delete, plus three
   `debug:info` records (`team_analytics:class_change`,
@@ -638,9 +692,11 @@ it:
   harness drives the top bar over supplied searches. The stack's held-key
   step (`run.sh check-fixes gestures`: a navigation key held while the frame
   data requests are held back, its count compared with the frames shown)
-  catches a stale last shown frame. It does not reach a handler that waits:
-  on the stack (2026-11-15) the frame change did not wait for the frame's
-  data, so every key-down moved a frame. CVAT's merged `change:frame` records
+  was meant to catch a stale last shown frame. On the stack (2026-11-15)
+  the frame change did not wait for the frame's data, so every key-down
+  moved a frame, and a count of every key-down would have matched as well;
+  only the press at the last frame, which must count nothing, told the rule
+  from its absence. It does not reach a handler that waits either. CVAT's merged `change:frame` records
   count fewer steps than were shown (a record already sent keeps its count),
   so they are not a measure of frames moved.
 
@@ -720,6 +776,16 @@ label is the same for all of them. An `up` from a second checkout upgrades the
 first one's release and its `down` deletes it. Give each concurrent run its own
 `TA_RUN_ID` (and its own reserved host port). `down` refuses a namespace
 without the label and stops only its own port-forward.
+
+Before anything is applied, the launcher's render check (`render_guard.py`,
+listed in the stack's README) judges every object. What could reach another
+project on the shared cluster through storage or routes is judged by
+allowlist, against what the genuine render contains: pod volume sources,
+claims naming a volume, the hosts of an Ingress (the stack's own only, and
+no annotation, which could add one),
+hand-written Endpoints or EndpointSlices, and Secret types. The checks for
+reaching the host still refuse by list. It judges the `helm template` render,
+not what the installation creates.
 
 The cluster's sweeper drops a namespace at its age limit or when it was created
 before the cluster's last restart. The launcher recreates a namespace older

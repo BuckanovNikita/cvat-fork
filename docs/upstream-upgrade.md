@@ -422,7 +422,12 @@ image is local, runs `check-issue-policies` on both sides, builds the import's
 chart with its pinned dependencies and applies the render checks to the render
 read as objects, CRDs included: only kinds the cluster lists as namespaced, no
 other namespace, no image outside the stack's list (`stack.env`), none untagged
-or `latest`, no forced pull, and the fork server image as the only server image.
+or `latest`, no forced pull, the fork server image as the only server image,
+nothing that reaches the host, and, by allowlist against what the genuine
+render contains, only its volume sources and Secret types, no claim naming a
+volume, no Ingress for another host than the stack's or with an annotation,
+and no hand-written Endpoints or EndpointSlice (the stack's README has the
+full list).
 
 All live verification runs on the test stack under "Team Analytics", in the
 project's own namespace with a quota and its own teardown (`down`, or `cycle`).

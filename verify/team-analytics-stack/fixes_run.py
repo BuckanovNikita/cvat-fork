@@ -60,7 +60,10 @@ CONTROL_SQL = ROOT / "team-analytics" / "service" / "sql" / "control"
 TOTALS = "team_analytics"  # TEAM_ANALYTICS_DB in team-analytics/k8s/config.yaml
 REFRESH_S = int(os.environ.get("TA_REFRESH_INTERVAL_S") or "60")
 TECHNICAL_ACCOUNT = "ta-bot"
+UI_WORKER = "ta-worker-c"  # the annotator whose job work up's final run makes in UI_ORG (final_run.py)
 BOT_BOXES = 3
+# CVAT's action names for copying and pasting a selection (the browser presses the keys, not the names)
+COPY_PASTE_ACTIONS = {"COPY_SHAPE", "PASTE_SHAPE"}
 FRAMES = 150  # more frames than the UI fetches ahead, so that a held key meets frames still loading
 FRAME_SIDE = 600  # pixels: the gestures need boxes far larger than a few screen pixels
 SESSION_GAP_MS = 300_000
@@ -225,10 +228,15 @@ def technical_project() -> None:
         got = {key: row[key] for key in want}
         check(got == want, f"details row of project {project} ({shapes}) {got}, expected {want}")
         log(f"details by project ({shapes}): project {project} {got}")
+    # the same search finds a real annotator with job work this week (up's final run: the UI's worker), so
+    # that an empty answer for the technical account is not an empty table
+    real = ok(owner, "details", org=UI_ORG, period="week", by="annotators", search=UI_WORKER)
+    found = [r["user_name"] for r in real["rows"]]
+    check(found == [UI_WORKER], f"a search for {UI_WORKER} by annotator finds {found}")
     people = ok(owner, "details", org=UI_ORG, period="week", by="annotators", search=TECHNICAL_ACCOUNT)
     names = [r["user_name"] for r in people["rows"]]
     check(not names, f"a search for the technical account by annotator finds {names}")
-    log(f"details by annotator: {TECHNICAL_ACCOUNT} not listed")
+    log(f"details by annotator: {UI_WORKER} found by the same search, {TECHNICAL_ACCOUNT} not listed")
 
 
 # ---------------------------------------------------------------- gestures in the browser
@@ -347,6 +355,10 @@ def check_gestures(state_file: str) -> None:
     # are logged under whatever action CVAT names them)
     known = {name: hotkeys.get(name) for name in did["hotkeys"]}
     check(known == did["hotkeys"], f"hotkeys in the summaries {hotkeys}, made {did['hotkeys']}")
+    # and nothing else is credited (the slider or the press at the last frame under another name would be added
+    # to the figure and to its expectation alike): only the pressed names, plus copy and paste
+    unexpected = sorted(set(hotkeys) - set(did["hotkeys"]) - COPY_PASTE_ACTIONS)
+    check(not unexpected, f"hotkeys in the summaries under names not pressed: {unexpected} in {hotkeys}")
 
     # the figures: one creation for draw, undo, redo; one alignment per object moved, plus the plain drag
     owner = Session("ta-owner-c")
@@ -435,6 +447,16 @@ def unprocessed() -> None:
     held_at = hold_lease(token, "run.sh check-fixes unprocessed")
     log(f"holding the refresh lease ({LEASE_S} s); marker event on {probe_day}, {PROBE_DAYS_BEFORE} days before "
         f"the earliest recorded day {first}")
+    try:  # the marker is deleted whatever fails from its INSERT on
+        unprocessed_with_marker(admin, callers, probe_day, token, held_at)
+    finally:
+        clickhouse(f"ALTER TABLE events DELETE WHERE obj_name = '{PROBE}' SETTINGS mutations_sync = 2")
+        left = clickhouse(f"SELECT count() AS n FROM events WHERE obj_name = '{PROBE}'")[0]["n"]
+        check(int(left) == 0, f"{left} marker events left")
+        log("marker event deleted; the probe days stay recorded as processed, before the first event")
+
+
+def unprocessed_with_marker(admin: Session, callers: list, probe_day: date, token: str, held_at: float) -> None:
     try:
         clickhouse(
             "INSERT INTO events FORMAT JSONEachRow",
@@ -459,9 +481,10 @@ def unprocessed() -> None:
             for step in ("week", "month"):
                 trends = ok(session, "trends", org=org, step=step)
                 i = bucket_of(probe_day, trends["buckets"])
-                if i < 0:
-                    log(f"{who}: trends by {step}: no bucket holds {probe_day}")
-                    continue
+                # a probe outside the trends (on a kept stack each run's probe lies further back) judges no
+                # bucket: that fails rather than passes
+                check(i >= 0, f"{who} trends by {step}: no bucket holds the probe day {probe_day}; "
+                              f"buckets from {trends['buckets'][0]['start'][:10] if trends['buckets'] else '-'}")
                 check(trends["buckets"][i]["processed"] is False, f"{who} trends {step} bucket {trends['buckets'][i]}")
                 points = [line["points"][i] for line in trends["lines"]]
                 wrong = [k for p in points for k, v in p.items() if k not in TREND_POINT_FLAGS and v is not None]
@@ -471,18 +494,12 @@ def unprocessed() -> None:
     finally:
         clickhouse(control_sql("lock_release.sql", token=token, holder="run.sh check-fixes unprocessed", now=None))
         log(f"released the lease after {time.monotonic() - held_at:.0f} s")
-    try:
-        wait_figures(admin, "status", {}, lambda b: (b.get("history") or {}).get("complete"),
-                     "the probe days processed", 600)
-        for session, org in callers:
-            body = ok(session, "overview", org=org, period="year")
-            check(body["processed"] is True and body["by_annotator"] is not None, f"year after processing {body}")
-            log(f"{session.username}, org={org or '-'}: year processed, {len(body['by_annotator']['rows'])} rows")
-    finally:
-        clickhouse(f"ALTER TABLE events DELETE WHERE obj_name = '{PROBE}' SETTINGS mutations_sync = 2")
-        left = clickhouse(f"SELECT count() AS n FROM events WHERE obj_name = '{PROBE}'")[0]["n"]
-        check(int(left) == 0, f"{left} marker events left")
-        log("marker event deleted; the probe days stay recorded as processed, before the first event")
+    wait_figures(admin, "status", {}, lambda b: (b.get("history") or {}).get("complete"),
+                 "the probe days processed", 600)
+    for session, org in callers:
+        body = ok(session, "overview", org=org, period="year")
+        check(body["processed"] is True and body["by_annotator"] is not None, f"year after processing {body}")
+        log(f"{session.username}, org={org or '-'}: year processed, {len(body['by_annotator']['rows'])} rows")
 
 
 # ---------------------------------------------------------------- sessions at the one-day limit

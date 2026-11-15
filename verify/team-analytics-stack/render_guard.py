@@ -14,13 +14,28 @@ Refused, each named on stderr:
   on the --allow list, or has no tag or the tag `latest` (Kubernetes pulls those by default);
 - an `imagePullPolicy` anywhere other than IfNotPresent or Never;
 - with --backend IMAGE: any image of IMAGE's repository other than IMAGE, or IMAGE absent;
-- what reaches the host or the outside from inside the namespace, in any object at any depth:
-  a Service of a type other than ClusterIP (unset, or headless with clusterIP None, is
-  ClusterIP) or with external IPs; host networking, host PID or host IPC; a host port; a host
-  path volume; privileged mode or added capabilities;
+- these ways to the host or the outside, and only these: a Service of a type other than
+  ClusterIP (unset, or headless with clusterIP None, is ClusterIP) or with external IPs; and,
+  as keys at any depth of any object, host networking, host PID or host IPC, a host port, a
+  host path volume, privileged mode and added capabilities (a key of that name elsewhere, such
+  as a ConfigMap data key `hostPath`, is refused too: a false refusal, kept);
+- what reaches other projects' storage or routes, by allowlist (what the genuine render uses is
+  allowed, nothing else): a volume of a pod, at any depth, with a source other than configMap,
+  emptyDir, persistentVolumeClaim or projected, or a projected source other than configMap; a
+  `volumeName` anywhere (a claim that names a volume); an Ingress with a rule or a TLS entry for
+  a host other than --ingress-host, a rule without a host, a default backend, or any annotation
+  (an annotation can add a host or controller configuration; without --ingress-host every
+  Ingress is refused); an Endpoints or EndpointSlice object, which the
+  genuine render does not contain (the cluster writes them for Services with a selector); a
+  Secret of a type other than unset, Opaque or generic (a service account token Secret);
 - a RoleBinding whose role is a ClusterRole, or with a subject other than a ServiceAccount of
   --namespace;
 - a render with no object.
+
+Not refused: the class of an Ingress for the stack's own host, the rest of a container's
+security settings (`allowPrivilegeEscalation: true` among them), and anything else the checks
+above do not name. The host checks (Service type, host fields, privileged mode,
+capabilities) and the role binding checks still refuse by list.
 
 On success prints the render's images, normalised and sorted, one per line. Exit 0 accepted,
 1 refused, 2 unreadable input. Standard library only.
@@ -32,6 +47,13 @@ import sys
 from collections.abc import Iterator
 
 ALLOWED_PULL_POLICIES = {"IfNotPresent", "Never"}
+# the volume sources the genuine render (chart, service, proxy) uses, and the sources inside a projected one
+ALLOWED_VOLUME_SOURCES = {"configMap", "emptyDir", "persistentVolumeClaim", "projected"}
+ALLOWED_PROJECTED_SOURCES = {"configMap"}
+# the cluster writes these for a Service with a selector; written by hand they send a Service anywhere
+ENDPOINT_KINDS = {("", "Endpoints"), ("discovery.k8s.io", "EndpointSlice")}
+# the Secret types of the genuine render (unset is Opaque; the chart writes "generic" for three)
+ALLOWED_SECRET_TYPES = {None, "Opaque", "generic"}
 
 
 def normalize(image: str) -> str:
@@ -127,7 +149,63 @@ def host_reach(node: object, path: str) -> Iterator[str]:
             yield from host_reach(value, f"{path}[{index}]")
 
 
-def reach(obj: dict, name: str, namespace: str) -> Iterator[str]:
+def storage(node: object, path: str) -> Iterator[str]:
+    """Volumes with a source the genuine render does not use, and claims that name a volume, at any depth."""
+    if isinstance(node, dict):
+        if "volumeName" in node:
+            yield f"claim naming a volume at {path}.volumeName: {node['volumeName']}"
+        if "volumes" in node:
+            volumes = node["volumes"]
+            for index, volume in enumerate(volumes if isinstance(volumes, list) else [volumes]):
+                where = f"{path}.volumes[{index}]"
+                if not isinstance(volume, dict):
+                    yield f"volume that is not an object at {where}"
+                    continue
+                for source, value in volume.items():
+                    if source == "name":
+                        continue
+                    if source not in ALLOWED_VOLUME_SOURCES:
+                        yield f"volume source not on the list at {where}.{source}"
+                    elif source == "projected":
+                        sources = value.get("sources") if isinstance(value, dict) else None
+                        for i, item in enumerate(sources if isinstance(sources, list) else [sources]):
+                            kinds = set(item) if isinstance(item, dict) else {"?"}
+                            if not kinds <= ALLOWED_PROJECTED_SOURCES:
+                                yield f"projected source not on the list at {where}.projected.sources[{i}]: {sorted(kinds)}"
+        for key, value in node.items():
+            yield from storage(value, f"{path}.{key}")
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from storage(value, f"{path}[{index}]")
+
+
+def routes(obj: dict, name: str, ingress_host: str | None) -> Iterator[str]:
+    """An Ingress may route the stack's own host only, and carries no annotation (the genuine one has
+    none; an annotation can add hosts, such as ingress-nginx's server-alias, or controller configuration)."""
+    if ingress_host is None:
+        yield f"Ingress without a host of the stack's to compare with: {name}"
+        return
+    metadata = obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {}
+    if metadata.get("annotations"):
+        yield f"Ingress with annotations: {name}: {sorted(metadata['annotations'])}"
+    spec = obj.get("spec") if isinstance(obj.get("spec"), dict) else {}
+    for key in ("defaultBackend", "backend"):
+        if key in spec:
+            yield f"Ingress with a default backend (any host): {name}"
+    rules = spec.get("rules") or []
+    for index, rule in enumerate(rules if isinstance(rules, list) else [rules]):
+        host = rule.get("host") if isinstance(rule, dict) else None
+        if host != ingress_host:
+            yield f"Ingress rule for a host other than {ingress_host} at {name}.spec.rules[{index}]: {host}"
+    tls = spec.get("tls") or []
+    for index, entry in enumerate(tls if isinstance(tls, list) else [tls]):
+        hosts = entry.get("hosts") if isinstance(entry, dict) else None
+        for host in hosts if isinstance(hosts, list) else [hosts]:
+            if host != ingress_host:
+                yield f"Ingress TLS entry for a host other than {ingress_host} at {name}.spec.tls[{index}]: {host}"
+
+
+def reach(obj: dict, name: str, namespace: str, ingress_host: str | None = None) -> Iterator[str]:
     """Services that reach outside the cluster, host access, and role bindings that grant more than the
     namespace's own roles to more than the namespace's own service accounts."""
     kind = obj.get("kind")
@@ -146,7 +224,15 @@ def reach(obj: dict, name: str, namespace: str) -> Iterator[str]:
             if not isinstance(subject, dict) or subject.get("kind") != "ServiceAccount" \
                     or subject.get("namespace") not in (None, "", namespace):
                 yield f"role binding to a subject outside {namespace}: {name} binds {subject}"
+    if kind == "Ingress":
+        yield from routes(obj, name, ingress_host)
+    if (group_of(str(obj.get("apiVersion", ""))), kind) in ENDPOINT_KINDS:
+        yield f"endpoints written by hand: {name}"
+    if kind == "Secret" and group_of(str(obj.get("apiVersion", ""))) == "" \
+            and obj.get("type") not in ALLOWED_SECRET_TYPES:
+        yield f"Secret of a type not on the list: {name} of type {obj.get('type')}"
     yield from host_reach(obj, name)
+    yield from storage(obj, name)
 
 
 def judge(
@@ -156,6 +242,7 @@ def judge(
     cluster: set[tuple[str, str]],
     allowed: set[str],
     backend: str | None,
+    ingress_host: str | None = None,
 ) -> tuple[list[str], set[str]]:
     problems: list[str] = []
     images: set[str] = set()
@@ -179,7 +266,7 @@ def judge(
         object_namespace = metadata.get("namespace")
         if object_namespace not in (None, "", namespace):
             problems.append(f"object in another namespace than {namespace}: {name} in {object_namespace}")
-        problems.extend(reach(obj, name, namespace))
+        problems.extend(reach(obj, name, namespace, ingress_host))
         for path, image, policy in image_fields(obj, name):
             if policy is not None and policy not in ALLOWED_PULL_POLICIES:
                 problems.append(f"pull policy {policy!r} at {path}.imagePullPolicy")
@@ -211,6 +298,7 @@ def main() -> int:
     parser.add_argument("--resources", required=True, help="output of kubectl api-resources --no-headers")
     parser.add_argument("--allow", nargs="*", default=[], help="images the render may name")
     parser.add_argument("--backend", help="the only image of its repository allowed in the render")
+    parser.add_argument("--ingress-host", help="the only host an Ingress may route (the stack's own)")
     args = parser.parse_args()
     try:
         objects = list(read_objects(sys.stdin.read()))
@@ -222,7 +310,7 @@ def main() -> int:
         print("refused: the cluster's resource list is incomplete", file=sys.stderr)
         return 2
     allowed = {normalize(a) for a in args.allow}
-    problems, images = judge(objects, args.namespace, namespaced, cluster, allowed, args.backend)
+    problems, images = judge(objects, args.namespace, namespaced, cluster, allowed, args.backend, args.ingress_host)
     for problem in problems:
         print(f"refused: {problem}", file=sys.stderr)
     if problems:

@@ -26,6 +26,9 @@ from pathlib import Path
 BASE_URL = os.environ["TA_BASE_URL"]
 PASSWORD = os.environ["TA_SEED_PASSWORD"]
 ACCOUNTS = json.loads((Path(__file__).parent / "accounts.json").read_text())
+# the organizations the final run's volume annotators join: ta-org-v, or the one TA_VOLUME_ORG names for a
+# second load (final_run.py reads the same variable)
+VOLUME_ORGS = {"ta-org-v", os.environ.get("TA_VOLUME_ORG") or "ta-org-v"}
 
 # Payload field the Team Analytics UI adds to existing events; it must survive the way to
 # ClickHouse (run.sh check-event looks for it).
@@ -118,9 +121,11 @@ def seed_check() -> None:
                 break
             n += 1
         expected = {u: (r, True) for u, r in spec["members"].items()}
-        # on a rerun the final run's volume annotators are members too (final_run.py, VOLUME_MARK); nothing else
+        # on a rerun the final run's volume annotators are members of the volume organization too (final_run.py,
+        # VOLUME_MARK and VOLUME_ORG); of no other organization, and nothing else is
         others = {u: m for u, m in found.items() if u not in expected}
-        volume = {u for u, m in others.items() if u.startswith("ta-volume-annotator-") and m == ("worker", True)}
+        volume = {u for u, m in others.items() if slug in VOLUME_ORGS
+                  and u.startswith("ta-volume-annotator-") and m == ("worker", True)}
         check({u: found.get(u) for u in expected} == expected and set(others) == volume,
               f"{slug} memberships {found}")
         print(f"  {slug}: {expected}" + (f" and {len(volume)} volume annotators" if volume else ""))
