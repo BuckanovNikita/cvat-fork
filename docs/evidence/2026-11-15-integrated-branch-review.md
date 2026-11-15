@@ -273,7 +273,10 @@ branch `fix/last-review`.
    ExternalName Services, host PID and added capabilities in a CronJob, and a binding to a User
    refused; a headless Service and a service account without a namespace accepted. The genuine
    render (`run.sh render`, then `check-render`) is accepted, and so is that render with the
-   service's and the proxy's manifests appended. The reviewer's other renders that its report
+   service's and the proxy's manifests appended. Each launcher render alone, read by kubectl
+   and judged as `apply_service` and `apply_proxy` judge it (no backend check), is accepted;
+   a copy with the service's type set to NodePort, and one with the proxy's set to
+   LoadBalancer, are refused. The reviewer's other renders that its report
    lists as refused are still refused; three it does not list (a repeated key, an empty
    namespace, a tagged image without a pull policy) are accepted, as kubectl reads them.
 5. A failed check in `build-server.sh` removed the image under `IMAGE`, even for a failure
@@ -284,8 +287,9 @@ branch `fix/last-review`.
    `utils.rego`, and an earlier good image under a throwaway target tag. The integration tip's
    script exited 1 and removed the target tag; the new one exited 1 ("DIFFERS rules/utils.rego"),
    the target kept `4b38c649ae96`, and the failed build was removed.
-   `cvat/server:v2.82.0-fork-policies` kept `4b38c649ae96` throughout. BUILD-1 and the upgrade
-   procedure describe the new behaviour.
+   `cvat/server:v2.82.0-fork-policies` kept `4b38c649ae96` throughout, and the new script,
+   run once at the end on the real base, rebuilt it with both checks passing and the same ID,
+   `4b38c649ae96`. BUILD-1 and the upgrade procedure describe the new behaviour.
 
 ### What held
 

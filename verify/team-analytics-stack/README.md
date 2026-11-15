@@ -84,8 +84,9 @@ verify/team-analytics-stack/run.sh cycle   # up, затем down (и когда 
   `docs/evidence/2026-11-13-team-analytics-test-stack.md`); архив с другим хешем — отказ.
 - Проверка политик (`run.sh check-policies`, часть `up` сразу после `port-forward`): стенд
   забирает бандл политик, который сервер отдаёт OPA (`/api/auth/rules`), и проверяет
-  `issues.rego` и `comments.rego` каждый отдельно: файл должен быть одной записью архива и
-  обычным файлом (две записи с одним именем или ссылка — отказ), совпадать с файлом импорта
+  `issues.rego` и `comments.rego` каждый отдельно: в архиве не должно быть ничего, кроме
+  обычных файлов и каталогов (ссылка где угодно — отказ), и двух записей, чьи имена после
+  нормализации совпадают (`rules//issues.rego` — это `rules/issues.rego`); файл должен совпадать с файлом импорта
   байт в байт (`verify/policy_bundle.sh check`) и содержать отметку патча
   `Local patch (role floor)`. Если хоть одна из двух политик стоковая — отказ.
 - Обратный прокси `ta-proxy` (`proxy.yaml`): `/api`, `/admin`, `/static`, `/django-rq`,
