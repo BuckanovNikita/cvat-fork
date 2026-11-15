@@ -151,25 +151,40 @@ test('the real boundary asks cvat-core for /api/team-analytics/project-names wit
     assert.deepEqual(calls, [{ url: '/api/team-analytics/project-names', data: { method: 'GET', params: { ids: '4,8' } } }]);
 });
 
-test('names of thousands of projects are asked in requests of at most 500 ids; a failed one leaves only its own unnamed', async () => {
+test('names of thousands of projects are asked in requests of at most 500 ids and a request line under 4096 characters; a failed one leaves only its own unnamed', async () => {
     const { request, requests } = suppliedService((url, sent) => {
         const ids = sent.params.ids.split(',').map(Number);
         if (ids.includes(1500)) return { status: 400, body: { error: 'bad_request', detail: 'rejected' } };
         return { body: { names: Object.fromEntries(ids.map((id) => [id, `Project ${id}`])) } };
     });
     const { lookupProjectNames } = loadPage('project-names.ts');
+    // long ids: the length of the request line ends each request before the count does
     const ids = Array.from({ length: 2000 }, (_, index) => 9_000_001 + index);
     ids[1499] = 1500;
 
     const names = await lookupProjectNames(ids, request);
 
-    assert.equal(requests.length, 4);
     const asked = requests.map((sent) => sent.params.ids.split(',').map(Number));
-    for (const chunk of asked) assert.ok(chunk.length <= 500, `${chunk.length} ids in one request`);
+    for (const [index, sent] of requests.entries()) {
+        assert.ok(asked[index].length <= 500, `${asked[index].length} ids in one request`);
+        // the address as sent, its commas encoded; the request line adds the method, the version and `org`
+        assert.ok(sent.url.length < 3900, `a request line of ${sent.url.length} characters`);
+    }
+    assert.equal(requests.length, 7, 'about 300 ids of seven digits per request');
     assert.deepEqual(asked.flat().sort(), [...ids].sort(), 'every id asked once');
     const failed = asked.find((chunk) => chunk.includes(1500));
     assert.equal(Object.keys(names).length, ids.length - failed.length);
     assert.equal(names[9_000_001], 'Project 9000001');
+});
+
+test('short ids are asked 500 at a time', async () => {
+    const { request, requests } = suppliedService((url, sent) => ({
+        body: { names: Object.fromEntries(sent.params.ids.split(',').map((id) => [id, `Project ${id}`])) },
+    }));
+    const { lookupProjectNames } = loadPage('project-names.ts');
+    await lookupProjectNames(Array.from({ length: 600 }, (_, index) => index + 1), request);
+    assert.deepEqual(requests.map((sent) => sent.params.ids.split(',').length), [500, 100]);
+    for (const sent of requests) assert.ok(sent.url.length < 3900, `a request line of ${sent.url.length} characters`);
 });
 
 test('a lookup whose every request fails throws, so the page shows identifiers', async () => {

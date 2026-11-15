@@ -13,14 +13,37 @@ import {
 
 export const NAMES_PER_REQUEST = PROJECT_NAMES_PER_REQUEST;
 
+// The request line stays under 4096 characters, a common limit of servers and proxies: the `ids` parameter,
+// counted with its commas encoded (`%2C`, three characters), is at most this long; the path and `org` fit in the
+// rest. With long ids this limit, not NAMES_PER_REQUEST, ends a request (300 ids of seven digits).
+export const IDS_CHARACTERS_PER_REQUEST = 3000;
+
+// `ids` in requests of at most NAMES_PER_REQUEST ids and IDS_CHARACTERS_PER_REQUEST characters each
+export function namesChunks(ids: number[]): number[][] {
+    const chunks: number[][] = [];
+    let chunk: number[] = [];
+    let characters = 0;
+    for (const id of ids) {
+        const digits = String(id).length;
+        if (chunk.length && (chunk.length === NAMES_PER_REQUEST ||
+            characters + 3 + digits > IDS_CHARACTERS_PER_REQUEST)) {
+            chunks.push(chunk);
+            chunk = [];
+            characters = 0;
+        }
+        // a comma before every id but the first
+        characters += (chunk.length ? 3 : 0) + digits;
+        chunk.push(id);
+    }
+    if (chunk.length) chunks.push(chunk);
+    return chunks;
+}
+
 export async function lookupProjectNames(
     ids: number[], request: RequestService = requestService,
 ): Promise<ProjectNames> {
     const wanted = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
-    const chunks: number[][] = [];
-    for (let start = 0; start < wanted.length; start += NAMES_PER_REQUEST) {
-        chunks.push(wanted.slice(start, start + NAMES_PER_REQUEST));
-    }
+    const chunks = namesChunks(wanted);
     const names: ProjectNames = {};
     let failure: unknown = null;
     // one request at a time; a failed one leaves only its own projects shown by identifier

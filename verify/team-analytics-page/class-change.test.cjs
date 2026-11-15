@@ -46,6 +46,17 @@ function tableRows(html) {
         .map((tr) => [...tr[2].matchAll(/<t[hd][^>]*>(.*?)<\/t[hd]>/g)].map((cell) => text(cell[1])));
 }
 
+// the text of the hotkey / mouse row under the operation named `name`
+function splitRow(html, name) {
+    const card = html.match(/<section[^>]*cvat-team-analytics-operations[^>]*>(.*?)<\/section>/);
+    const rows = [...card[1].matchAll(/<tr([^>]*)>(.*?)<\/tr>/g)];
+    const index = rows.findIndex((tr) => !tr[1].includes('cvat-team-analytics-input-split-row') &&
+        text(tr[2]).startsWith(name));
+    assert.ok(index >= 0 && rows[index + 1]?.[1].includes('cvat-team-analytics-input-split-row'),
+        `${name} has a split row under it`);
+    return text(rows[index + 1][2]);
+}
+
 function legend(html) {
     const card = html.match(/<section[^>]*cvat-team-analytics-split[^>]*>(.*?)<\/section>/);
     assert.ok(card, 'the split card is shown');
@@ -57,6 +68,8 @@ test('class change is the fourth operation of the table, with count, average, to
 
     assert.deepEqual(rows.map((cells) => cells[0]), ['Operation', 'Creation', 'Alignment', 'Class change', 'Deletion']);
     assert.deepEqual(rows[3], ['Class change', '240', '12 s', '0.8 h', '10%']);
+    // a class change starts nothing with a key or the mouse: its split row shows a dash
+    assert.match(splitRow(render(View, ready(operations())), 'Class change'), /—$/);
 });
 
 test('class change takes its part of the split of working time', () => {
@@ -80,5 +93,6 @@ test('in a legacy period class change reads as not recorded, not as zero', () =>
     })));
 
     assert.deepEqual(tableRows(html)[3], ['Class change', 'Not recorded', '—', '—', '—']);
+    assert.match(splitRow(html, 'Class change'), /Not recorded$/);
     assert.ok(legend(html).every((item) => !item.startsWith('Class change')));
 });
