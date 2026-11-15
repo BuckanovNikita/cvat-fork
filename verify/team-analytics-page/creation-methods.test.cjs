@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    loadPage, render, suppliedFetch, text,
+    loadPage, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const View = loadPage('team-analytics-view.tsx').default;
@@ -127,8 +127,8 @@ test('without creation methods the headline keeps its plain line and no methods 
 
 test('creation methods reach the page from the overview response', async () => {
     const methods = creationMethods('all');
-    const { fetch } = suppliedFetch(() => ({ body: { by_annotator: { rows: [] }, creation_methods: methods } }));
-    const state = await service.loadOverview({ organization: 'team-org', timeZone: 'UTC' }, fetch);
+    const { request } = suppliedService(() => ({ body: { by_annotator: { rows: [] }, creation_methods: methods } }));
+    const state = await service.loadOverview({ organization: 'team-org', timeZone: 'UTC' }, request);
     assert.equal(state.kind, 'ready');
     assert.deepEqual(state.overview.creation_methods, methods);
 });

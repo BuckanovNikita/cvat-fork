@@ -1,0 +1,249 @@
+package tasks
+
+import rego.v1
+
+import data.utils
+import data.organizations
+
+# input: {
+#     "scope": <
+#              "create"|
+#              "create@project"|
+#              "delete:annotations"|
+#              "delete"|
+#              "download:exported_file"|
+#              "export:annotations"|
+#              "export:backup"|
+#              "export:dataset"|
+#              "import:annotations"|
+#              "import:backup"|
+#              "list"|
+#              "update:annotations"|
+#              "update:assignee"|
+#              "update:associated_storage"|
+#              "update:desc"|
+#              "update:metadata"|
+#              "update:organization"|
+#              "update:owner"|
+#              "update:project"|
+#              "update:validation_layout"|
+#              "update"|
+#              "upload:data"|
+#              "view:annotations"|
+#              "view:data"|
+#              "view:metadata"|
+#              "view:validation_layout"|
+#              "view"|
+#          > or null,
+#     "auth": {
+#         "user": {
+#             "id": <num>,
+#             "privilege": <"admin"|"user"|"worker"> or null
+#         },
+#         "organization": {
+#             "id": <num>,
+#             "owner": {
+#                 "id": <num>
+#             },
+#             "user": {
+#                 "role": <"owner"|"maintainer"|"supervisor"|"worker"> or null
+#             }
+#         } or null,
+#     },
+#     "resource": {
+#         "id": <num>,
+#         "owner": { "id": <num> },
+#         "assignee": { "id": <num> },
+#         "organization": { "id": <num> } or null,
+#         "project": {
+#             "owner": { "id": <num> },
+#             "assignee": { "id": <num> },
+#             "organization": { "id": <num> } or null,
+#         } or null,
+#         "rq_job": { "owner": { "id": <num> } } or null,
+#         "destination": <"local" | "cloud_storage"> or undefined,
+#     }
+# }
+
+is_task_owner if {
+    input.resource.owner.id == input.auth.user.id
+}
+
+is_task_assignee if {
+    input.resource.assignee.id == input.auth.user.id
+}
+
+is_project_owner if {
+    input.resource.project.owner.id == input.auth.user.id
+}
+
+is_project_assignee if {
+    input.resource.project.assignee.id == input.auth.user.id
+}
+
+is_project_staff if {
+    is_project_owner
+}
+
+is_project_staff if {
+    is_project_assignee
+}
+
+is_task_staff if {
+    is_project_staff
+}
+
+is_task_staff if {
+    is_task_owner
+}
+
+is_task_staff if {
+    is_task_assignee
+}
+
+is_task_or_project_owner if {
+    is_task_owner
+}
+
+is_task_or_project_owner if {
+    is_project_owner
+}
+
+default allow := false
+
+allow if {
+    utils.is_admin
+}
+
+allow if {
+    input.scope in {
+        utils.DELETE, utils.DELETE_ANNOTATIONS, utils.EXPORT_ANNOTATIONS, utils.EXPORT_BACKUP,
+        utils.EXPORT_DATASET, utils.IMPORT_ANNOTATIONS, utils.UPDATE_ANNOTATIONS,
+        utils.UPDATE_ASSIGNEE, utils.UPDATE_ASSOCIATED_STORAGE, utils.UPDATE_DESC,
+        utils.UPDATE_METADATA, utils.UPDATE_OWNER, utils.UPDATE_PROJECT,
+        utils.UPDATE_VALIDATION_LAYOUT, utils.UPLOAD_DATA, utils.VIEW, utils.VIEW_ANNOTATIONS,
+        utils.VIEW_DATA, utils.VIEW_METADATA, utils.VIEW_VALIDATION_LAYOUT
+    }
+    organizations.is_same_org_as_resource_with_perm(organizations.MAINTAINER)
+    utils.has_perm(utils.USER)
+}
+
+allow if {
+    input.scope in {utils.CREATE, utils.IMPORT_BACKUP}
+    organizations.is_same_context_as_resource_with_perm(organizations.SUPERVISOR)
+    utils.has_perm(utils.USER)
+}
+
+allow if {
+    input.scope == utils.CREATE_IN_PROJECT
+    organizations.is_same_context_as_resource
+    utils.has_perm(utils.USER)
+    is_project_staff
+}
+
+allow if {
+    input.scope == utils.CREATE_IN_PROJECT
+    organizations.is_same_org_as_resource_with_perm(organizations.SUPERVISOR)
+    utils.has_perm(utils.USER)
+}
+
+allow if {
+    input.scope == utils.LIST
+    utils.is_sandbox
+}
+
+allow if {
+    input.scope == utils.LIST
+    organizations.is_member
+}
+
+base_filter := {} if { # Django Q object to filter list of entries
+    utils.is_admin
+} else := qobject if {
+    utils.is_sandbox
+    user := input.auth.user
+    qobject := ["|",
+        {"owner_id": user.id},
+        {"assignee_id": user.id},
+        {"project__owner_id": user.id},
+        {"project__assignee_id": user.id},
+    ]
+} else := {} if {
+    organizations.has_perm(organizations.MAINTAINER)
+    utils.has_perm(utils.USER)
+} else := qobject if {
+    organizations.has_perm(organizations.WORKER)
+    user := input.auth.user
+    qobject := ["|",
+        {"owner_id": user.id},
+        {"assignee_id": user.id},
+        {"project__owner_id": user.id},
+        {"project__assignee_id": user.id},
+    ]
+}
+
+filter := utils.add_organization_filter(base_filter, ["organization", "project__organization"])
+
+allow if {
+    input.scope in {
+        utils.VIEW, utils.VIEW_ANNOTATIONS, utils.VIEW_METADATA, utils.VIEW_DATA,
+        utils.VIEW_VALIDATION_LAYOUT
+    }
+    organizations.is_same_context_as_resource
+    is_task_staff
+}
+
+allow if {
+    input.scope in {utils.EXPORT_DATASET, utils.EXPORT_ANNOTATIONS, utils.EXPORT_BACKUP}
+    organizations.is_same_context_as_resource_with_perm(organizations.SUPERVISOR)
+    is_task_staff
+}
+
+allow if {
+    input.scope in {utils.EXPORT_DATASET, utils.EXPORT_ANNOTATIONS, utils.EXPORT_BACKUP}
+    organizations.is_same_context_as_resource
+    is_task_or_project_owner
+}
+
+allow if {
+    input.scope in {
+        utils.UPDATE_DESC, utils.UPDATE_ANNOTATIONS, utils.DELETE_ANNOTATIONS,
+        utils.UPLOAD_DATA, utils.UPDATE_METADATA, utils.IMPORT_ANNOTATIONS,
+        utils.UPDATE_VALIDATION_LAYOUT
+    }
+    organizations.is_same_context_as_resource
+    is_task_staff
+    utils.has_perm(utils.WORKER)
+}
+
+allow if {
+    input.scope in {
+        utils.UPDATE_OWNER, utils.UPDATE_ASSIGNEE, utils.UPDATE_PROJECT,
+        utils.DELETE
+    }
+    organizations.is_same_context_as_resource
+    is_project_staff
+    utils.has_perm(utils.WORKER)
+}
+
+allow if {
+    input.scope == utils.UPDATE_ASSOCIATED_STORAGE
+    organizations.is_same_context_as_resource
+    is_project_owner
+    utils.has_perm(utils.WORKER)
+}
+
+allow if {
+    input.scope in {
+        utils.UPDATE_OWNER, utils.UPDATE_ASSIGNEE, utils.UPDATE_PROJECT,
+        utils.DELETE, utils.UPDATE_ASSOCIATED_STORAGE
+    }
+    organizations.is_same_context_as_resource
+    is_task_owner
+    utils.has_perm(utils.WORKER)
+}
+
+allow if {
+    input.scope == utils.DOWNLOAD_EXPORTED_FILE
+    input.auth.user.id == input.resource.rq_job.owner.id
+}

@@ -1,10 +1,19 @@
 line-length = 120
 target-version = "py310"
 
-# cvat/ is upstream's import and stays as upstream wrote it: no ruff run, by hand or
-# from the check pipeline, may lint or reformat it. tools/git-filter-repo is vendored.
-# force-exclude applies the exclusion to paths named on the command line as well.
-extend-exclude = ["cvat", "tools/git-filter-repo"]
+# Only the fork's own Python is linted. Everything else in the tree is upstream's and
+# stays as upstream wrote it, under upstream's own tools: no ruff run, by hand or from
+# the check pipeline, may lint or reformat it. The list names fork directories, so a
+# directory upstream adds is never picked up by accident.
+include = [
+    # the Team Analytics app: black and isort hold its format, ruff its undefined names and unused imports
+    "cvat/apps/team_analytics/**/*.py",
+    "verify/**/*.py",
+    "tools/gate/**/*.py",
+    "docs/**/*.py",
+    ".scratch/**/*.py",
+]
+# force-exclude applies exclusions to paths named on the command line as well.
 force-exclude = true
 
 [lint]

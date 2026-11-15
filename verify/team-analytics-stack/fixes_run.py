@@ -12,19 +12,25 @@ run.sh check-fixes. Each step judges itself and stops at the first difference; s
     fixes_run.py unprocessed            a period that is not fully processed, read directly by a maintainer
                                         and an administrator: the envelope only, then figures once processed
     fixes_run.py sessions-at-limit      how many stored sessions reached the one-day limit (a record)
-    fixes_run.py cutover-restart        the service restarted on a stack that already holds tagged work and
-                                        has no cutover stored: its first status carries the cutover
+    fixes_run.py cutover-restart        the analytics worker restarted on a stack that already holds tagged
+                                        work, with no cutover stored and the ready mark cleared (a fresh
+                                        start): the first status carries the cutover
 
 Environment as final_run.py (TA_BASE_URL, TA_SEED_PASSWORD, TA_KUBE_CONTEXT, TA_NAMESPACE, TA_RELEASE), and
 TA_REFRESH_INTERVAL_S. Standard library only.
 
 Two steps change the stack's own state to reach the path that failed; both are supplied boundaries, not an
-upgrade from an older release. `unprocessed` holds the refresh lease for at most LEASE_S seconds (no history
-step runs meanwhile) and inserts one marker event a few days before the first recorded event, which makes
-those days unprocessed; it releases the lease, waits until the service has processed them, and deletes the
-marker. `cutover-restart` stops the service, empties the totals database's `cutover` table and drops
-`history_today`, which is what a totals database written by a service from before the cutover search and
-the short-window history holds, and starts the service again.
+upgrade from an older release. `unprocessed` holds the refresh lock (the Redis key the worker's steps take,
+stack_ops.py) for at most LEASE_S seconds (no refresh or history step runs meanwhile) and inserts one marker
+event a few days before the first recorded event, which makes those days unprocessed; it releases the lock,
+waits until the worker has processed them, and deletes the marker. `cutover-restart` scales the analytics
+worker to zero, empties the totals database's `cutover` table, drops `history_today` (what a totals database
+written before the cutover search and the short-window history holds) and removes the ready mark from
+Django's cache (what a fresh start has), and scales the worker up again.
+
+Answers are cached under the generation of the totals, which only a step that wrote advances. A change made
+here directly in ClickHouse is no such step, so after one the generation is advanced as a step would
+(stack_ops.django_cache), or the reads would be the answers cached before the change.
 """
 
 from __future__ import annotations
@@ -32,8 +38,6 @@ from __future__ import annotations
 import http.client
 import json
 import os
-import re
-import subprocess
 import sys
 import time
 import uuid
@@ -54,10 +58,19 @@ from final_run import (  # noqa: E402
     wait_rows,
 )
 from stack_api import Session, check, upload_images  # noqa: E402
+from stack_ops import (  # noqa: E402
+    WORKER,
+    WORKER_SELECTOR,
+    django_cache,
+    kubectl,
+    lock_holder,
+    release_lock,
+    scale,
+    take_lock,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTROL_SQL = ROOT / "team-analytics" / "service" / "sql" / "control"
-TOTALS = "team_analytics"  # TEAM_ANALYTICS_DB in team-analytics/k8s/config.yaml
+TOTALS = "team_analytics"  # TEAM_ANALYTICS_DB, the app's default (cvat/apps/team_analytics/default_settings.py)
 REFRESH_S = int(os.environ.get("TA_REFRESH_INTERVAL_S") or "60")
 TECHNICAL_ACCOUNT = "ta-bot"
 UI_WORKER = "ta-worker-c"  # the annotator whose job work up's final run makes in UI_ORG (final_run.py)
@@ -68,7 +81,7 @@ FRAMES = 150  # more frames than the UI fetches ahead, so that a held key meets 
 FRAME_SIDE = 600  # pixels: the gestures need boxes far larger than a few screen pixels
 SESSION_GAP_MS = 300_000
 DAY_MS = 86_400_000
-LEASE_S = 110  # the probe's own lease; the service's is 120 s
+LEASE_S = 110  # how long the probe holds the refresh lock; a worker's step takes it for 120 s
 PROBE = "ta-stack:unprocessed-probe"
 PROBE_DAYS_BEFORE = 3
 ADMIN_ONLY_HISTORY = {"ready_from", "ready_from_day", "first_day", "days_ready", "days_total"}
@@ -88,29 +101,6 @@ TAGGED = (
     " OR (scope = 'debug:info' AND obj_name = 'team_analytics:class_change'))"
     " AND JSONHas(ifNull(payload, ''), 'shape_type')"
 )
-
-
-def kubectl(*args: str, capture: bool = False) -> str:
-    command = ["kubectl", "--context", os.environ["TA_KUBE_CONTEXT"], "-n", os.environ["TA_NAMESPACE"], *args]
-    out = subprocess.run(command, capture_output=True, text=True, check=False)
-    if out.returncode:
-        raise SystemExit(f"kubectl {' '.join(args)}: {out.stderr.strip()[:300]}")
-    return out.stdout if capture else ""
-
-
-def control_sql(name: str, **params: object) -> str:
-    """A statement of the service's own control SQL with its parameters written in as literals."""
-    text = (CONTROL_SQL / name).read_text().replace("$totals_db", TOTALS)
-
-    def literal(match: re.Match) -> str:
-        value = params[match.group(1)]
-        if value is None:
-            return "NULL"
-        if isinstance(value, int):
-            return str(value)
-        return "'" + str(value).replace("\\", "\\\\").replace("'", "\\'") + "'"
-
-    return re.sub(r"\{(\w+):[^{}]*\}", literal, text)
 
 
 def status_of(session: Session, org: str = "") -> dict:
@@ -399,20 +389,13 @@ def check_gestures(state_file: str) -> None:
 # ---------------------------------------------------------------- a period not fully processed
 
 
-def lease_holder() -> str | None:
-    rows = clickhouse(control_sql("lock_holder.sql", now=None))
-    return rows[0]["token"] if rows else None
-
-
-def hold_lease(token: str, holder: str) -> float:
-    """Claims the refresh lease as another replica would, retrying while a replica holds it; when it is held."""
+def hold_lock(token: str) -> float:
+    """Takes the refresh lock as a worker's step would, retrying while a step holds it; when it is held."""
     for _ in range(60):
-        clickhouse(control_sql("lock_claim.sql", token=token, holder=holder, ttl_s=LEASE_S, now=None))
-        if lease_holder() == token:
+        if take_lock(token, LEASE_S):
             return time.monotonic()
-        clickhouse(control_sql("lock_release.sql", token=token, holder=holder, now=None))
         time.sleep(5)
-    raise SystemExit("the refresh lease stayed taken for five minutes")
+    raise SystemExit(f"the refresh lock stayed taken for five minutes (holder {lock_holder()})")
 
 
 def withheld(endpoint: str, body: dict) -> list[str]:
@@ -444,8 +427,8 @@ def unprocessed() -> None:
     today = datetime.now(UTC).date()
     check((today - probe_day).days < 330, f"the earliest recorded day {first} lies too far back for a probe in the year")
     token = f"ta-stack-probe-{uuid.uuid4().hex[:12]}"
-    held_at = hold_lease(token, "run.sh check-fixes unprocessed")
-    log(f"holding the refresh lease ({LEASE_S} s); marker event on {probe_day}, {PROBE_DAYS_BEFORE} days before "
+    held_at = hold_lock(token)
+    log(f"holding the refresh lock ({LEASE_S} s); marker event on {probe_day}, {PROBE_DAYS_BEFORE} days before "
         f"the earliest recorded day {first}")
     try:  # the marker is deleted whatever fails from its INSERT on
         unprocessed_with_marker(admin, callers, probe_day, token, held_at)
@@ -463,6 +446,8 @@ def unprocessed_with_marker(admin: Session, callers: list, probe_day: date, toke
             json.dumps({"scope": "debug:info", "obj_name": PROBE, "source": "client", "count": 1, "duration": 0,
                         "timestamp": f"{probe_day} 12:00:00.000", "payload": "{}"}) + "\n",
         )
+        # the insert is not a step that wrote: without a new generation the reads below would be cached answers
+        log(django_cache("advance"))
         for session, org in callers:
             who = f"{session.username}, org={org or '-'}"
             st = status_of(session, org)["history"]
@@ -490,10 +475,11 @@ def unprocessed_with_marker(admin: Session, callers: list, probe_day: date, toke
                 wrong = [k for p in points for k, v in p.items() if k not in TREND_POINT_FLAGS and v is not None]
                 check(not wrong, f"{who} trends {step}: the unprocessed bucket carries {wrong}")
                 log(f"{who}: trends by {step}: bucket {trends['buckets'][i]['start'][:10]} not processed, values null")
-            check(time.monotonic() - held_at < LEASE_S - 15, "the reads outlasted the probe's lease")
+            check(time.monotonic() - held_at < LEASE_S - 15, "the reads outlasted the probe's lock")
+            check(lock_holder() == token, f"the refresh lock is held by {lock_holder()}, not the probe")
     finally:
-        clickhouse(control_sql("lock_release.sql", token=token, holder="run.sh check-fixes unprocessed", now=None))
-        log(f"released the lease after {time.monotonic() - held_at:.0f} s")
+        released = release_lock(token)
+        log(f"released the lock after {time.monotonic() - held_at:.0f} s (still ours at release: {released})")
     wait_figures(admin, "status", {}, lambda b: (b.get("history") or {}).get("complete"),
                  "the probe days processed", 600)
     for session, org in callers:
@@ -539,22 +525,24 @@ def cutover_restart() -> None:
     before = status_of(admin)["cutover"]["at"]
     log(f"tagged operation events: {first['n']}, the first in hour {expected.isoformat()}; status before: {before}")
     try:
-        kubectl("scale", "deploy/team-analytics", "--replicas=0")
-        kubectl("wait", "--for=delete", "pod", "-l", "app.kubernetes.io/name=team-analytics", "--timeout=5m")
+        scale(WORKER, 0, WORKER_SELECTOR)
         clickhouse(f"TRUNCATE TABLE {TOTALS}.cutover")
         clickhouse(f"DROP TABLE IF EXISTS {TOTALS}.history_today")
+        # a fresh start: no ready mark (the first job looks for the cutover) and no answer cached before
+        log(django_cache("unready"))
+        log(django_cache("advance"))
         stored = clickhouse(f"SELECT count() AS n FROM {TOTALS}.cutover")[0]["n"]
         gone = clickhouse(f"EXISTS TABLE {TOTALS}.history_today")
-        log(f"service stopped; cutover rows {stored}; history_today exists: {gone}")
-        kubectl("scale", "deploy/team-analytics", "--replicas=1")
+        log(f"analytics worker at zero; cutover rows {stored}; history_today exists: {gone}")
+        scale(WORKER, 1, WORKER_SELECTOR)
         started = time.monotonic()
         first_answers = {}
         while len(first_answers) < 2:
-            check(time.monotonic() - started < 600, "the restarted service did not answer status within 10 minutes")
+            check(time.monotonic() - started < 600, "the restarted worker did not answer status within 10 minutes")
             for session, org in ((admin, ""), (maintainer, "ta-org-a")):
                 if session.username in first_answers:
                     continue
-                try:  # the proxy answers 502 while no pod is ready; a dropped connection is tried again
+                try:  # a dropped connection is tried again
                     status, body = service(session, "status", org=org)
                 except (OSError, http.client.HTTPException):
                     continue
@@ -562,19 +550,17 @@ def cutover_restart() -> None:
                     first_answers[session.username] = (round(time.monotonic() - started), body["cutover"])
             time.sleep(0.5)
     finally:
-        kubectl("scale", "deploy/team-analytics", "--replicas=1")
+        scale(WORKER, 1, WORKER_SELECTOR)
     for username, (after_s, cutover) in first_answers.items():
         at = cutover and cutover.get("at")
         check(at is not None and datetime.fromisoformat(at) == expected,
               f"{username}'s first status after the restart: cutover {cutover}, expected {expected.isoformat()}")
-        log(f"{username}: first status {after_s} s after the restart carries cutover {at}")
+        log(f"{username}: first status {after_s} s after the worker was scaled up carries cutover {at}")
     exists = clickhouse(f"EXISTS TABLE {TOTALS}.history_today")
     check(exists and int(next(iter(exists[0].values()))) == 1, f"history_today after the restart: {exists}")
-    kubectl("rollout", "status", "deploy/team-analytics", "--timeout=10m")
-    restarts = kubectl("get", "pods", "-l", "app.kubernetes.io/name=team-analytics", "-o",
-                       "jsonpath={range .items[*]}{.metadata.name} {.status.containerStatuses[0].restartCount}{'\\n'}{end}",
-                       capture=True).strip()
-    log(f"history_today created again at start; pod restarts during the start-up search: {restarts}")
+    restarts = kubectl("get", "pods", "-l", WORKER_SELECTOR, "-o",
+                       "jsonpath={range .items[*]}{.metadata.name} {.status.containerStatuses[0].restartCount}{'\\n'}{end}").strip()
+    log(f"history_today created again by the first job; worker pod restarts: {restarts}")
 
 
 def main() -> None:

@@ -1,0 +1,422 @@
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+@import 'cookie-consent';
+
+/* === Top navbar recolor (Docsy uses .td-navbar.navbar-dark) === */
+.td-navbar.navbar-dark {
+    /* Pick your palette */
+    --bs-navbar-bg: #0B1020;                 /* background */
+    --bs-navbar-color: #fff;              /* link text */
+    --bs-navbar-hover-color: #f97526;        /* hover */
+    --bs-navbar-active-color: #fff;       /* active/current */
+    --bs-navbar-brand-color: #fff;        /* brand link */
+    --bs-navbar-brand-hover-color: #f97526;  /* brand hover */
+    --bs-navbar-toggler-border-color: rgba(255,255,255,25%);
+
+    /* Ensure background applies (Docsy sometimes sets one) */
+    background-color: var(--bs-navbar-bg) !important;
+  }
+
+  /* Optional: stronger visual for the active nav item */
+  .navbar-dark .navbar-nav .nav-link.active,
+  .navbar-dark .navbar-nav .nav-link[aria-current="page"] {
+    color: var(--bs-navbar-active-color) !important;
+    border-bottom: 2px solid #f97526; /* change accent if you want */
+  }
+
+  /* Optional: make the inline SVG logo white on dark bg */
+  .navbar-dark .navbar-brand svg path {
+    fill: #fff;
+  }
+
+/* === Footer recolor === */
+
+/* Your palette */
+:root {
+    --cvat-footer-bg: #1a1a1a;        /* footer background */
+    --cvat-footer-text: #bababa;      /* normal text/links */
+    --cvat-footer-hover: #f97526;     /* hover/active links */
+    --cvat-footer-border: rgba(255,255,255,15%);
+    --td-navbar-min-height: 4rem;
+    --td-header-height: var(--td-navbar-min-height);
+  }
+
+/* === Footer recolor === */
+footer.bg-dark {
+  /* Palette */
+  background-color: var(--cvat-footer-bg) !important;
+  color: var(--cvat-footer-text) !important;
+
+  /* Typography & layout */
+  font-size: 0.75rem;
+  line-height: 1.35;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+  /* Links and icons */
+  footer.bg-dark a,
+  footer.bg-dark .list-inline-item a,
+  footer.bg-dark i,
+  footer.bg-dark .h3 {
+    color: var(--cvat-footer-text) !important;
+  }
+
+  footer.bg-dark a:hover,
+  footer.bg-dark a:focus {
+    color: var(--cvat-footer-hover) !important;
+    text-decoration: none;
+  }
+
+  footer.bg-dark .col-12.col-lg-4 .list-inline-item a:hover i,
+footer.bg-dark .col-12.col-lg-4 .list-inline-item a:focus i {
+  color: #fff !important;
+}
+
+  /* Optional: tweak borders (e.g., nav separators, buttons if any) */
+  footer.bg-dark .navbar-toggler,
+  footer.bg-dark .btn-link {
+    border-color: var(--cvat-footer-border) !important;
+    color: var(--cvat-footer-text) !important;
+  }
+
+/* Align list items */
+footer.bg-dark .list-inline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.1rem;
+  margin: 0;
+}
+
+footer.bg-dark .list-inline-item {
+  margin: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.35;
+}
+
+footer.bg-dark .list-inline-item.h3 {
+  font-size: inherit !important;
+  line-height: 1.35 !important;
+}
+
+footer.bg-dark .list-inline-item i {
+  font-size: 1.6rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* --- FOOTER LAYOUT ADJUSTMENTS --- */
+footer.bg-dark > .container-fluid {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+footer.bg-dark > .container-fluid > .row.align-items-center {
+  min-height: 56px;
+}
+
+footer.bg-dark .col-12.col-lg-8,
+footer.bg-dark .col-12.col-lg-4 {
+  display: flex;
+  align-items: center;
+}
+footer.bg-dark .col-12.col-lg-8 { justify-content: flex-start; }
+footer.bg-dark .col-12.col-lg-4 { justify-content: flex-end; }
+
+/* stylelint-disable media-feature-range-notation */
+@media (max-width: 991.98px) {
+  footer.bg-dark .col-12.col-lg-4 { justify-content: center; }
+}
+
+/* Outline “button” look for a single nav item */
+.td-navbar.navbar-dark .nav-cta {
+  border: 1px solid rgba(255, 255, 255, 85%);
+  border-radius: 9999px;          /* pill */
+  padding: 0.375rem 0.75rem;      /* similar to btn-sm */
+  line-height: 1.2;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none !important;
+  color: #fff !important;
+}
+
+.td-navbar.navbar-dark .nav-cta:hover,
+.td-navbar.navbar-dark .nav-cta:focus {
+  color: #f97526 !important;
+  border-color: #f97526;
+  background: transparent;
+}
+
+/* Keep “active” state consistent with hover */
+.td-navbar.navbar-dark .nav-cta.active {
+  color: #f97526 !important;
+  border-color: #f97526;
+}
+
+/* Optional: tiny horizontal spacing so the pill doesn’t crowd neighbors */
+.navbar-nav .nav-item .nav-cta {
+  margin-left: 0.25rem;
+  margin-right: 0.25rem;
+}
+
+/* --- Hide last (active) breadcrumb item --- */
+.breadcrumb-item.active {
+  display: none !important;
+}
+
+/* Modern CVAT Docs card */
+
+.cvat-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06%);
+  transition: transform .15s ease, box-shadow .15s ease;
+  height: auto !important;
+}
+
+.cvat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.1%);
+}
+
+.cvat-card-link {
+  text-decoration: none !important;
+  color: inherit !important;
+  display: block;
+  height: 100%;
+}
+
+.cvat-card-icon {
+  font-size: 32px;
+  margin-bottom: 16px;
+  color: #f97526;
+}
+
+.cvat-card-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.cvat-card-desc {
+  font-size: 15px;
+  color: #555;
+}
+
+/* Grid layout for docs cards */
+.docs-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-gap: 20px;       /* distance between cards */
+  margin-top: 24px;
+}
+
+.navbar-nav .nav-link[href="/docs/getting_started/overview/"] span,
+.navbar-nav .nav-link[href="/docs/guides/"] span,
+.navbar-nav .nav-link[href="/docs/"] span,
+.navbar-nav .nav-link[href*="auth/login"] span {
+  font-weight: 400 !important;
+}
+
+// These overrides account for dynamic header height introduced by the announcement banner.
+// Otherwise, docsy has hardcoded 4rem height for fixed layouts.
+// At smaller breakpoints the header remains in normal flow.
+@include media-breakpoint-up(md) {
+  .td-navbar {
+    // Overrides: ../../themes/docsy/assets/scss/_nav.scss#L29
+    // Keeps Docsy's navbar minimum height configurable for the header calculation.
+    min-height: var(--td-navbar-min-height);
+
+    // Overrides: ../../themes/docsy/assets/scss/_nav.scss#L63-L66
+    // Places the fixed navbar directly below the announcement, when present.
+    top: calc(var(--td-header-height) - var(--td-navbar-min-height));
+  }
+
+  .td-default main > section:first-of-type {
+    // Overrides: ../../themes/docsy/assets/scss/_main-container.scss#L10-L14
+    // Preserves the section's 4rem visual spacing after clearing the full header.
+    padding-top: calc(var(--td-header-height) + 4rem);
+  }
+
+  .td-404 main,
+  .td-main main {
+    // Overrides: ../../themes/docsy/assets/scss/_main-container.scss#L27-L33
+    // Preserves the 1.5rem content spacing after clearing the full header.
+    padding-top: calc(var(--td-header-height) + 1.5rem);
+  }
+
+  .td-sidebar {
+    // Overrides: ../../themes/docsy/assets/scss/_sidebar-tree.scss#L105-L111
+    // Starts the left sidebar below the fixed header.
+    padding-top: var(--td-header-height);
+
+    &__inner {
+      @supports (position: sticky) {
+        // Overrides: ../../themes/docsy/assets/scss/_sidebar-tree.scss#L130-L136
+        // Keeps the sticky sidebar below the header and preserves its 2rem lower gap.
+        top: var(--td-header-height);
+        height: calc(100vh - var(--td-header-height) - 2rem);
+      }
+    }
+  }
+
+  .td-sidebar-nav {
+    @supports (position: sticky) {
+      // Overrides: ../../themes/docsy/assets/scss/_sidebar-tree.scss#L9-L13
+      // Retains the sidebar navigation's existing 6rem non-header allowance.
+      max-height: calc(100vh - var(--td-header-height) - 6rem);
+    }
+  }
+
+  .td-sidebar-toc {
+    @supports (position: sticky) {
+      // Overrides: ../../themes/docsy/assets/scss/_sidebar-toc.scss#L7-L11
+      // Keeps the table of contents wholly within the viewport below the header.
+      top: var(--td-header-height);
+      height: calc(100vh - var(--td-header-height));
+    }
+  }
+
+  .td-offset-anchor:target {
+    // Overrides: ../../themes/docsy/assets/scss/main.scss#L77-L84
+    // Keeps block anchors from landing beneath the fixed header.
+    top: calc(-1 * var(--td-header-height));
+  }
+
+  h2[id]::before,
+  h3[id]::before,
+  h4[id]::before,
+  h5[id]::before {
+    // Overrides: ../../themes/docsy/assets/scss/main.scss#L86-L95
+    // Retains the 1rem breathing room after clearing the fixed header for headings.
+    margin-top: calc(-1 * (var(--td-header-height) + 1rem));
+    height: calc(var(--td-header-height) + 1rem);
+  }
+}
+
+/* Site-wide audio release announcement */
+.cvat-announcement {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 1100;
+  background: linear-gradient(100deg, #ffa900, #f50 50%, #ffa900);
+  color: #fff;
+  font-family: Sora, sans-serif;
+  padding: 12px 48px;
+  text-align: center;
+}
+
+.cvat-announcement[hidden] {
+  display: none !important;
+}
+
+.cvat-announcement-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 16px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+.cvat-announcement-icon {
+  display: block;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+}
+
+.cvat-announcement-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.cvat-announcement-content a {
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cvat-announcement-content a:hover,
+.cvat-announcement-content a:focus {
+  color: #fff;
+  text-decoration-thickness: 2px;
+}
+
+.cvat-announcement-close {
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  font-size: 26px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+/* Keep Docsy's existing body offset; padding the body again creates a blank gap. */
+@media (max-width: 1199.98px) {
+  .cvat-announcement {
+    padding: 10px 44px 10px 16px;
+    text-align: center;
+  }
+
+  .cvat-announcement-content {
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 8px;
+    font-size: 14px;
+  }
+
+  .cvat-announcement-icon {
+    flex-basis: 28px;
+    width: 28px;
+    height: 28px;
+  }
+
+}
+
+@media (max-width: 767.98px) {
+  .cvat-announcement {
+    padding: 10px 44px 10px 12px;
+  }
+
+  .cvat-announcement-content {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 2px 8px;
+    justify-content: center;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .cvat-announcement-icon {
+    grid-row: 1 / 3;
+    align-self: center;
+    flex-basis: 24px;
+    width: 24px;
+    height: 24px;
+  }
+
+  .cvat-announcement-content a {
+    grid-column: 2;
+    justify-self: center;
+  }
+
+  .cvat-announcement-close {
+    right: 5px;
+  }
+}

@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const HOUR = 3600000;
@@ -170,14 +170,14 @@ const { createMemoryHistory } = dependency('history');
 
 function openPage({ search = '', respond = answer, names = async () => ({ 1: 'Street scenes' }) } = {}) {
     const history = createMemoryHistory({ initialEntries: [`/team-analytics${search}`] });
-    const { fetch, requests } = suppliedFetch(respond);
+    const { request, requests } = suppliedService(respond);
     const lookups = [];
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': {
             useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } }, shortcuts: KEYMAP }),
         },
         'react-router': { useHistory: () => history },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
         './project-names': { lookupProjectNames: async (ids) => { lookups.push(ids); return names(ids); } },
     }).default;
     return {
@@ -430,7 +430,7 @@ test('the period, the shape switch and the filters still work inside a full view
         await act(async () => { history.push('/team-analytics?view=split&rows=projects&period=two_weeks&annotator=11&org=team-org'); });
         await view.settle();
         const last = listRequests(requests).at(-1);
-        assert.deepEqual([last.get('by'), last.get('annotator'), last.get('org')], ['projects', '11', 'team-org']);
+        assert.deepEqual([last.get('by'), last.get('annotator'), last.get('org')], ['projects', '11', null]);
         assert.ok(fullView(view.container));
     });
 });

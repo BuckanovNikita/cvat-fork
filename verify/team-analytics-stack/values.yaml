@@ -1,8 +1,9 @@
-# Values for the CVAT chart v2.82.0 of the import (cvat/helm-chart) in the Team Analytics test stack.
+# Values for the CVAT chart v2.82.0 of the tree (helm-chart) in the Team Analytics test stack.
 # Based on docs/evidence/2026-11-13-team-analytics-helm-check/values.local.yaml.
 # Do NOT also pass the chart's cvat.values.yaml: it enables ingress and Traefik, which add
-# cluster-wide objects. run.sh sets the backend image (TA_SERVER_IMAGE), the frontend image
-# and Grafana's root URL with --set.
+# cluster-wide objects. run.sh sets the backend image (TA_SERVER_IMAGE), the frontend image,
+# Grafana's root URL and the Team Analytics settings (cvat.backend.additionalEnv, from
+# stack.env) on the command line.
 cvat:
   backend:
     # the fork server image is built locally, never pulled
@@ -29,6 +30,9 @@ cvat:
         replicas: 0
       webhooks:
         replicas: 1
+      # The Team Analytics worker (templates/cvat_backend/worker_team_analytics, rendered because
+      # analytics is enabled) keeps the chart's defaults: one replica, three processes. The
+      # refresh is scheduled by the rqscheduler of the utils worker (its "cleaning" component).
       utils:
         replicas: 1
         # appended to "run worker notifications cleaning"
@@ -49,7 +53,7 @@ cvat:
       size: 1Gi   # upstream default 100Gi
 
 analytics:
-  enabled: true   # Vector + Grafana subcharts, CVAT_ANALYTICS=1 on backend pods
+  enabled: true   # Vector + Grafana subcharts, CVAT_ANALYTICS=1 on backend pods, the Team Analytics worker
 clickhouse:
   enabled: true
   persistence:

@@ -1,5 +1,5 @@
 // Shared helper for seam 3 (the Team Analytics page with supplied service responses).
-// Loads the fork's TypeScript/React sources from cvat/cvat-ui/src/components/team-analytics-page/
+// Loads the fork's TypeScript/React sources from cvat-ui/src/components/team-analytics-page/
 // the way verify/task_progress.cjs does: transpile without type checking, evaluate, and replace
 // only the boundaries a test names. Relative imports between page files resolve automatically,
 // so a new card file needs no change here; stylesheets load as empty modules.
@@ -7,7 +7,7 @@ const { readFileSync, existsSync } = require('node:fs');
 const { createRequire } = require('node:module');
 const path = require('node:path');
 
-const cvatRoot = path.resolve(__dirname, '../../cvat');
+const cvatRoot = path.resolve(__dirname, '../..');
 const pageDir = path.join(cvatRoot, 'cvat-ui/src/components/team-analytics-page');
 const dependency = createRequire(path.join(cvatRoot, 'package.json'));
 const ts = dependency('typescript');
@@ -43,6 +43,12 @@ function resolveRelative(fromFile, specifier) {
     return candidates.find((candidate) => existsSync(candidate) && !candidate.endsWith(path.sep));
 }
 
+let loadedCoreExceptions = null;
+function coreExceptions() {
+    if (!loadedCoreExceptions) loadedCoreExceptions = loadCoreExceptions();
+    return loadedCoreExceptions;
+}
+
 /**
  * Loads a page source file. `relativePath` is relative to the page directory
  * (e.g. 'team-analytics-view.tsx'). `boundaries` maps import specifiers to replacements.
@@ -67,7 +73,12 @@ function loadPage(relativePath, boundaries = {}, warnings = []) {
             if (name.endsWith('.scss') || name.endsWith('.css')) return {};
             // the CVAT client (a path alias of the UI build) is not loaded here: a page call into it fails,
             // as an unreachable CVAT would; tests that need its answers supply the page module using it
-            if (name === 'cvat-core-wrapper') return { getCore() { throw new Error('cvat-core is not loaded in seam 3'); } };
+            if (name === 'cvat-core-wrapper') {
+                return {
+                    getCore() { throw new Error('cvat-core is not loaded in seam 3'); },
+                    ServerError: coreExceptions().ServerError,
+                };
+            }
             if (name.startsWith('.')) {
                 const target = resolveRelative(filename, name);
                 if (!target) throw new Error(`cannot resolve ${name} from ${filename}`);
@@ -122,23 +133,44 @@ async function mount(element) {
     };
 }
 
-/** A fetch replacement answering with supplied service responses; records the requests. */
-function suppliedFetch(answer) {
+/**
+ * A replacement of the page's boundary (`requestService(endpoint, params)` in service.ts) answering with
+ * supplied API answers; records the requests. `answer(url, request)` receives the address the request names,
+ * `/api/team-analytics/<endpoint>?<params>`, and returns `{ status, body }` or an Error (no answer at all).
+ * A string body is parsed as JSON when it is JSON and kept as text otherwise, as Axios does.
+ */
+function suppliedService(answer) {
     const requests = [];
-    const fetch = async (url, init = {}) => {
-        requests.push({ url: String(url), init });
-        const response = await answer(String(url), init);
+    const request = async (endpoint, params = {}) => {
+        const url = `/api/team-analytics/${endpoint}?${new URLSearchParams(params)}`;
+        const record = { endpoint, params: { ...params }, url };
+        requests.push(record);
+        const response = await answer(url, record);
         if (response instanceof Error) throw response;
         const { status = 200, body = {} } = response;
-        return {
-            ok: status >= 200 && status < 300,
-            status,
-            json: async () => (typeof body === 'string' ? JSON.parse(body) : body),
-        };
+        if (typeof body !== 'string') return { status, body };
+        try {
+            return { status, body: JSON.parse(body) };
+        } catch {
+            return { status, body };
+        }
     };
-    return { fetch, requests };
+    return { request, requests };
+}
+
+/** cvat-core's own exception classes (cvat-core/src/exceptions.ts), transpiled like the page sources. */
+function loadCoreExceptions() {
+    const filename = path.join(cvatRoot, 'cvat-core/src/exceptions.ts');
+    const coreDependency = createRequire(filename);
+    const { outputText } = ts.transpileModule(readFileSync(filename, 'utf8'), {
+        fileName: filename,
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+    });
+    const loaded = { exports: {} };
+    new Function('require', 'module', 'exports', outputText)(coreDependency, loaded, loaded.exports);
+    return loaded.exports;
 }
 
 module.exports = {
-    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadCoreExceptions, loadPage, mount, render, suppliedService, text,
 };

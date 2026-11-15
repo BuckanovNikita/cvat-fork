@@ -1,0 +1,5 @@
+-r base.in
+
+django-extensions==4.*
+django-silk==5.*
+snakeviz~=2.2

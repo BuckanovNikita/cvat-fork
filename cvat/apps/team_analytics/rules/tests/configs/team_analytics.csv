@@ -1,0 +1,2 @@
+Scope,Resource,Context,Ownership,Method,URL,Privilege,Membership
+view,N/A,Organization,N/A,GET,"/team-analytics/status, /team-analytics/overview, /team-analytics/trends, /team-analytics/list, /team-analytics/details",None,Maintainer

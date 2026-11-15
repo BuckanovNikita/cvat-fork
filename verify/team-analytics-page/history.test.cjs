@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, loadPage, mount, render, suppliedFetch, text,
+    React, act, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const View = loadPage('team-analytics-view.tsx').default;
@@ -187,7 +187,7 @@ test('trends are replaced by a short notice until three complete weeks are ready
 test('an open page shows the figures once its period has been processed meanwhile', async (t) => {
     t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.parse('2026-11-13T15:30:00Z') });
     let processed = false;
-    const { fetch, requests } = suppliedFetch((url) => {
+    const { request, requests } = suppliedService((url) => {
         if (url.includes('/status')) {
             return { body: { history: processed ? history({ complete: true }) : history({ periods: { week: false } }) } };
         }
@@ -196,7 +196,7 @@ test('an open page shows the figures once its period has been processed meanwhil
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
         'react-router': { useHistory: () => ({ push() {} }) },
-        './service': { ...loadPage('service.ts'), fetchService: fetch, viewerTimeZone: () => 'UTC' },
+        './service': { ...loadPage('service.ts'), requestService: request, viewerTimeZone: () => 'UTC' },
     }).default;
     const view = await mount(React.createElement(Page));
     const overviews = () => requests.filter((request) => request.url.includes('/overview')).length;
@@ -219,13 +219,13 @@ test('an open page shows the figures once its period has been processed meanwhil
 });
 
 test('the page asks for the status in the viewer time zone and shows the bar beside the notice', async () => {
-    const { fetch, requests } = suppliedFetch((url) => (url.includes('/status') ?
+    const { request, requests } = suppliedService((url) => (url.includes('/status') ?
         { body: { history: history() } } :
         { body: NO_FIGURES }));
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
         'react-router': { useHistory: () => ({ push() {} }) },
-        './service': { ...loadPage('service.ts'), fetchService: fetch, viewerTimeZone: () => 'Asia/Tokyo' },
+        './service': { ...loadPage('service.ts'), requestService: request, viewerTimeZone: () => 'Asia/Tokyo' },
     }).default;
     const view = await mount(React.createElement(Page));
     try {

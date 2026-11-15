@@ -1,0 +1,12 @@
+# Build context of Dockerfile.ui when it is built from the repository root (build-ui.sh):
+# only what that Dockerfile copies. BuildKit reads this file in place of .dockerignore.
+*
+!.yarnrc.yml
+!package.json
+!yarn.lock
+!cvat-data
+!cvat-core
+!cvat-canvas
+!cvat-canvas3d
+!cvat-ui
+**/node_modules

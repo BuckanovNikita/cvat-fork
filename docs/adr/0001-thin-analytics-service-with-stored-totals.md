@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0006
 ---
 
 # A thin analytics service reads stored totals computed in SQL
@@ -28,3 +28,7 @@ Team Analytics gets its figures from a small dedicated service, not from the exi
 - ClickHouse in this deployment cannot schedule a refresh itself, which is why the service triggers it.
 
 Measured on a synthetic year of 36 million events: [design measurements, 2026-11-13](../evidence/2026-11-13-team-analytics-design-measurements.md).
+
+## Superseded, 2026-11-15
+
+[ADR 0006](0006-team-analytics-inside-the-backend-with-reads-on-a-worker.md) moves the feature into the CVAT backend. The separate service, its own access check and its lease are replaced. What this record says about the figures still holds: stored hourly totals, calculations in SQL files, the trailing-window refresh and history filled a day at a time. Its consequences about the figures (the session gap, the look-back, late events, totals per task, the two time records) stand unchanged.

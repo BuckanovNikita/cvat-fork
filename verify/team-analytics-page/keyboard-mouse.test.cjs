@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, loadPage, mount, render, suppliedFetch, text,
+    React, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const View = loadPage('team-analytics-view.tsx').default;
@@ -151,7 +151,7 @@ test('in a legacy period the split is not recorded, alignment still mouse only',
 
 test('the mounted page labels hotkeys from the viewer\'s keymap in the store', async () => {
     const answer = { body: { by_annotator: { rows: [] }, operations: OPERATIONS, input: INPUT } };
-    const { fetch } = suppliedFetch((url) => (url.includes('/status') ? { body: {} } : answer));
+    const { request } = suppliedService((url) => (url.includes('/status') ? { body: {} } : answer));
     const store = {
         organizations: { current: { slug: 'team-org' } },
         shortcuts: {
@@ -166,7 +166,7 @@ test('the mounted page labels hotkeys from the viewer\'s keymap in the store', a
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select(store) },
         'react-router': { useHistory: () => ({ push() {} }) },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
     }).default;
     const view = await mount(React.createElement(Page));
     try {

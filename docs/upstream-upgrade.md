@@ -1,10 +1,13 @@
 # Updating the CVAT fork
 
-Use this procedure when importing a new CVAT release. The
-[fork specification](fork-specification.md) defines the behavior to preserve;
-the [dated baseline](evidence/2026-11-13-fork-baseline.md) and the
-[widened import baseline](evidence/2026-11-14-widened-import-baseline.md)
-identify the starting revisions. Commands run from the repository root unless stated otherwise.
+Use this procedure when taking a new CVAT release into the fork. The
+[fork specification](fork-specification.md) defines the behavior to preserve
+and lists the fork's delta inside upstream's paths. The repository is a
+full-source fork joined to upstream's history
+([ADR 0005](adr/0005-a-full-source-fork-joined-to-upstream-history.md)), so a
+release is taken by merging its tag. The fork is on `v2.82.0`; `TARGET` below
+is the release being taken (for example `v2.83.0`). Commands run from the
+repository root unless stated otherwise.
 
 ## 1. Record the starting point
 
@@ -13,140 +16,101 @@ and cached remote-tracking state. Preserve unrelated work. Record whether
 remote references have actually been fetched. Start the upgrade on a dedicated
 branch from the intended clean fork revision.
 
-Record the old filtered import reference and its raw upstream commit separately.
-Filtered commit IDs differ from commits in `cvat-ai/cvat` because history and
-paths have been rewritten. Local `cvat-v*` tags identify filtered upstream trees,
-not fork release snapshots. Recover import metadata from subtree merge commits
-if a tag is missing; do not guess the baseline from the custom image name.
+The `upstream` remote is `https://github.com/cvat-ai/cvat.git` and has no
+default fetch rule, so a routine fetch never brings in upstream's branches and
+tags. Tags are fetched by name. On a fresh clone, add the remote without the
+rule `git remote add` writes, and fetch the tag the fork is on: the check
+pipeline, `build-server.sh` and the policy tests compare with it, and tags are
+not pushed.
 
-The import was re-filtered at v2.82.0 with a widened path list (the
-[widened import baseline](evidence/2026-11-14-widened-import-baseline.md)).
-Its filtered commit is the local tag `cvat-v2.82.0-widened`. The older tags
-`cvat-v2.82.0` and `v2.82.0` keep the commit of the earlier, narrower filter,
-which earlier merges cite; they no longer describe the import. The tags are
-local and never pushed: a fresh clone has none of them. To recreate the
-widened tag, build a mirror with the current `PATHS` and fetch as in section
-2; before tagging, compare the fetched commit and its tree with the ids in the
-widened import baseline. The tree must match; the commit id can differ if the
-clone held a different history.
+```bash
+git remote add upstream https://github.com/cvat-ai/cvat.git
+git config --unset-all remote.upstream.fetch
+git fetch --filter=blob:none --no-tags upstream refs/tags/v2.82.0:refs/tags/v2.82.0
+```
+
+`--no-tags` keeps the fetch from bringing every upstream tag that points into
+the fetched history. Afterwards `git show-ref --tags` must differ from before
+by exactly the fetched tag. Keep an existing release tag as it is; investigate
+a tag that names another commit instead of force-updating it.
 
 Inspect the current customization with:
 
 ```bash
-git diff --name-status cvat-v2.82.0-widened HEAD:cvat
-git diff cvat-v2.82.0-widened HEAD:cvat
-git log --first-parent --oneline
+git diff --name-status v2.82.0 HEAD
+git diff v2.82.0 HEAD -- . ':!docs' ':!.scratch' ':!verify' ':!tools'
+git log --first-parent --oneline v2.82.0..HEAD
 ```
 
-This tree-to-tree comparison is essential: a root-level comparison with an
-upstream commit would mix the subtree layout with fork changes. It also omits
-the root-owned build and verification files (the build scripts,
-`Dockerfile.server`, `verify/`), which must be reviewed separately.
+The first command lists every path the fork added, changed or deleted against
+the release, its own directories included; the second shows the changes
+inside upstream's paths and the fork's root files. Both must match the
+ownership list of the specification.
 
-## 2. Import the target release
+## 2. Merge the target release
 
-Choose the target upstream tag and record its full raw commit ID, resolving an
-annotated tag to its commit. Review upstream release changes relevant to the
-UI, the policies, the Helm chart, image build and server/database
-compatibility. The import carries the four policy files the fork depends on,
-so merging and testing the policies needs no separate upstream checkout.
-
-Refresh the filtered mirror using `mirror-cvat.sh`; `UPSTREAM` can select a
-different source. The script downloads upstream history into
-`.cvat-mirror.git.new`, beside the existing mirror, and applies its maintained
-path list there. It replaces `.cvat-mirror.git` only after both steps succeeded
-and the result holds at least one tag and, on upstream's default branch, the
-paths of its `REQUIRED` list; a failed or refused run leaves the existing mirror
-as it was. When upstream moves one of those paths, update `PATHS` and
-`REQUIRED` together. Keep unique work out of
-these generated directories. The path list (`PATHS`) is the widened one of the
-v2.82.0 re-import: the UI build inputs, the analytics components, upstream's
-root lint configuration, the Helm chart, and the issue and comment policies
-with their two helper policies. If the new release requires
-additional build/runtime files, update `PATHS` before regenerating the mirror.
-
-After selecting `TARGET` (for example, the chosen `vX.Y.Z` tag):
+Choose the target tag and record its full commit ID, resolving an annotated
+tag to its commit. Review upstream's release changes relevant to the UI, the
+policies, the Helm chart, the image build, server/database compatibility and
+the upstream internals the specification lists (section 4, "Team Analytics").
 
 ```bash
+git fetch --filter=blob:none --no-tags upstream "refs/tags/${TARGET}:refs/tags/${TARGET}"
 git switch -c "upgrade/cvat-${TARGET}"
-./mirror-cvat.sh
-git fetch --no-tags .cvat-mirror.git "refs/tags/${TARGET}:refs/tags/cvat-${TARGET}"
-git subtree pull --prefix cvat .cvat-mirror.git "$TARGET" --squash
+git merge --no-ff "${TARGET}"
 ```
 
-`--no-tags` matters: a fetch with a destination otherwise also copies every
-mirror tag that points into the fetched history, which puts upstream's
-release tags (`vX.Y.Z`, filtered) into this repository. An existing local tag
-of the same name is not moved by it, but the new ones are noise. Afterwards
-`git show-ref --tags` must differ from before by exactly the one new tag.
+Expect conflicts only where the fork and upstream both changed a file:
 
-Keep an existing filtered baseline tag immutable; investigate a conflicting tag
-instead of force-updating it. Changing `PATHS` can also rewrite historical
-filtered commit IDs: retain the original baseline reference and record the
-filter change alongside the new raw-to-filtered mapping in dated evidence.
+- The fork's edited upstream files: the seventeen UI files, the two policies
+  and their two test configurations (the specification's ownership list).
+  Resolve them against the specification, preserving new upstream behavior
+  and keeping only the fork's changes.
+- `.github/`: the fork deleted it. A file the release changes there is
+  reported as deleted here and modified there; keep it deleted
+  (`git rm <path>`). A file the release adds under `.github/` arrives without
+  a conflict; remove it in the same merge.
+- `cvat/settings/base.py` and `cvat/urls.py`: the fork's lines are appended at
+  the end of each file. A release that changes the end of either file
+  conflicts there; keep upstream's lines and the fork's block after them.
+- `.gitignore`: the fork's block is appended after upstream's entries; resolve
+  as for the settings.
 
-**After changing `PATHS`.** Re-filtering gives every filtered commit a new id,
-so the commit the last snapshot records is not an ancestor of the new tag.
-The squashed pull still works: it finds the last snapshot by its
-`git-subtree-dir: cvat` line, writes a new snapshot of the new tree on top of
-it and merges it. But its snapshot message lists the subject of every commit
-of the new tag's history. Any squashed pull writes its snapshot message
-itself, so the snapshot cannot carry commit trailers. Whenever that message
-must be controlled (a re-filtered mirror, or required trailers), write the
-snapshot as `git subtree` does instead, then merge it the same way (tag name as chosen above;
-`<previous snapshot>` is the commit `git log -1 --grep='^git-subtree-dir: cvat/*$'` prints):
+Upstream's `README.md` is not edited by the fork and merges cleanly; the
+fork's text is `README.fork.md`.
+
+Then confirm the fork's delta against the new tag:
 
 ```bash
-git fetch --no-tags .cvat-mirror.git "refs/tags/${TARGET}:refs/tags/<new tag>"
-new=$(git rev-parse "<new tag>^{commit}")
-snapshot=$(git commit-tree "<new tag>^{tree}" -p <previous snapshot> -F <message file>)
-git merge --no-ff -Xsubtree=cvat -F <merge message file> "$snapshot"
-git subtree pull --prefix cvat .cvat-mirror.git "$TARGET" --squash
+git diff --name-status "${TARGET}" HEAD -- . ':!docs' ':!.scratch' ':!verify' ':!tools'
+git diff "${TARGET}" HEAD -- cvat cvat-ui cvat-core helm-chart backend_entrypoint.d .gitignore
+git status --short
 ```
 
-The message file holds a subject, the two lines `git-subtree-dir: cvat` and
-`git-subtree-split: $new` (the full id), and the trailers. No other commit
-message may carry `git-subtree-` lines, or later pulls find the wrong
-snapshot. The last command must print `Subtree is already at commit <new>`
-and change nothing: that shows a later release pulls normally on top. Before
-the merge, check the new tag's tree against one computed independently, and
-after it, that every path the import kept is unchanged
-([the v2.82.0 re-import](evidence/2026-11-14-widened-import-baseline.md)
-lists the checks).
-Resolve merge conflicts against the specification, preserving new upstream
-behavior and transplanting only the required fork changes.
-
-Compare the result with the new filtered reference:
-
-```bash
-git diff --name-status "cvat-${TARGET}" HEAD:cvat
-git diff "cvat-${TARGET}" HEAD:cvat
-git diff -- cvat
-```
-
-`HEAD:cvat` reflects committed content only. Include working/staged changes in
-the review until all resolutions are committed, then repeat the tree comparison
-on the final commit. Account for every remaining file in the fork specification;
-if upstream now provides an equivalent feature, verify the acceptance scenarios
-before removing its local replacement.
+The first list must be the specification's ownership list (the `.github/`
+deletions, `.gitignore`, the edited and added upstream files, the fork's root
+files) and nothing else. Include working and staged changes in the review
+until all resolutions are committed, then repeat the comparison on the merge
+commit. If upstream now provides an equivalent feature, verify the acceptance
+scenarios before removing its local replacement.
 
 ## 3. Merge the policies and update the images
 
-The issue and comment policies are patched in place inside the import
-(`cvat/cvat/apps/engine/rules/issues.rego` and `comments.rego`, IAM-1), so the
-subtree pull of section 2 merges upstream's changes to them like any other
-imported file; nothing is reapplied by hand. Each policy must come out of the
-merge as the target's stock file plus the same two additions marked
-`# Local patch (role floor):`, and nothing else:
-`git diff "cvat-${TARGET}" HEAD:cvat -- cvat/apps/engine/rules` shows exactly
-those. Retain the target's upstream context checks and filter wrapper, and
-compare its helper policies (`cvat/apps/iam/rules/utils.rego`,
-`cvat/apps/organizations/rules/organizations.rego`) with the old ones. The four
-files come from one upstream revision through the import; mixing helper
-versions can hide precisely the compatibility failures the policy test is
-meant to detect. Then run the issue and comment matrix's expectations against
-both sides with the new import tag, without a server:
-`STOCK_TAG="cvat-${TARGET}" verify/team-analytics-stack/run.sh check-issue-policies patched`
+The issue and comment policies are edited in the tree
+(`cvat/apps/engine/rules/issues.rego` and `comments.rego`, IAM-1), so the
+merge of section 2 merges upstream's changes to them like any other file;
+nothing is reapplied by hand. Each policy must come out of the merge as the
+target's stock file plus the same two additions marked
+`# Local patch (role floor):`, and nothing else, and each test configuration
+as the target's file plus the fork's added rows:
+`git diff "${TARGET}" HEAD -- cvat/apps/engine/rules` shows exactly those.
+Retain the target's upstream context checks and filter wrapper, and compare
+its helper policies (`cvat/apps/iam/rules/utils.rego`,
+`cvat/apps/organizations/rules/organizations.rego`) with the old ones; the
+merged tree carries all four files from one upstream revision. Then run the
+issue and comment matrix's expectations against both sides with the new tag,
+without a server:
+`STOCK_TAG="${TARGET}" verify/team-analytics-stack/run.sh check-issue-policies patched`
 and `... check-issue-policies stock`. Every stack `up` runs both as well.
 
 Read the scopes of both stock policies in the target release against the
@@ -154,27 +118,51 @@ previous one. The added rule has no scope whitelist, so every scope upstream
 adds to the issue or comment policy is granted to organization members at or
 above the floor once the merge is committed. Decide for each new scope whether
 that is wanted; if not, the added rule needs an exclusion, which is a change to
-the specification.
+the specification. A new scope also needs its row in the test configuration.
 
-Update the release in the default tags together. Search for the old release
-number outside `cvat/`, `docs/evidence/` and `.scratch/`; at least these name
-it: `build-ui.sh`, `build-server.sh` and `Dockerfile.server` (the stock base
-and the fork server tag), `build-team-analytics-service.sh` and
-`team-analytics/Dockerfile`, `team-analytics/k8s/deployment.yaml`,
-`verify/team_analytics_service.sh`, the stack's `stack.env` and `run.sh`, and
-the import tag that `verify/policy_test.sh` (`STOCK_TAG`),
-`tools/gate/ui-lint.sh` (`IMPORT_TAG`), `build-server.sh` (`STOCK_TAG`) and the
-stack's `check-issue-policies` (`STOCK_TAG`) default to.
-Review the imported Dockerfile's build arguments and base-image name against
-the UI script's BuildKit override. Consult project dependency configuration for
-compatible tools rather than adding version pins to these instructions.
+Update the release in the default tags together. The tools read the release
+tag as `STOCK_TAG` (`build-server.sh`, `verify/policy_test.sh`, the stack's
+`check-issue-policies`) and `UPSTREAM_TAG` (`tools/gate/ui-lint.sh`). Search
+the fork's own files for the old release number, outside dated evidence and
+the tracker:
 
-Rebuild the fork server image from the merged policies on the target's stock
-server image (`./build-server.sh`, BUILD-1); it tags the image only when the
-build's bundle holds the merged policies and the base's bundle holds the four
-policy files of the new import tag. Check its bundle as under "Policies" in
-section 4. Check added or renamed chart services and images
-against the stack's render checks and the image lists in `stack.env`. Update the
+```bash
+git grep -n -F v2.82.0 -- $(git diff --name-only --diff-filter=AM "${TARGET}" HEAD -- . ':!docs/evidence' ':!.scratch')
+```
+
+At least these name it: `build-ui.sh` (the UI tag), `build-server.sh` and
+`Dockerfile.server` (the stock base, the fork server tag and `STOCK_TAG`),
+`tools/gate/ui-lint.sh` (`UPSTREAM_TAG`), `verify/policy_test.sh`
+(`STOCK_TAG`), `verify/policy_bundle.sh` (its usage text),
+`verify/team_analytics_backend.sh` (its image), the stack's `stack.env` and
+`run.sh`, and the commands of this document. Review upstream's `Dockerfile.ui`
+build arguments and base-image name against the UI script's BuildKit override,
+and its file list against `Dockerfile.ui.dockerignore`. Consult project
+dependency configuration for compatible tools rather than adding version pins
+to these instructions.
+
+Rebuild the fork server image on the target's stock server image (BUILD-1).
+The stock image must be local first; the script never pulls:
+
+```bash
+IMAGE="cvat/server:${TARGET}-fork" BASE_IMAGE="cvat/server:${TARGET}" STOCK_TAG="${TARGET}" ./build-server.sh
+```
+
+It tags the image only when the build's bundle holds the merged policies and,
+with analytics enabled, the Team Analytics policy, and the base's bundle holds
+the four policy files of `STOCK_TAG`. Before it builds, it refuses a tree in
+which anything else the stock image is built from differs from `STOCK_TAG`
+(the Dockerfile, the requirements, the entry point, the process configuration
+and the other copied sources the specification lists), in which the fork
+deleted or renamed a file under `cvat/` or `backend_entrypoint.d/`, or in which
+a file there is not tracked. An untracked file is added or removed before
+building again. After a clean merge, the other refusals mean the fork changed
+one of those paths; the copy then cannot stand in for upstream's own
+`Dockerfile` build, on which ADRs 0004 and 0006 rest, and the tree needs that
+build instead. Check
+its bundle as under "Policies" in section 4. Check added or renamed chart
+services and images against the stack's render checks and image lists
+([stack README](../verify/team-analytics-stack/README.md)). Update the
 specification only for intentional behavior changes, and record their
 acceptance evidence.
 
@@ -182,8 +170,14 @@ acceptance evidence.
 
 Run applicable checks once on the integrated result; rerun them only after
 relevant changes or failures. Keep failures, warnings, skipped checks and their
-reasons in dated evidence. No root Spec Kit or OpenSpec workflow exists at the
-recorded baseline; use a native workflow if one is introduced later.
+reasons in dated evidence. No root Spec Kit or OpenSpec workflow exists in the
+repository; use a native workflow if one is introduced later.
+
+Upstream's own Django and REST suites are not part of the fork's checks. Its
+REST test for issues, `tests/python/rest_api/test_issues.py`, encodes the
+stock issue policy and disagrees with IAM-1. Upstream's Kubernetes test mode
+flushes databases in whatever namespace the current kube context names; do not
+run it against a shared cluster.
 
 ### Check pipeline
 
@@ -194,75 +188,78 @@ ClickHouse nor a stack:
 prek run --all-files
 ```
 
-`prek.toml` holds the hooks: ESLint and stylelint on the fork's UI files, the
-type check, ruff on the fork's Python, the policy test on the patched and on
-the stock policies, and the three fast frontend suites, one after another. A
-hook pipeline is a default the owner was not asked about. No hook rewrites a
-file. The UI linters run the commands under "Frontend" below on the tracked
-files under `cvat/` whose content differs from the import tag
-(`tools/gate/ui-lint.sh`), so a new file is checked once it is tracked; after
-an upgrade, change the script's default tag (`IMPORT_TAG` overrides it) with
-the policy test's `STOCK_TAG`. ruff never reads `cvat/` (`ruff.toml`), and
-formatting is not checked: most of the service's Python is not in ruff's format.
-Run the pipeline by its command; do not install it as git hooks.
+`prek.toml` holds the hooks, run one after another: ESLint and stylelint on
+the fork's UI files, the type check, ruff on the fork's Python, black and
+isort on the fork's code inside upstream's `cvat/` tree, the policy test on
+the patched and on the stock policies, upstream's generated policy tests, and
+the three fast frontend suites. A hook pipeline is a default the owner was not
+asked about. No hook rewrites a file. The UI linters run the commands under
+"Frontend" below on the tracked files of the five UI packages whose content
+differs from the release tag (`tools/gate/ui-lint.sh`, `UPSTREAM_TAG`), so a
+new file is checked once it is tracked. ruff reads only the fork's directories
+that `ruff.toml` lists, never upstream's code; the Team Analytics app is among
+them, for undefined names and unused imports. black and isort check
+`cvat/apps/team_analytics`, `cvat/settings/base.py` and `cvat/urls.py` with
+upstream's settings (the root `pyproject.toml`). Run the pipeline by its
+command; do not install it as git hooks.
 
 Prerequisites on a fresh checkout:
 
-- `prek`, `uv`, Node and Docker on the path; network on the first run, when
-  `uv` installs ruff into `.venv` as `uv.lock` locks it and Docker pulls the
-  OPA image that `verify/policy_test.sh` names.
-- The import tag (section 1; tags are not pushed).
-- `cvat/node_modules` and `verify/node_modules`, installed as under
+- `prek`, `uv`, `python3`, Node and Docker on the path; network on the first
+  run, when `uv` installs ruff, black and isort into `tools/gate/.venv` as
+  `tools/gate/uv.lock` locks them and Docker pulls the OPA image that
+  `verify/policy_test.sh` names.
+- The release tag (section 1; tags are not pushed).
+- `node_modules` at the root and `verify/node_modules`, installed as under
   "Frontend" below.
 
 Kept out of the pipeline, each a separate command with its own prerequisites:
 
-- `verify/team_analytics_service.sh`: the service seam, under "Team
-  Analytics"; Docker, the stock server image and a ClickHouse image.
+- `verify/team_analytics_backend.sh`: the calculation tests, under "Team
+  Analytics"; Docker, the stock server image of the release and the
+  ClickHouse and Redis images.
 - `verify/policy_bundle.sh`: the bundle check of the fork server image, under
   "Policies"; Docker and the built image.
 - `verify/team-analytics-stack/run.sh cycle`: the stack, under "Team
-  Analytics"; the three built images, a cluster and the reserved host port.
+  Analytics"; the two built images, a cluster and the reserved host port.
 - `BROWSER_BIN=<browser> node --test verify/task_progress.cjs`: the browser
   check of the task legend, under "Frontend"; without `BROWSER_BIN` the
   pipeline's run skips it.
 
 ### Frontend
 
-With the toolchain required by the imported package configuration:
+With the toolchain required by upstream's package configuration:
 
 ```bash
-(cd cvat && DISABLE_HUSKY=1 yarn install --immutable)
+DISABLE_HUSKY=1 yarn install --immutable
 npm ci --prefix verify
 node --test verify/task_progress.cjs
-(cd cvat && SOURCE_MAPS_ENABLED=false yarn run build:cvat-ui)
+SOURCE_MAPS_ENABLED=false yarn run build:cvat-ui
 ```
 
-Lint and type-check the fork's UI code with upstream's own configuration, which
-the import carries at its root (`cvat/eslint.config.mjs` with
-`cvat/.eslintrc.cjs`, `cvat/.stylelintrc.json`, `cvat/cvat-ui/tsconfig.json`).
-Each command runs from the repository root on the installed `cvat/node_modules`
-and needs neither `yarn` nor a change of directory:
+Lint and type-check the fork's UI code with upstream's own configuration at
+the root (`eslint.config.mjs` with `.eslintrc.cjs`, `.stylelintrc.json`,
+`cvat-ui/tsconfig.json`). Each command runs from the repository root on the
+installed `node_modules`:
 
 ```bash
-node cvat/node_modules/eslint/bin/eslint.js --max-warnings 0 --no-warn-ignored <files>
-node cvat/node_modules/stylelint/bin/stylelint.mjs --max-warnings 0 <files>
-node cvat/node_modules/typescript/bin/tsc -p cvat/cvat-ui/tsconfig.json
+node node_modules/eslint/bin/eslint.js --max-warnings 0 --no-warn-ignored <files>
+node node_modules/stylelint/bin/stylelint.mjs --max-warnings 0 <files>
+node node_modules/typescript/bin/tsc -p cvat-ui/tsconfig.json
 ```
 
-ESLint takes the `.ts` and `.tsx` files, stylelint the `.scss` files, as paths
-from the repository root. Pass only the UI files the fork added or edited, never
-the whole import, and never let `--fix` touch upstream's files: they stay as
-upstream wrote them. A finding in an upstream line of a file the fork edited is
-left alone and recorded in the dated evidence. The list compares committed
-content with the tag of the import now in the tree: `cvat-v2.82.0-widened`
-(section 1) until the next upgrade, then the new tag of section 2. Against an
-older tag it would also list every UI file upstream changed since.
+ESLint takes the `.ts` and `.tsx` files, stylelint the `.scss` files. Pass
+only the UI files the fork added or edited, never the whole tree, and never
+let `--fix` touch upstream's files: they stay as upstream wrote them. A finding
+in an upstream line of a file the fork edited is left alone and recorded in the
+dated evidence. The list compares with the release tag the fork is on
+(`v2.82.0` until the merge of section 2 is committed, then `${TARGET}`); against
+an older tag it would also list every UI file upstream changed since.
+`tools/gate/ui-lint.sh` selects the same files from the working tree:
 
 ```bash
-import_tag=cvat-v2.82.0-widened
-git diff --name-only --diff-filter=d "$import_tag" HEAD:cvat -- '*.ts' '*.tsx' | sed 's|^|cvat/|'
-git diff --name-only --diff-filter=d "$import_tag" HEAD:cvat -- '*.scss' | sed 's|^|cvat/|'
+git diff --name-only --diff-filter=d v2.82.0 HEAD -- cvat-ui cvat-core cvat-canvas cvat-canvas3d cvat-data | grep -E '\.tsx?$'
+git diff --name-only --diff-filter=d v2.82.0 HEAD -- cvat-ui cvat-core cvat-canvas cvat-canvas3d cvat-data | grep -E '\.scss$'
 ```
 
 `--max-warnings 0` is the fork's addition: upstream's `yarn run lint` fails on
@@ -271,14 +268,14 @@ disable directives among them. `--no-warn-ignored` keeps a path the
 configuration ignores from counting as a warning. The type check is upstream's
 `yarn run type-check` (`tsc -p cvat-ui/tsconfig.json`) and always covers the
 whole UI. It resolves the workspace packages (`cvat-core`, `cvat-canvas`,
-`cvat-canvas3d`, `cvat-data`) through the links in `cvat/node_modules`, so in a
-worktree whose `cvat/node_modules` links to another checkout it checks against
+`cvat-canvas3d`, `cvat-data`) through the links in `node_modules`, so in a
+worktree whose `node_modules` links to another checkout it checks against
 that checkout's packages; run it where the dependencies are installed.
 
 `npm ci --prefix verify` installs the frontend harness's own dependencies: the
 browser environment (jsdom) that the two Team Analytics frontend suites below
 load. `verify/package.json` declares it and `verify/package-lock.json` locks it;
-the import's manifest and lock are not involved. It goes to
+upstream's manifest and lock are not involved. It goes to
 `verify/node_modules`, which git ignores, once per checkout. A worktree may link
 that path to the `verify/node_modules` of a checkout that has it installed
 instead. `verify/task_progress.cjs` does not need it.
@@ -294,26 +291,43 @@ It checks computed text contrast with the real summary component, Ant Design
 styles and task-card stylesheet in an isolated browser profile. Without
 `BROWSER_BIN`, this browser check is skipped; the other regression tests run.
 
-`DISABLE_HUSKY=1` matches the imported Dockerfile's dependency installation and
-avoids installing upstream Git hooks in the wrapper repository. A host build
-does not prove image packaging.
+`DISABLE_HUSKY=1` matches upstream's Dockerfile dependency installation and
+avoids installing upstream's Git hooks. A host build does not prove image
+packaging.
 
 ### Policies
 
-The policy test runs from the repository, without starting CVAT and without an
-outside checkout, in a one-off container of the OPA image (`OPA_IMAGE`, default
-the one the script names):
+The fork's policy test runs without starting CVAT, in a one-off container of
+the OPA image (`OPA_IMAGE`, default the one the script names):
 
 ```bash
-verify/policy_test.sh          # the import's patched policies, patched expectations
+verify/policy_test.sh          # the tree's patched policies, patched expectations
 verify/policy_test.sh stock    # the stock policies of STOCK_TAG, stock expectations
 ```
 
 Both runs read the two resource policies and their two helper policies; the
-patched run from the import in the working tree, the stock run from the import
-tag (`STOCK_TAG`, which follows the import as in section 3). Both must match
+patched run from the working tree, the stock run from the release tag
+(`STOCK_TAG`, which follows the release as in section 3). Both must match
 their own expectations; an identical result is not the goal because member
-access differs. The check pipeline runs both.
+access differs.
+
+Upstream's generated policy tests cover every app's policies in the tree, the
+patched issue and comment policies and the Team Analytics policy among them.
+Upstream's runner writes one test file per policy from the test
+configurations beside it (the files are ignored by git), then OPA runs them
+all, the rules directories named one by one:
+
+```bash
+python3 cvat/apps/iam/rules/tests/generate_tests.py
+docker run --rm --network none --cpus=1 --memory=3g -v "$PWD:/mnt/src:ro" -w /mnt/src \
+    openpolicyagent/opa:1.12.2 test --timeout 600s cvat/apps/*/rules
+```
+
+`verify/policy_generated.sh` runs the same two commands. The check pipeline
+runs the policy test on both sides and the generated tests.
+After a merge, a generated case that fails on the patched policies means that
+upstream changed a policy or its configuration; resolve it against IAM-1. The
+fork's configuration changes add rows and change none of upstream's.
 
 Then check what the rebuilt fork server image serves. The bundle is built by the
 server's own builder inside the image, so a copy to a directory the server does
@@ -322,14 +336,15 @@ one fails (an earlier image under the tag stays, unchecked by that run, and the
 failure names its ID), and the stack checks the served bundle again:
 
 ```bash
-IMAGE=<fork server tag> BASE_IMAGE=<stock server tag> ./build-server.sh
 verify/policy_bundle.sh from-image <fork server tag> | verify/policy_bundle.sh check
-verify/policy_bundle.sh from-image <stock server tag> | verify/policy_bundle.sh check "cvat-${TARGET}"
+verify/policy_bundle.sh from-image <fork server tag> analytics | verify/policy_bundle.sh check-analytics
+verify/policy_bundle.sh from-image <stock server tag> | verify/policy_bundle.sh check-stock "${TARGET}"
 ```
 
-The first check must report both policies equal to the import's, the second
-both stock files equal to the import tag's. Each policy is compared by itself,
-byte for byte; a marker in only one of them does not pass.
+The first check must report both policies equal to the tree's, the second the
+Team Analytics policy as well, the third the four stock files equal to the
+release tag's. Each policy is compared by itself, byte for byte; a marker in
+only one of them does not pass.
 
 Check policy compilation with the same target helpers. If strict OPA lint fails,
 compare stock and patched rules before classifying an inherited warning. Retain
@@ -337,15 +352,51 @@ the stock-versus-patched distinction in the recorded result.
 
 ### Team Analytics
 
-Account for every file in the TA-1 integration map. Check the upstream
-dependencies listed there against the target release: the `events` table
-schema, the server's allowed client scopes and working-time calculation,
-Vector's field allowlist, the cvat-core logger and plugin wrapper, saved
-annotation event names, the memberships policy, the project `id` filter,
-CVAT's minimum app width, and the shortcut action names. A changed name breaks
-figures without an error, so compare them, not only the build.
+Account for every file in the TA-1 integration map and the backend's touch
+points. Check the upstream dependencies listed there against the target
+release: the `events` table schema, the server's allowed client scopes and
+working-time calculation, Vector's field allowlist, the cvat-core logger and
+plugin wrapper, saved annotation event names, the header's plugin flag and
+organization role, the project `id` filter, CVAT's minimum app width, and the
+shortcut action names. A changed name breaks figures without an error, so
+compare them, not only the build.
 
-Two of those dependencies are orders of execution that no suite can see,
+Read the release's changes to the upstream internals the app depends on (the
+specification's list under "Upstream internals the fork depends on"):
+
+```bash
+git diff v2.82.0 "${TARGET}" -- \
+    cvat/apps/iam/permissions.py cvat/apps/iam/middleware.py \
+    cvat/apps/redis_handler/management/commands/syncperiodicjobs.py \
+    cvat/settings/base.py cvat/apps/organizations/models.py cvat/requirements \
+    cvat/apps/organizations/apps.py cvat/apps/organizations/default_settings.py \
+    cvat/apps/organizations/permissions.py cvat/apps/organizations/rules/organizations.rego \
+    backend_entrypoint.sh backend_entrypoint.d \
+    helm-chart/templates/_helpers.tpl helm-chart/templates/cvat_backend \
+    cvat-core/src/server-proxy.ts cvat-core/src/axios-config.ts \
+    cvat/apps/iam/rules/tests/generate_tests.py
+```
+
+Look for: a changed signature of `OpenPolicyAgentPermission` or of what
+`PolicyEnforcer` calls; `load_app_iam_rules`; the names and format of
+`RQ_QUEUES`, `PERIODIC_RQ_JOBS` and `REDIS_INMEM_SETTINGS`, and how
+`syncperiodicjobs` reads them; the keys of `request.iam_context` and how the
+middleware resolves an organization; the `Membership` roles and `is_active`;
+the format of the entry point's component files and `run worker`; the helper
+templates and backend values the worker template uses (compare it with
+upstream's other worker templates, which it is modelled on); new `rq` or
+`django_rq` versions; `serverRequest`, the 429 retry and the text
+`generateError` makes of an error body; the conventions of the generated
+policy tests; and, for IAM-2, the setting `ORGANIZATIONS_MIN_ROLE_TO_CREATE`
+(the fork's default `admin`, upstream's `user`), its environment variable
+`CVAT_ORGANIZATIONS_MIN_ROLE_TO_CREATE`, the organizations app's taking of its
+default only when the Django settings have none, and the policy's `create`
+rule that reads it. A change there lets every `user` create organizations
+again without an error; the stack's `check-org-creation` shows it. Most of these fail at merge, at the server image's build, at
+the policy tests or on the stack; the error text and the retry fail nowhere
+but in the page's behavior, so confirm them on the stack's page checks.
+
+Two of the UI dependencies are orders of execution that no suite can see,
 because both suites drive them in a fixed order. Read them in the target
 release and confirm them in the stack run below:
 
@@ -360,74 +411,67 @@ release and confirm them in the stack run below:
   run's held navigation key, compared with CVAT's `change:frame` events, shows
   it (ticket 27).
 
-Run the three seams. The service seam needs only Docker. The two frontend
-seams need `cvat/node_modules` and the harness's dependencies
-(`npm ci --prefix verify`, under "Frontend" above); without the latter they fail
-and name what is missing, they do not skip tests:
+Run the three seams. The calculation tests need Docker and the images below.
+The two frontend seams need the root `node_modules` and the harness's
+dependencies (`npm ci --prefix verify`, under "Frontend" above); without the
+latter they fail and name what is missing, they do not skip tests:
 
 ```bash
-verify/team_analytics_service.sh               # service against a real ClickHouse
+verify/team_analytics_backend.sh               # calculation tests against a real ClickHouse
 node --test verify/team_analytics_logging.cjs  # events the UI logging sends
 node --test verify/team_analytics_page.cjs     # page with supplied responses
 ```
 
-The service tests run in a container of the stock server image. Set
-`CLICKHOUSE_IMAGE` to the ClickHouse version of the target chart. If the
-server image's Python or `clickhouse_connect` changed, check that the service
+The calculation tests (`verify/team-analytics-backend/`) run the app's code in
+a container of the stock server image of the release (`SERVER_IMAGE`), with
+the working tree's `cvat/apps/team_analytics` mounted over it, beside a
+throwaway ClickHouse and a throwaway Redis, and remove all three when they
+end. Set `SERVER_IMAGE` to the target release's image and `CLICKHOUSE_IMAGE`
+to the ClickHouse version of the target chart. If the server image's Python,
+`clickhouse_connect`, `redis`, `rq` or Django changed, check that the app
 still needs nothing beyond them.
 
-Then build the three images from the integrated tree and run the stack once
-(`verify/team-analytics-stack/README.md`; reserved host port 8490):
+Then build the two images from the integrated tree and run the stack once
+(`verify/team-analytics-stack/README.md`, which names its image variables,
+its subcommands and its reserved host port):
 
 ```bash
-IMAGE=cvat/server:<tag> ./build-server.sh
-IMAGE=cvat/ui:<tag> ./build-ui.sh
-IMAGE=cvat/team-analytics:<tag> ./build-team-analytics-service.sh
-TA_SERVER_IMAGE=cvat/server:<tag> TA_UI_IMAGE=cvat/ui:<tag> \
-    TA_SERVICE_IMAGE=cvat/team-analytics:<tag> \
-    TA_SCREENSHOT_DIR=<dir> verify/team-analytics-stack/run.sh cycle
+IMAGE="cvat/server:${TARGET}-fork" BASE_IMAGE="cvat/server:${TARGET}" STOCK_TAG="${TARGET}" ./build-server.sh
+IMAGE="cvat/ui:${TARGET}-fork" ./build-ui.sh
+verify/team-analytics-stack/run.sh cycle
 ```
 
-For a new release, update `Chart.lock`, `chart-deps.sha256`, the approved
-image list and `TA_LOCAL_IMAGES` in `stack.env` together; the chart itself
-comes with the import. `cycle`
-first runs `check-issue-policies` on both sides, then brings up a disposable
-CVAT from the import's chart, on the fork server image, and the service in
-their own namespace. It first checks the policy bundle the
-running server serves, each patched policy by itself. It sends
-events, waits for the service's own scheduled refresh, and checks figures and
-refusals for every role, and sends one request through the service's Ingress.
-It checks task progress on the tasks list in a browser. Its final run has the
-real UI annotate in headless Chrome and finds each new record in ClickHouse.
-It checks the figures for that work and for a synthetic hundred annotators and
-forty long-named projects. It drives the page (period, filters, full view,
-trend comparison, narrow window) and stops the service to check the error
-panel and annotation. Then it runs the issue and comment matrix through the
-real API (an account with no global role among the accounts) and the access
-cases. With `cycle` the stack is then torn down. Inspect the screenshots as well as the exit status. The
-detector record is sent through the API, because the stack runs no model
-function. Record what ran and what stayed unverified in dated evidence.
+For a new release, update the stack's chart dependency pins and image lists
+together, as its README describes; the chart itself comes with the merge.
+`cycle` brings up a disposable CVAT from the tree's chart on the two images,
+with analytics and its worker, in its own namespace, runs the checks of `up`
+(`check-worker` among them) and tears it down. The acceptance checks of the
+backend path are not part of `up`; run them on a stack brought up with
+`run.sh up`, then `run.sh down`:
+
+```bash
+verify/team-analytics-stack/run.sh check-cross-org
+verify/team-analytics-stack/run.sh check-isolation   # or one part: worker-down, clickhouse-down, totals-dropped
+verify/team-analytics-stack/run.sh check-load          # needs the volume data (see the README)
+verify/team-analytics-stack/run.sh check-analytics-off   # last: it leaves the stack with analytics disabled
+```
+
+Inspect the screenshots as well as the exit status.
+Record what ran and what stayed unverified in dated evidence.
 
 ### Packaging and integration
 
-The three images are built by their scripts (BUILD-1): `./build-ui.sh` with
-the chosen `IMAGE`/`NODE_IMAGE` overrides, `./build-server.sh` and
-`./build-team-analytics-service.sh` with `IMAGE`/`BASE_IMAGE`. None of them
-pulls; the stock server image must be local first, and `./build-server.sh`
-needs the import tag. Use `SAVE=1` only if an
-archive is needed. Inspect served assets in the built UI image and check the
-fork server image's bundle (under "Policies"). Without touching the cluster,
-`verify/team-analytics-stack/run.sh preflight` checks that the fork server
-image is local, runs `check-issue-policies` on both sides, builds the import's
-chart with its pinned dependencies and applies the render checks to the render
-read as objects, CRDs included: only kinds the cluster lists as namespaced, no
-other namespace, no image outside the stack's list (`stack.env`), none untagged
-or `latest`, no forced pull, the fork server image as the only server image,
-nothing that reaches the host, and, by allowlist against what the genuine
-render contains, only its volume sources and Secret types, no claim naming a
-volume, no Ingress for another host than the stack's or with an annotation,
-and no hand-written Endpoints or EndpointSlice (the stack's README has the
-full list).
+The two images are built by their scripts (BUILD-1): `./build-ui.sh` with the
+chosen `IMAGE`/`NODE_IMAGE` overrides, and `./build-server.sh` with
+`IMAGE`/`BASE_IMAGE`/`STOCK_TAG`. `build-server.sh` never pulls; the stock
+server image must be local first, and it needs the release tag. Use `SAVE=1`
+only if an archive is needed. Inspect served assets in the built UI image and
+check the fork server image's bundle (under "Policies"). Without touching the
+cluster, `verify/team-analytics-stack/run.sh preflight` runs what `up` does
+before its first change to the cluster: the image check, `check-issue-policies`
+on both sides, the chart build with its pinned dependencies and the render
+checks, once with analytics on (the worker required) and once with analytics
+off (no worker); the stack's README has the full list.
 
 All live verification runs on the test stack under "Team Analytics", in the
 project's own namespace with a quota and its own teardown (`down`, or `cycle`).
@@ -438,8 +482,9 @@ run created.
 ## 5. Record and hand off
 
 Obtain independent review of the integrated behavioral and permission changes
-after verification. Record the raw and filtered upstream revisions, final fork
-revision, remaining customization inventory, commands/outcomes and unverified
+after verification. Record the upstream release tag and its commit, the merge
+commit, the final fork revision, the remaining customization inventory
+(`git diff --name-status "${TARGET}" HEAD`), commands/outcomes and unverified
 acceptance scenarios in a dated file under `docs/evidence/`. Update the README
 baseline link and specification integration map as needed. Keep historical
 test counts and deployment results out of the evergreen specification.
@@ -449,4 +494,4 @@ safe mechanical formatting fixes separate from behavior changes. Publishing
 or deployment requires its own authorization. Before an authorized deployment,
 retain the prior UI and fork server images and deployment configuration, and plan
 database backup/rollback according to the target upstream release; reverting
-the subtree alone does not undo server database migrations.
+the merge alone does not undo server database migrations.

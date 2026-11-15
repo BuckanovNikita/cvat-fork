@@ -178,11 +178,12 @@ async function worker(browser, linkDelayMs) {
     );
     await page.screenshot('worker-team-analytics');
     check(denied.includes('Team analytics is not available'), `ta-worker sees "${denied}"`);
+    // the browser's own fetch sends Accept */*; CVAT's API answers 406 to a bare application/json
     const status = await page.evaluate(
-        `fetch("/team-analytics-api/v1/overview?period=week&tz=UTC&org=${ORG}").then((r) => r.status)`,
+        `fetch("/api/team-analytics/overview?period=week&tz=UTC&org=${ORG}").then((r) => r.status)`,
     );
-    check(status === 403, `the service answered ta-worker with ${status}`);
-    log(`ta-worker: no header link, direct visit shows "${denied.slice(0, 60)}", service call ${status}`);
+    check(status === 403, `CVAT's analytics API answered ta-worker with ${status}`);
+    log(`ta-worker: no header link, direct visit shows "${denied.slice(0, 60)}", API call ${status}`);
 }
 
 async function main() {

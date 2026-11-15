@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    loadPage, render, suppliedFetch, text,
+    loadPage, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const View = loadPage('team-analytics-view.tsx').default;
@@ -135,8 +135,8 @@ test('without Model figures the card and the headline stay as they were', () => 
 
 test('Model and saved boxes reach the page from the overview response', async () => {
     const body = { by_annotator: { rows: [] }, creation_methods: creationMethods(), saved_boxes: savedBoxes() };
-    const { fetch } = suppliedFetch(() => ({ body }));
-    const state = await service.loadOverview({ organization: 'team-org', timeZone: 'UTC' }, fetch);
+    const { request } = suppliedService(() => ({ body }));
+    const state = await service.loadOverview({ organization: 'team-org', timeZone: 'UTC' }, request);
     assert.deepEqual(state.overview.creation_methods.model, body.creation_methods.model);
     assert.deepEqual(state.overview.saved_boxes, body.saved_boxes);
 });

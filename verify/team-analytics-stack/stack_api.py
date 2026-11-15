@@ -3,7 +3,8 @@
     stack_api.py seed               read every seeded account and role back through the API
     stack_api.py send-event MARKER  send one client event as ta-worker
     stack_api.py seed-work          create projects, tasks and jobs and send working time as annotators
-    stack_api.py check-tracer SECS  wait up to SECS for the service's figures, then check refusals
+    stack_api.py check-tracer SECS  wait up to SECS for the figures, then check refusals
+    stack_api.py check-refresh SECS the status endpoint's refresh stamp advances twice within SECS
 
 Environment: TA_BASE_URL, TA_SEED_PASSWORD. Standard library only.
 """
@@ -36,6 +37,13 @@ EXTRA_PAYLOAD = {"shape_type": "rectangle"}
 
 
 THROTTLE_WAIT_S = 300
+
+# Team Analytics in CVAT's own API (cvat/apps/team_analytics). A request whose answer is not cached is
+# queued for the analytics worker and waits a few seconds; when the answer is not ready the API replies
+# 429 with Retry-After, and the client asks again. ANALYTICS_RETRY_S bounds how long a checker keeps
+# asking (the page's cvat-core retries three times, about 23 s with the 5 s wait).
+API = "/api/team-analytics/"
+ANALYTICS_RETRY_S = float(os.environ.get("TA_ANALYTICS_RETRY_S") or "30")
 
 
 def _retry_after(error: urllib.error.HTTPError, detail: str) -> int | None:
@@ -88,16 +96,60 @@ class Session:
         return get_json(self.opener, path)
 
 
-def get_json(opener: urllib.request.OpenerDirector, path: str) -> tuple[int, object]:
+def raw_get(opener: urllib.request.OpenerDirector, path: str, headers: dict | None = None) -> tuple[int, object, dict]:
+    """One GET: (status, JSON body or text, response headers with lower-case names). No Accept header: CVAT
+    answers 406 to a bare `Accept: application/json`."""
+    request = urllib.request.Request(BASE_URL + path, headers=headers or {})
     try:
-        with opener.open(urllib.request.Request(BASE_URL + path), timeout=60) as resp:
-            status, text = resp.status, resp.read().decode()
+        with opener.open(request, timeout=60) as resp:
+            status, text, got = resp.status, resp.read().decode(), resp.headers
     except urllib.error.HTTPError as e:
-        status, text = e.code, e.read().decode()
+        status, text, got = e.code, e.read().decode(), e.headers or {}
+    got = {name.lower(): value for name, value in got.items()}
     try:
-        return status, json.loads(text)
+        return status, json.loads(text), got
     except ValueError:
-        return status, text[:200]
+        return status, text[:200], got
+
+
+def not_ready(status: int, body: object, path: str) -> bool:
+    """The analytics API's "not ready, ask again" (429, no body), as opposed to CVAT's throttling (429 with
+    DRF's `detail`)."""
+    return status == 429 and path.startswith(API) and body in ("", None)
+
+
+def get_json(
+    opener: urllib.request.OpenerDirector, path: str, headers: dict | None = None, retry_s: float | None = None
+) -> tuple[int, object]:
+    """GET that returns (status, JSON body) instead of failing on a refusal. An analytics answer that is not
+    ready yet is asked for again after its Retry-After, for up to `retry_s` (ANALYTICS_RETRY_S) in all;
+    the last answer is returned when it stays not ready."""
+    budget = ANALYTICS_RETRY_S if retry_s is None else retry_s
+    started = time.monotonic()
+    while True:
+        status, body, got = raw_get(opener, path, headers)
+        if not not_ready(status, body, path):
+            return status, body
+        wait = float(got.get("retry-after") or 1)
+        if time.monotonic() - started + wait > budget:
+            return status, body
+        time.sleep(wait)
+
+
+def refusal(status: int, body: object) -> str | None:
+    """What a Team Analytics answer refused with, by the exact form of its body: None for 200; the `error` of
+    the app's own bodies (`{"error": "organization_required"}`, `{"error": "bad_request", ...}`,
+    `{"error": "unavailable"}`); for DRF's `{"detail": ...}` bodies `forbidden` (403) or `not_authenticated`
+    (401); anything else as `unexpected <body>`, which matches no expectation."""
+    if status == 200:
+        return None
+    if isinstance(body, dict) and isinstance(body.get("error"), str) and (
+        set(body) == {"error"} or (set(body) == {"error", "detail"} and body["error"] == "bad_request")
+    ):
+        return body["error"]
+    if isinstance(body, dict) and set(body) == {"detail"} and status in (401, 403):
+        return {401: "not_authenticated", 403: "forbidden"}[status]
+    return f"unexpected {str(body)[:200]}"
 
 
 def check(condition: bool, message: str) -> None:
@@ -169,7 +221,7 @@ WORK = {
 # Seconds between two events of an annotator; CVAT counts gaps shorter than 100 s as work.
 EVENT_GAP_S = 60
 TRACER_PROJECT = "ta-tracer"
-OVERVIEW = "/team-analytics-api/v1/overview?period=week&tz=UTC&org="
+OVERVIEW = API + "overview?period=week&tz=UTC&org="
 
 
 def owner_of(org: str) -> str:
@@ -276,8 +328,11 @@ def expected_rows(*orgs: str) -> list[tuple[str, int]]:
     return sorted(rows, key=lambda row: (-row[1], row[0]))
 
 
-def figures(body: object) -> list[tuple[str, int]]:
-    return [(row["user_name"], row["working_time_ms"]) for row in body["by_annotator"]["rows"]]
+def figures(body: object) -> list[tuple[str, int]] | None:
+    """The overview's annotators and working time; None while the period is not processed (no figures yet, as
+    before the first refresh of a fresh stack)."""
+    rows = (body.get("by_annotator") or {}).get("rows") if isinstance(body, dict) else None
+    return None if rows is None else [(row["user_name"], row["working_time_ms"]) for row in rows]
 
 
 def check_tracer(timeout_s: int) -> None:
@@ -285,7 +340,7 @@ def check_tracer(timeout_s: int) -> None:
     check(status == 401, f"anonymous overview -> {status}, expected 401")
     print("  anonymous: 401")
 
-    # nothing triggers a refresh: the figures appear when the service's own schedule runs one
+    # nothing triggers a refresh: the figures appear when the scheduled refresh job runs one
     maintainer = Session("ta-maintainer")
     want = expected_rows("ta-org-a")
     started = time.monotonic()
@@ -311,7 +366,7 @@ def check_tracer(timeout_s: int) -> None:
     ]
     for username, org, want_status, want_body in cases:
         status, body = Session(username).call(OVERVIEW + urllib.parse.quote(org))
-        got = figures(body) if status == 200 else body.get("error") if isinstance(body, dict) else body
+        got = figures(body) if status == 200 else refusal(status, body)
         if status == 200 and not org:
             # instance scope also holds the final run's organizations (final_run.py), whose people
             # work less than these annotators, so the tracer rows lead the list
@@ -323,6 +378,27 @@ def check_tracer(timeout_s: int) -> None:
         print(f"  {username}, org={org or '-'}: {status} {got}")
 
 
+def check_refresh(timeout_s: int) -> None:
+    """The scheduled refresh runs: ta-admin's status carries the moment of the newest successful refresh
+    (`refresh.last_success_at`), which must advance twice within `timeout_s`. Prints the stamps seen."""
+    admin = Session("ta-admin")
+    started, stamps = time.monotonic(), []
+    while time.monotonic() - started < timeout_s:
+        status, body = admin.call(API + "status?tz=UTC&org=")
+        check(status == 200, f"ta-admin status -> {status} {body}")
+        stamp = (body.get("refresh") or {}).get("last_success_at")
+        if stamp and (not stamps or stamps[-1][1] != stamp):
+            stamps.append((round(time.monotonic() - started), stamp))
+            print(f"  refresh stamp {stamp} seen after {stamps[-1][0]} s", flush=True)
+        if len(stamps) >= 3:
+            break
+        time.sleep(5)
+    check(len(stamps) >= 3, f"the refresh stamp advanced {max(len(stamps) - 1, 0)} times in {timeout_s} s: {stamps}")
+    moments = [datetime.fromisoformat(s) for _, s in stamps]
+    gaps = [round((b - a).total_seconds()) for a, b in zip(moments, moments[1:])]
+    print(f"  the scheduled refresh advanced the stamp twice; seconds between stamps {gaps}")
+
+
 def main() -> None:
     if sys.argv[1:] == ["seed"]:
         seed_check()
@@ -332,6 +408,8 @@ def main() -> None:
         seed_work()
     elif len(sys.argv) == 3 and sys.argv[1] == "check-tracer":
         check_tracer(int(sys.argv[2]))
+    elif len(sys.argv) == 3 and sys.argv[1] == "check-refresh":
+        check_refresh(int(sys.argv[2]))
     else:
         raise SystemExit(__doc__)
 

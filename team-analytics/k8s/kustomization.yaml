@@ -1,8 +1,0 @@
-# kubectl apply -k team-analytics/k8s -n <namespace of the CVAT release>
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - config.yaml
-  - deployment.yaml
-  - service.yaml
-  - ingress.yaml

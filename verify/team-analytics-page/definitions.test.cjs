@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, dependency, loadPage, mount, suppliedFetch,
+    React, dependency, loadPage, mount, suppliedService,
 } = require('./helper.cjs');
 
 const HOUR = 3600000;
@@ -37,7 +37,7 @@ const { createMemoryHistory } = dependency('history');
 
 async function opened(search, check) {
     const history = createMemoryHistory({ initialEntries: [`/team-analytics${search}`] });
-    const { fetch } = suppliedFetch(answer);
+    const { request } = suppliedService(answer);
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': {
             useSelector: (select) => select({
@@ -45,7 +45,7 @@ async function opened(search, check) {
             }),
         },
         'react-router': { useHistory: () => history },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
         './project-names': { lookupProjectNames: async () => ({}) },
     }).default;
     const view = await mount(React.createElement(Page));

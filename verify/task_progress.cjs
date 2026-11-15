@@ -8,7 +8,7 @@ const { createRequire } = require('node:module');
 const path = require('node:path');
 const test = require('node:test');
 
-const cvatRoot = path.resolve(__dirname, '../cvat');
+const cvatRoot = path.resolve(__dirname, '..');
 const dependency = createRequire(path.join(cvatRoot, 'package.json'));
 const ts = dependency('typescript');
 const React = dependency('react');

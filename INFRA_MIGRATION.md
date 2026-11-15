@@ -72,6 +72,13 @@ The plan keeps deletion disabled until real restart proofs and arming are done.
 Run verification in this project's own namespace with a quota and owned
 teardown, replacing the Compose stacks under `verify/`. Keep no maintained
 Compose launcher. Mirrored upstream content under `cvat/` stays untouched.
+
+> Note, 2026-11-15: the mirrored `cvat/` import no longer exists. The
+> repository became a full-source fork of upstream CVAT
+> ([ADR 0005](docs/adr/0005-a-full-source-fork-joined-to-upstream-history.md)):
+> upstream's tree is the repository root, and the fork's edits to upstream
+> files are listed in
+> [the fork specification](docs/fork-specification.md#ownership-and-scope).
 The deployment design and the golden verification matrix are this project's
 decisions, not designs supplied by k8s-infra.
 

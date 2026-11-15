@@ -1,0 +1,16 @@
+# Tools of the fork's check pipeline (prek.toml) that come from Python packages.
+# uv.lock locks them; ruff.toml holds ruff's settings, the root pyproject.toml black's and isort's. Not a package: the table
+# below only gives uv the Python range the lock is resolved for.
+[project]
+name = "cvat-fork-checks"
+version = "0"
+requires-python = ">=3.10"
+
+[dependency-groups]
+lint = ["ruff==0.17.3"]
+# upstream's formatters, in the major versions upstream pins (dev/requirements.txt); they check the
+# fork's code inside upstream's cvat/ tree with upstream's settings (the root pyproject.toml)
+format = ["black==26.*", "isort==7.*"]
+
+[tool.uv]
+package = false

@@ -17,3 +17,9 @@ The patched issue and comment policies reached a server only through bind mounts
 - The image is rebuilt on every upstream upgrade and whenever a policy changes, and like the other two it must be present on the node.
 - The policies are edited in place inside the import, which the owner widened to bring the stock policy files in; the copied `opa/` directory and the Compose overlay that mounted it go away.
 - The Team Analytics service keeps its own image on the stock base, so a change to analytics code never rolls out the CVAT backend.
+
+## Amendments, 2026-11-15
+
+- **The image is no longer "nothing else".** With Team Analytics inside the backend ([ADR 0006](0006-team-analytics-inside-the-backend-with-reads-on-a-worker.md)) the fork server image carries the fork's backend tree: the patched policies and the Team Analytics app. It is still the stock release image with files copied over it, and still holds no added dependency. The last consequence above, that a change to analytics code never rolls out the CVAT backend, no longer holds.
+- **The policies are edited in the tree, not in an import.** The repository became a full-source fork ([ADR 0005](0005-a-full-source-fork-joined-to-upstream-history.md)); the policies sit at upstream's paths, and a release is merged, not re-imported.
+- **The second considered option was taken after all.** The conversion to a full-source fork, dropped on 2026-11-14, was decided by the owner on 2026-11-15.

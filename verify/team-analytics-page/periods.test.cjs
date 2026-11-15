@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const { createMemoryHistory } = dependency('history');
@@ -32,7 +32,7 @@ function overviewFor(url) {
 
 // Answers overview requests through `respond` (default: at once) and status requests at once.
 async function openPage({ address = '/team-analytics', respond } = {}) {
-    const { fetch, requests } = suppliedFetch((url) => {
+    const { request, requests } = suppliedService((url) => {
         if (url.includes('/status')) return { body: { refresh: null } };
         return respond ? respond(url) : { body: overviewFor(url) };
     });
@@ -40,7 +40,7 @@ async function openPage({ address = '/team-analytics', respond } = {}) {
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
         'react-router': { useHistory: () => history },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
     }).default;
     const view = await mount(React.createElement(Page));
     await view.settle();
@@ -112,7 +112,7 @@ test('Month opens on the current month, to date, and later months cannot be chos
     assert.match(page.text(), new RegExp(`${label(CURRENT)} · to date`));
     assert.equal(page.button('Next month').disabled, true);
     assert.deepEqual(page.overviews().at(-1), {
-        org: 'team-org', period: 'month', tz: page.overviews()[0].tz, month: CURRENT, shapes: 'bounding_boxes',
+        period: 'month', tz: page.overviews()[0].tz, month: CURRENT, shapes: 'bounding_boxes',
     });
     await page.view.unmount();
 });

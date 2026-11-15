@@ -1,11 +1,8 @@
-"""The service's Ingress route and four access cases against the stack's real CVAT (ticket 11).
+"""Four access cases of Team Analytics against the stack's real CVAT (`/api/team-analytics/`).
 Driven by run.sh; each command judges its own case and exits non-zero on a failure.
 
-    access_cases.py check-ingress HOST   status through the Ingress at https://HOST (the ingress
-                                         controller on 127.0.0.1:443): answered with a session,
-                                         refused as signed out without one
-    access_cases.py removed-member       a maintainer removed from ta-org-r is refused once the
-                                         service's identity cache has expired
+    access_cases.py removed-member       a maintainer removed from ta-org-r is refused on the next
+                                         request, with no wait
     access_cases.py group-admin          an administrator by group who is not a superuser reads
                                          instance scope and a named organization
     access_cases.py personal-workspace SECS
@@ -23,14 +20,9 @@ TA_SEED_PASSWORD. Standard library only.
 from __future__ import annotations
 
 import base64
-import http.client
 import json
-import re
-import socket
-import ssl
 import sys
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
@@ -38,22 +30,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # run with python3 -I, which leaves it out
 
-from stack_api import BASE_URL, PASSWORD, Session, get_json, send_work, upload_images
+from stack_api import API, PASSWORD, Session, get_json, refusal, send_work, upload_images
 
 HERE = Path(__file__).resolve().parent
-API = "/team-analytics-api/v1/"
 ACCESS_ACCOUNTS = json.loads((HERE / "access_accounts.json").read_text())
 ADMIN_ONLY_HISTORY = {"first_day", "days_ready", "days_total"}  # status keys only administrators get (ticket 15)
 
-# The service reuses CVAT's answers per caller for ANSWER_TTL (team_analytics/access.py), a constant
-# with no configuration: the removed-member case waits it out. Read from the source so that a change
-# there changes the wait.
-ACCESS_SOURCE = HERE.parents[1] / "team-analytics/service/team_analytics/access.py"
-_TTL = re.search(r"^ANSWER_TTL = timedelta\((minutes|seconds)=(\d+)\)$", ACCESS_SOURCE.read_text(), re.M)
-if _TTL is None:
-    raise SystemExit("ANSWER_TTL not found in team_analytics/access.py; the removed-member wait is unknown")
-CACHE_TTL_S = int(_TTL.group(2)) * (60 if _TTL.group(1) == "minutes" else 1)
-CACHE_MARGIN_S = 5
 
 REMOVED_ORG = "ta-org-r"
 LEAVER = "ta-leaver"
@@ -93,94 +75,44 @@ def overview_names(body: object) -> list[str] | None:
 
 
 def error_of(status: int, body: object) -> str | None:
-    return body.get("error") if status != 200 and isinstance(body, dict) else None
-
-
-# ---------------------------------------------------------------- Ingress
-
-
-class _ControllerConnection(http.client.HTTPSConnection):
-    """HTTPS to the ingress controller on the host's 443 for a name the host does not resolve: the
-    TCP connection goes to 127.0.0.1, the TLS name (SNI and verification) and Host stay the name."""
-
-    def connect(self) -> None:
-        sock = socket.create_connection(("127.0.0.1", self.port), self.timeout)
-        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
-
-
-def ingress_get(host: str, path: str, cookie: str | None) -> tuple[int, object]:
-    # verification on, with the default trust store (the local CA is in the host bundle, k8s-infra)
-    connection = _ControllerConnection(host, 443, timeout=30, context=ssl.create_default_context())
-    try:
-        connection.request("GET", path, headers={"Cookie": cookie} if cookie else {})
-        response = connection.getresponse()
-        status, text = response.status, response.read().decode(errors="replace")
-    finally:
-        connection.close()
-    try:
-        return status, json.loads(text)
-    except ValueError:
-        return status, text[:200]
-
-
-def check_ingress(host: str) -> None:
-    case = "ingress"
-    session = Session("ta-maintainer")  # logged in through the proxy; the cookie's value is what CVAT reads
-    cookie = "; ".join(f"{c.name}={c.value}" for c in session.jar)
-    path = query("status", org="ta-org-a")
-    # the controller answers 404 or 503 for the host until it has synced the new Ingress
-    deadline = time.monotonic() + 120
-    while True:
-        status, body = ingress_get(host, path, cookie)
-        if status not in (404, 502, 503) or time.monotonic() > deadline:
-            break
-        time.sleep(3)
-    if status != 200 or not isinstance(body, dict) or not {"history", "refresh", "cutover"} <= set(body):
-        fail(case, f"with a session: {status} {str(body)[:300]}, expected 200 with history, refresh and cutover")
-    log(f"https://{host}{API}status as ta-maintainer, org=ta-org-a: 200 {sorted(body)}")
-    status, body = ingress_get(host, path, None)
-    if (status, error_of(status, body)) != (401, "not_authenticated"):
-        fail(case, f"without a session: {status} {str(body)[:300]}, expected 401 not_authenticated")
-    log(f"https://{host}{API}status without a session: 401 not_authenticated")
-    passed(case, f"status through the Ingress at {host}: 200 with a session, 401 not_authenticated without")
+    """forbidden, not_authenticated, organization_required, ... by the exact body (stack_api.refusal)."""
+    return refusal(status, body)
 
 
 # ---------------------------------------------------------------- a removed member
 
 
 def removed_member() -> None:
+    """CVAT's permission system decides on every request, and nothing caches who the caller is: the request
+    right after the removal is refused, with and without the organization."""
     case = "removed-member"
     owner = Session(next(u for u, r in ACCESS_ACCOUNTS["organizations"][REMOVED_ORG]["members"].items() if r == "owner"))
-    leaver = Session(LEAVER)  # one session throughout: the cache key is the credentials
+    leaver = Session(LEAVER)  # one session throughout
     path = query("status", org=REMOVED_ORG)
     status, body = leaver.call(path)
     if status != 200:
         fail(case, f"{LEAVER} before the removal: {status} {body}, expected 200 (run.sh seed-access first)")
-    asked_at = time.monotonic()  # every answer of that read was fetched before this moment
     log(f"{LEAVER}, org={REMOVED_ORG}, a maintainer: 200")
 
     rows = owner.request("GET", f"/api/memberships?org={REMOVED_ORG}&user={LEAVER}&page_size=100")["results"]
     if len(rows) != 1:
         fail(case, f"{REMOVED_ORG} has {len(rows)} memberships of {LEAVER}, expected 1")
     owner.request("DELETE", f"/api/memberships/{rows[0]['id']}?org={REMOVED_ORG}")
+    removed_at = time.monotonic()
+    log(f"{LEAVER} removed from {REMOVED_ORG} by its owner through CVAT's API")
+    # judged at once: the first request after the removal, no wait in between
+    for org in (REMOVED_ORG, ""):
+        for endpoint in ("status", "overview"):
+            status, body = leaver.call(endpoint_query(endpoint, org))
+            if (status, error_of(status, body)) != (403, "forbidden"):
+                fail(case, f"{LEAVER}, org={org or '-'} {endpoint} right after the removal: {status} {body}, expected 403 forbidden")
+            log(f"{LEAVER}, org={org or '-'} {endpoint}: 403 {body}")
+    elapsed = time.monotonic() - removed_at
     left = owner.request("GET", f"/api/memberships?org={REMOVED_ORG}&user={LEAVER}&page_size=100")["results"]
     if left:
         fail(case, f"the membership is still listed after the owner deleted it: {left}")
-    log(f"{LEAVER} removed from {REMOVED_ORG} by its owner through CVAT's API")
-    # not judged: within the minute the cached answers may still let the same session in
-    status, body = leaver.call(path)
-    log(f"right after the removal (cache not expired, not judged): {status} {error_of(status, body) or ''}")
-
-    wait = asked_at + CACHE_TTL_S + CACHE_MARGIN_S - time.monotonic()
-    log(f"waiting {max(wait, 0):.0f} s for the identity cache ({CACHE_TTL_S} s, team_analytics/access.py ANSWER_TTL)")
-    time.sleep(max(wait, 0))
-    for org, want in ((REMOVED_ORG, "forbidden"), ("", "forbidden")):
-        for endpoint in ("status", "overview"):
-            status, body = leaver.call(endpoint_query(endpoint, org))
-            if (status, error_of(status, body)) != (403, want):
-                fail(case, f"{LEAVER}, org={org or '-'} {endpoint} after the cache expired: {status} {body}, expected 403 {want}")
-            log(f"{LEAVER}, org={org or '-'} {endpoint}: 403 {want}")
-    passed(case, f"{LEAVER} removed from {REMOVED_ORG}: 403 forbidden with and without the organization after {CACHE_TTL_S} s")
+    passed(case, f"{LEAVER} removed from {REMOVED_ORG}: 403 forbidden with and without the organization on the "
+                 f"next requests (all four within {elapsed:.1f} s of the removal)")
 
 
 # ---------------------------------------------------------------- an administrator by group
@@ -332,16 +264,7 @@ TOKEN_NAME = "ta-stack-access-case"
 
 def header_get(authorization: str, path: str) -> tuple[int, object]:
     """A GET with only an Authorization header: an opener without a cookie jar."""
-    request = urllib.request.Request(BASE_URL + path, headers={"Authorization": authorization})
-    try:
-        with urllib.request.build_opener().open(request, timeout=60) as resp:
-            status, text = resp.status, resp.read().decode()
-    except urllib.error.HTTPError as e:
-        status, text = e.code, e.read().decode()
-    try:
-        return status, json.loads(text)
-    except ValueError:
-        return status, text[:200]
+    return get_json(urllib.request.build_opener(), path, headers={"Authorization": authorization})
 
 
 def decision(status: int, body: object, endpoint: str) -> tuple:
@@ -415,9 +338,7 @@ def header_credentials() -> None:
 
 def main() -> None:
     args = sys.argv[1:]
-    if len(args) == 2 and args[0] == "check-ingress":
-        check_ingress(args[1])
-    elif args == ["removed-member"]:
+    if args == ["removed-member"]:
         removed_member()
     elif args == ["group-admin"]:
         group_admin()

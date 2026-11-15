@@ -2,7 +2,7 @@
 // figures the service sends.
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { loadPage, render, suppliedFetch, text } = require('./helper.cjs');
+const { loadPage, render, suppliedService, text } = require('./helper.cjs');
 
 const View = loadPage('team-analytics-view.tsx').default;
 const service = loadPage('service.ts');
@@ -51,8 +51,8 @@ test('a period without sessions says no sessions instead of an average', () => {
 });
 
 test('per-annotator session counts and average lengths reach the page', async () => {
-    const { fetch } = suppliedFetch(() => ({ body: { by_annotator: { rows: [] }, sessions: SESSIONS } }));
-    const state = await service.loadOverview({ organization: 'team-org', timeZone: 'UTC' }, fetch);
+    const { request } = suppliedService(() => ({ body: { by_annotator: { rows: [] }, sessions: SESSIONS } }));
+    const state = await service.loadOverview({ organization: 'team-org', timeZone: 'UTC' }, request);
     assert.equal(state.kind, 'ready');
     assert.deepEqual(state.overview.sessions.by_annotator.map((row) => [row.user_name, row.sessions, row.average_ms]),
         [['alice', 30, 40 * MINUTE], ['bob', 12, 33 * MINUTE]]);

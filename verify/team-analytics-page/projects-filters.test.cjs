@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const View = loadPage('team-analytics-view.tsx').default;
@@ -177,14 +177,14 @@ function mountPage({
     search = '', names = async () => ({}), answer = () => ({ body: OVERVIEW }), organization = 'team-org',
 } = {}) {
     const history = createMemoryHistory({ initialEntries: [`/team-analytics${search}`] });
-    const { fetch, requests } = suppliedFetch(answer);
+    const { request, requests } = suppliedService(answer);
     const lookups = [];
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': {
             useSelector: (select) => select({ organizations: { current: organization ? { slug: organization } : null } }),
         },
         'react-router': { useHistory: () => history },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
         './project-names': {
             lookupProjectNames: async (ids) => { lookups.push(ids); return names(ids); },
         },

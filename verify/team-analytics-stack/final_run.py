@@ -6,14 +6,14 @@
                                             the events table, the detector record among them (one, for
                                             the run that created objects); the technical account saves
                                             boxes; working time behaves
-    final_run.py check-ui-figures FILE      the service's figures for that project, Model equal to the
+    final_run.py check-ui-figures FILE      the analytics figures for that project, Model equal to the
                                             detector run's objects and the technical account's boxes
     final_run.py volume-accounts            JSON of the volume's annotators for seed_users.py
     final_run.py load-volume [N]            synthetic work in ta-org-v: 100 annotators, 40 projects with
                                             long names, ten weeks of history; the current week through
                                             the events API, each annotator signed in (only the first N
                                             with N, and nothing else); loads what is missing only
-    final_run.py check-volume SECS          the service's figures for the loaded events
+    final_run.py check-volume SECS          the analytics figures for the loaded events
     final_run.py check-access               every account and organization against every endpoint
     final_run.py page-context FILE          JSON for final_browser.cjs page (organizations, this run's
                                             project and what the browser did there)
@@ -39,9 +39,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # run with python3 -I, which leaves it out
 
-from stack_api import Session, check, get_json, upload_images
+from stack_api import API, Session, check, get_json, refusal, upload_images
 
-API = "/team-analytics-api/v1/"
 UI_ORG = "ta-org-c"
 # The volume organization; another one serves a stack that already holds a volume load.
 VOLUME_ORG = os.environ.get("TA_VOLUME_ORG") or "ta-org-v"
@@ -99,7 +98,7 @@ def wait_rows(query: str, ready, what: str, timeout_s: int = 120) -> list[dict]:
         time.sleep(3)
 
 
-# ---------------------------------------------------------------- service
+# ---------------------------------------------------------------- Team Analytics API
 
 
 def service(session: Session, path: str, **query) -> tuple[int, object]:
@@ -117,7 +116,7 @@ def org_id(session: Session, slug: str) -> int:
 
 
 def wait_figures(session: Session, path: str, query: dict, ready, what: str, timeout_s: int) -> dict:
-    """Polls the service until `ready(body)`; the scheduled refresh brings new events within minutes."""
+    """Polls the analytics API until `ready(body)`; the scheduled refresh brings new events within minutes."""
     started = time.monotonic()
     while True:
         status, body = service(session, path, **query)
@@ -137,8 +136,8 @@ def by_key(rows: list[dict], key: str) -> dict:
 
 
 def prepare_ui() -> None:
-    """Two projects created for this run: one the browser annotates with the service up, one it
-    annotates with the service stopped. Each run makes its own, so figures are read per project."""
+    """Two projects created for this run: one the browser annotates with the analytics worker up, one it
+    annotates with the analytics worker stopped. Each run makes its own, so figures are read per project."""
     owner = Session("ta-owner-c")
     worker_id = Session("ta-worker-c").request("GET", "/api/users/self")["id"]
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
@@ -1105,7 +1104,7 @@ def check_access() -> None:
         seen = []
         for path, query in ENDPOINTS:
             status, body = service(session, path, org=org, **query)
-            error = body.get("error") if isinstance(body, dict) and status != 200 else None
+            error = refusal(status, body)
             check(
                 (status, error) == (want_status, want_error),
                 f"{username} org={org or '-'} {path}: {status} {error}, expected {want_status} {want_error}",

@@ -7,12 +7,14 @@
 # takes no file names from prek and selects what it checks itself, so every hook
 # runs on every invocation:
 # - the UI linters take only the fork's UI files (tools/gate/ui-lint.sh),
-# - ruff takes the fork's Python as ruff.toml selects it, never cvat/,
-# - the type check, the policy test and the suites cover what they always cover.
+# - ruff takes the fork's Python as ruff.toml lists it, never upstream's,
+# - black and isort check the fork's code inside upstream's cvat/ tree (the Team Analytics app
+#   and the two settings files it is wired into) with upstream's settings (pyproject.toml),
+# - the type check, the policy tests and the suites cover what they always cover.
 #
-# Tool versions: the UI tools from the import's lock through cvat/node_modules, the
-# harness's browser environment from verify/package.json, ruff from pyproject.toml
-# and uv.lock, the OPA image where verify/policy_test.sh names it.
+# Tool versions: the UI tools from upstream's lock through node_modules, the
+# harness's browser environment from verify/package.json, ruff, black and
+# isort from tools/gate/pyproject.toml and its uv.lock, the OPA image where verify/policy_test.sh names it.
 #:schema https://www.schemastore.org/prek.json
 
 minimum_prek_version = "0.5.10"
@@ -41,7 +43,7 @@ require_serial = true
 [[repos.hooks]]
 id = "type-check"
 name = "type check, cvat-ui"
-entry = "node cvat/node_modules/typescript/bin/tsc -p cvat/cvat-ui/tsconfig.json"
+entry = "node node_modules/typescript/bin/tsc -p cvat-ui/tsconfig.json"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -50,7 +52,25 @@ require_serial = true
 [[repos.hooks]]
 id = "ruff"
 name = "ruff check, fork's Python"
-entry = "env RAYON_NUM_THREADS=1 uv run --locked --only-group lint ruff check"
+entry = "env RAYON_NUM_THREADS=1 uv run --project tools/gate --locked --only-group lint ruff check"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "black"
+name = "black, the fork's backend code"
+entry = "uv run --project tools/gate --locked --only-group format black --check --quiet cvat/apps/team_analytics cvat/settings/base.py cvat/urls.py"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "isort"
+name = "isort, the fork's backend code"
+entry = "uv run --project tools/gate --locked --only-group format isort --check --quiet cvat/apps/team_analytics cvat/settings/base.py cvat/urls.py"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -69,6 +89,15 @@ require_serial = true
 id = "policy-stock"
 name = "policy test, stock policies"
 entry = "verify/policy_test.sh stock"
+language = "system"
+pass_filenames = false
+always_run = true
+require_serial = true
+
+[[repos.hooks]]
+id = "policy-generated"
+name = "policy tests, upstream's generated suite"
+entry = "verify/policy_generated.sh"
 language = "system"
 pass_filenames = false
 always_run = true

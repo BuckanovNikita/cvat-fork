@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const HOUR = 3600000;
@@ -212,9 +212,9 @@ function detailsAnswer(url) {
     return { body: details({ page, total: 23, rows: Array.from({ length: 10 }, (_, i) => row(100 + i + 10 * (page - 1))) }) };
 }
 
-function section(fetch, props = {}, names = { 3: 'Cats', 4: 'Dogs', 7: 'Hotdogs' }) {
+function section(request, props = {}, names = { 3: 'Cats', 4: 'Dogs', 7: 'Hotdogs' }) {
     const Section = loadPage('details-section.tsx', {
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
         './project-names': { lookupProjectNames: async (ids) => Object.fromEntries(ids.filter((id) => id in names).map((id) => [id, names[id]])) },
     }).default;
     return React.createElement(Section, {
@@ -241,8 +241,8 @@ function button(container, label) {
 }
 
 test('an answer without figures shows the not processed state, by annotator and by project', async () => {
-    const { fetch } = suppliedFetch((url) => ({ body: noFigures(new URL(url, 'http://localhost').searchParams.get('by')) }));
-    const page = await mount(section(fetch));
+    const { request } = suppliedService((url) => ({ body: noFigures(new URL(url, 'http://localhost').searchParams.get('by')) }));
+    const page = await mount(section(request));
     try {
         await page.settle();
         assert.match(page.container.textContent, /This period is not processed yet/);
@@ -256,14 +256,14 @@ test('an answer without figures shows the not processed state, by annotator and 
 });
 
 test('the table asks for the period, filters and shapes, pages with next and narrows by name', async () => {
-    const { fetch, requests } = suppliedFetch(detailsAnswer);
-    const page = await mount(section(fetch));
+    const { request, requests } = suppliedService(detailsAnswer);
+    const page = await mount(section(request));
     try {
         await page.settle();
         let last = params(requests[requests.length - 1]);
-        assert.equal(requests[requests.length - 1].url.split('?')[0], '/team-analytics-api/v1/details');
+        assert.equal(requests[requests.length - 1].url.split('?')[0], '/api/team-analytics/details');
         assert.deepEqual(Object.fromEntries(last), {
-            org: 'team-org', period: 'month', tz: 'UTC', month: '2026-10', project: '3', shapes: 'bounding_boxes',
+            period: 'month', tz: 'UTC', month: '2026-10', project: '3', shapes: 'bounding_boxes',
             by: 'annotators', page: '1',
         });
         assert.match(page.container.textContent, /1–10 of 23/);
@@ -283,8 +283,8 @@ test('the table asks for the period, filters and shapes, pages with next and nar
 });
 
 test('projects are found by the name the page shows, No project included', async () => {
-    const { fetch, requests } = suppliedFetch(detailsAnswer);
-    const page = await mount(section(fetch));
+    const { request, requests } = suppliedService(detailsAnswer);
+    const page = await mount(section(request));
     try {
         await page.settle();
         await click(button(page.container, 'Projects'));
@@ -314,7 +314,7 @@ test('a project search over thousands of projects asks for one page of ids at a 
     // project_ids come in the table's order (most working time first); the page pages the matches itself
     const many = Array.from({ length: 2000 }, (_, index) => 9_000_001 + index);
     const names = Object.fromEntries(many.map((id) => [id, `Shelf ${id}`]));
-    const { fetch, requests } = suppliedFetch((url) => {
+    const { request, requests } = suppliedService((url) => {
         const query = new URL(url, 'http://localhost').searchParams;
         if (query.get('by') !== 'projects') return detailsAnswer(url);
         const ids = query.has('ids') ? query.get('ids').split(',').filter(Boolean).map(Number) : many.slice(0, 10);
@@ -325,7 +325,7 @@ test('a project search over thousands of projects asks for one page of ids at a 
             }),
         };
     });
-    const page = await mount(section(fetch, {}, names));
+    const page = await mount(section(request, {}, names));
     try {
         await page.settle();
         await click(button(page.container, 'Projects'));
@@ -350,8 +350,8 @@ test('a project search over thousands of projects asks for one page of ids at a 
 });
 
 test('an unreadable answer leaves a short notice', async () => {
-    const { fetch } = suppliedFetch(() => ({ body: { by_annotator: { rows: [] } } }));
-    const page = await mount(section(fetch));
+    const { request } = suppliedService(() => ({ body: { by_annotator: { rows: [] } } }));
+    const page = await mount(section(request));
     try {
         await page.settle();
         assert.match(page.container.textContent, /Details could not be loaded/);
@@ -363,7 +363,7 @@ test('an unreadable answer leaves a short notice', async () => {
 test('clicking a row sets it as the page filter, kept in the address', async () => {
     const { createMemoryHistory } = dependency('history');
     const history = createMemoryHistory({ initialEntries: ['/team-analytics?period=year'] });
-    const { fetch, requests } = suppliedFetch((url) => {
+    const { request, requests } = suppliedService((url) => {
         if (url.includes('/details?')) return detailsAnswer(url);
         if (url.includes('/status?')) return { body: {} };
         if (url.includes('/trends?')) return { status: 500, body: {} };
@@ -372,7 +372,7 @@ test('clicking a row sets it as the page filter, kept in the address', async () 
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } }, shortcuts: { keyMap: {}, normalizedKeyMap: {} } }) },
         'react-router': { useHistory: () => history },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
         './project-names': { lookupProjectNames: async () => ({}) },
     }).default;
     const detailRequests = () => requests.filter((r) => r.url.includes('/details?')).map(params);
@@ -401,8 +401,8 @@ test('clicking a row sets it as the page filter, kept in the address', async () 
 });
 
 test('picking a row on a later page keeps that page shown', async () => {
-    const { fetch } = suppliedFetch(detailsAnswer);
-    const { type: Section, props } = section(fetch);
+    const { request } = suppliedService(detailsAnswer);
+    const { type: Section, props } = section(request);
     let picked = null;
     function Holder() {
         const [annotator, setAnnotator] = React.useState(null);

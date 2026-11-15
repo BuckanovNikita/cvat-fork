@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, loadPage, mount, render, suppliedFetch, text,
+    React, act, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const View = loadPage('team-analytics-view.tsx').default;
@@ -62,22 +62,22 @@ test('without a status answer no time is claimed', () => {
 });
 
 test('the page reads the status of the selected organization once the figures are shown', async () => {
-    const { fetch, requests } = suppliedFetch((url) => (url.includes('/status') ?
+    const { request, requests } = suppliedService((url) => (url.includes('/status') ?
         { body: { refresh: refresh({ stale: true, now: '2026-11-13T16:00:00+00:00' }) } } :
         { body: { by_annotator: { rows: [] } } }));
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
         'react-router': { useHistory: () => ({ push() {} }) },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
     }).default;
     const view = await mount(React.createElement(Page));
     await view.settle();
     const status = requests.find((request) => request.url.includes('/status'));
     assert.ok(status, 'status is requested');
     const url = new URL(status.url, 'http://localhost');
-    assert.equal(url.pathname, '/team-analytics-api/v1/status');
-    assert.equal(url.searchParams.get('org'), 'team-org');
-    assert.equal(status.init.credentials, 'same-origin');
+    assert.equal(url.pathname, '/api/team-analytics/status');
+    // cvat-core attaches the organization; the page names none of its own
+    assert.deepEqual(status.params, { tz: url.searchParams.get('tz') });
     assert.ok(view.container.querySelector('.cvat-team-analytics-stale'));
     await view.unmount();
 });
@@ -87,7 +87,7 @@ test('the page reads the status of the selected organization once the figures ar
 async function openWithClock(t, answers) {
     t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.parse('2026-11-13T15:30:00Z') });
     let reads = 0;
-    const { fetch } = suppliedFetch((url) => {
+    const { request } = suppliedService((url) => {
         if (!url.includes('/status')) return { body: { by_annotator: { rows: [] } } };
         const answer = answers[Math.min(reads, answers.length - 1)];
         reads += 1;
@@ -96,7 +96,7 @@ async function openWithClock(t, answers) {
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
         'react-router': { useHistory: () => ({ push() {} }) },
-        './service': { ...loadPage('service.ts'), fetchService: fetch, viewerTimeZone: () => 'UTC' },
+        './service': { ...loadPage('service.ts'), requestService: request, viewerTimeZone: () => 'UTC' },
     }).default;
     const view = await mount(React.createElement(Page));
     await view.settle();
@@ -147,11 +147,11 @@ test('when the status cannot be read the last time stays and the warning comes o
 });
 
 test('a refused caller is not asked about freshness', async () => {
-    const { fetch, requests } = suppliedFetch(() => ({ status: 403, body: { error: 'forbidden' } }));
+    const { request, requests } = suppliedService(() => ({ status: 403, body: { error: 'forbidden' } }));
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
         'react-router': { useHistory: () => ({ push() {} }) },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
     }).default;
     const view = await mount(React.createElement(Page));
     await view.settle();

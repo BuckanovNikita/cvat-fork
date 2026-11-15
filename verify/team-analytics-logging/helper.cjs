@@ -13,7 +13,7 @@ const { readFileSync, existsSync } = require('node:fs');
 const { createRequire } = require('node:module');
 const path = require('node:path');
 
-const cvatRoot = path.resolve(__dirname, '../../cvat');
+const cvatRoot = path.resolve(__dirname, '../..');
 const uiSrc = path.join(cvatRoot, 'cvat-ui/src');
 const dependency = createRequire(path.join(cvatRoot, 'package.json'));
 const ts = dependency('typescript');
@@ -70,7 +70,7 @@ function existing(base) {
 }
 
 /**
- * Loads a source file; `relativePath` is relative to cvat/ (e.g. 'cvat-ui/src/actions/annotation-actions.ts').
+ * Loads a source file; `relativePath` is relative to the repository root (e.g. 'cvat-ui/src/actions/annotation-actions.ts').
  * `boundaries` maps import specifiers to replacements. Every call evaluates fresh module instances.
  */
 function loadSource(relativePath, boundaries = {}, warnings = []) {

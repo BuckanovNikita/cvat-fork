@@ -3,18 +3,21 @@
 # of the local docker-desktop cluster, reached at http://localhost:$TA_HOST_PORT.
 # See README.md beside this file.
 #
-#   run.sh up             preflight, then namespace, chart, service, proxy, port-forward, seed, checks
+#   run.sh up             preflight, then namespace, chart (with the analytics worker), proxy,
+#                         port-forward, seed, checks
 #   run.sh down           remove everything up created (succeeds when nothing exists)
 #   run.sh cycle          up, then down (also when up fails)
 #   run.sh seed           (re)load the synthetic accounts into a running stack
+#   run.sh check-worker   the analytics worker: its processes registered (the liveness probe's own
+#                         command), its restarts, its log since start
 #   run.sh check-event    send a client event through the API and find it in ClickHouse
 #   run.sh check-tracer   load working time as real accounts, wait for the scheduled refresh,
-#                         check the service's figures and refusals, then the page in a browser
+#                         check the figures and refusals of /api/team-analytics/, then the page in a browser
 #   run.sh check-final    the final run: the real UI annotates in a browser and its records arrive,
 #                         figures for that work and for loaded volume, every account and endpoint,
-#                         the page, then the page and annotation with the service stopped
+#                         the page, then the page and annotation with the analytics worker at zero
 #   run.sh check-final-ui only the real UI's part of check-final and its figures (a new
-#                         project each run; no volume, no service stop)
+#                         project each run; no volume, no worker stop)
 #   run.sh load-volume [N] only the volume part of check-final: the annotators' accounts, then
 #                         what is missing of the load (with N only the current week of the first N
 #                         annotators); TA_VOLUME_ORG loads into another organization than ta-org-v
@@ -27,38 +30,52 @@
 #   run.sh status         what exists now, and whether the namespace predates the cluster's last restart
 #   run.sh preflight      what up does before it touches the cluster: the server image check,
 #                         check-issue-policies on both sides, the chart build and the render
-#                         checks (render_guard.py); creates and pulls nothing
+#                         checks (render_guard.py, analytics on and off); creates and pulls nothing
 #   run.sh build-chart    only build the import's chart with its pinned dependencies
-#   run.sh render         print the chart render, CRDs included, that up checks and installs (unchecked)
+#   run.sh render         print the chart render, CRDs included, that up checks and installs (unchecked);
+#                         TA_ANALYTICS=off renders it with analytics disabled
 #   run.sh check-render F apply up's render checks to the render in file F
 #   run.sh check-bundle   check a policy bundle (tar.gz) given on stdin as check-policies does,
 #                         e.g. one from verify/policy_bundle.sh from-image IMAGE
-#   run.sh render-ingress print the service's Ingress as up applies it (class and host set)
-#   run.sh render-service print the service's manifests as up checks and applies them
 #   run.sh render-proxy   print the proxy's manifests as up checks and applies them
-#   run.sh check-ingress  one status request through the Ingress, with a session and without
 #   run.sh seed-access    (re)load the access cases' accounts (access_accounts.json)
 #   run.sh check-access [CASE]
 #                         the access cases against the real CVAT: removed-member, group-admin,
 #                         personal-workspace, header-credentials (all of them without CASE)
-#   run.sh check-ingress-gone
-#                         after down: no Ingress names the stack's host and the controller has no route
+#   run.sh check-org-creation
+#                         only administrators create organizations: user, worker, owner and maintainer refused
+#                         (403, nothing created), an administrator creates one (deleted again); part of up
 #   run.sh check-issues   the issue and comment matrix through the real API, with its own accounts
 #                         (issue_accounts.json, one without a global role), judged pass or fail
 #   run.sh check-issue-policies [patched|stock]
 #                         the same matrix's expectations against the policy engine, no server
 #   run.sh check-fixes [STEP]
 #                         the defect fixes along the path that failed (fixes_run.py, fixes_browser.cjs), each
-#                         judged: status-roles, technical-project, gestures, look, unprocessed,
-#                         sessions-at-limit (a record), cutover-restart (restarts the service); all, in this
-#                         order, without STEP. Not part of up: run it on a stack up has passed on
+#                         judged: status-roles, technical-project, gestures, look, unprocessed (holds the
+#                         refresh lock), sessions-at-limit (a record), cutover-restart (restarts the analytics
+#                         worker); all, in this order, without STEP. Not part of up: run it on a stack up has
+#                         passed on
+#   Acceptance of the backend path (acceptance.py), not part of up, each judged and printing its numbers:
+#   run.sh check-cross-org  no cached answer is served across organizations, or from an administrator to a
+#                         maintainer
+#   run.sh check-isolation [PART]
+#                         CVAT's core operations with the analytics worker at zero (twelve analytics requests
+#                         waiting), with ClickHouse at zero, and with the totals database dropped (parts
+#                         worker-down, clickhouse-down, totals-dropped); restores what it changed
+#   run.sh check-load     p95 of the task list and of a job's annotations before and during twelve concurrent
+#                         uncached overviews, during a refresh and while history is filled (needs the volume)
+#   run.sh check-review   the review fixes: ignored parameters from the cache, length limits, no-store on
+#                         refusals and 429, the generation a counter, the piled-up refresh copies removed
+#   run.sh check-analytics-off
+#                         reinstalls the release with analytics disabled and checks that the server answers,
+#                         no worker runs, no refresh is scheduled and /api/team-analytics/ is 404; leaves the
+#                         stack so (run down after it)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-SERVICE_K8S="$ROOT/team-analytics/k8s"
-# The chart of the import, and the analytics component its analytics link points to.
-IMPORT_DIR="$ROOT/cvat"
+# The chart of the tree, and the analytics component its analytics link points to.
+IMPORT_DIR="$ROOT"
 CHART_PATHS=(helm-chart components/analytics)
 # shellcheck source=stack.env
 . "$HERE/stack.env"
@@ -71,7 +88,7 @@ BASE_URL="http://localhost:$TA_HOST_PORT"
 K=(kubectl --context "$TA_KUBE_CONTEXT")
 H=(helm_run --kube-context "$TA_KUBE_CONTEXT")
 
-log() { printf '[ta-stack] %s\n' "$*" >&2; }
+log() { printf '[ta-stack %s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 die() { log "error: $*"; exit 1; }
 
 # Every helm call goes through helm_run. Whenever helm reads the chart it notes the chart's
@@ -174,18 +191,31 @@ build_chart() {
     [ "$(find "$tmp/helm-chart/charts" -name '*.tgz' | wc -l)" = "$(wc -l <"$HERE/chart-deps.sha256")" ] \
         || die "unexpected chart dependency archives"
     [ "$(chart_source_sum)" = "$sum" ] || die "the import's chart changed during the build"
+    # another checkout's stack may have built the same chart meanwhile (the build directory is shared by
+    # every stack of this user and named by the chart's content): that build is used, this one dropped
+    if [ -f "$build/.complete" ]; then rm -rf "$tmp"; return 0; fi
     rm -rf "$build"
     mv "$tmp" "$build"
     touch "$build/.complete"
 }
 
+# The Team Analytics app's settings on every backend pod (cvat/apps/team_analytics/default_settings.py),
+# as the chart's additionalEnv. JSON, because --set would split the accounts' list at its commas.
+analytics_env() {
+    python3 -I -c 'import json, sys; a = sys.argv[1:]; print(json.dumps([{"name": n, "value": v} for n, v in zip(a[::2], a[1::2])]))' \
+        TEAM_ANALYTICS_REFRESH_INTERVAL_S "$TA_REFRESH_INTERVAL_S" TEAM_ANALYTICS_TECHNICAL_ACCOUNTS "$TA_TECHNICAL_ACCOUNTS"
+}
+
+# TA_ANALYTICS=off: the same release with analytics disabled (check-analytics-off and its render check).
 helm_args() {
     local ui_repo="${TA_UI_IMAGE%:*}" ui_tag="${TA_UI_IMAGE##*:}"
     printf '%s\n' "$TA_RELEASE" "$CHART_DIR" --namespace "$TA_NAMESPACE" \
         -f "$HERE/values.yaml" \
         --set "cvat.backend.image=${TA_SERVER_IMAGE%:*}" --set "cvat.backend.tag=${TA_SERVER_IMAGE##*:}" \
         --set "cvat.frontend.image=$ui_repo" --set "cvat.frontend.tag=$ui_tag" \
-        --set "grafana.grafana\.ini.server.root_url=$BASE_URL/analytics"
+        --set "grafana.grafana\.ini.server.root_url=$BASE_URL/analytics" \
+        --set-json "cvat.backend.additionalEnv=$(analytics_env)"
+    if [ "${TA_ANALYTICS:-on}" = off ]; then printf '%s\n' --set analytics.enabled=false; fi
 }
 
 render() {
@@ -198,7 +228,7 @@ render() {
 # The images a render may name: the approved pulls, and the images the launcher names itself
 # or requires locally. Any other image is refused.
 stack_images() {
-    printf '%s\n' $TA_APPROVED_PULLS $TA_LOCAL_IMAGES "$TA_SERVER_IMAGE" "$TA_UI_IMAGE" "$TA_PROXY_IMAGE" "$TA_SERVICE_IMAGE"
+    printf '%s\n' $TA_APPROVED_PULLS $TA_LOCAL_IMAGES "$TA_SERVER_IMAGE" "$TA_UI_IMAGE" "$TA_PROXY_IMAGE"
 }
 
 # Reads a render as the stream of objects kubectl would create from it (kubectl parses each
@@ -209,13 +239,13 @@ stack_images() {
 # the host or the outside (a Service other than ClusterIP, host networking, a host port or path,
 # privileged mode, added capabilities), no role binding to a ClusterRole or to a subject
 # outside the namespace, and, by allowlist, only the volume sources the genuine render uses, no
-# claim that names a volume, no Ingress for a host other than TA_INGRESS_HOST or with an
-# annotation, no Endpoints or EndpointSlice written by hand, and only the genuine Secret types. With a second
-# argument, the backend check too: the fork server image is in the render and no other image
-# of its repository is, so a fallback to the stock image is refused although it is approved.
+# claim that names a volume, no Ingress at all, no Endpoints or EndpointSlice written by hand, and only the
+# genuine Secret types. With a second argument, the backend check too: the fork server image is in the
+# render and no other image of its repository is, so a fallback to the stock image is refused although it
+# is approved. With a third (on or off), the Team Analytics worker must be in the render, or must not.
 # Writes the render's images, one per line, to the file named by GUARD_IMAGES when it is set.
 guard_render() {
-    local rendered="$1" backend="${2:-}" work rc=0 images
+    local rendered="$1" backend="${2:-}" analytics="${3:-}" work rc=0 images
     work="$(mktemp -d)"
     "${K[@]}" api-resources --no-headers >"$work/resources" || { rm -rf "$work"; die "could not list the cluster's resource kinds"; }
     if ! "${K[@]}" label --local --overwrite -f "$rendered" ta-stack-guard=read -o json >"$work/objects.json"; then
@@ -223,7 +253,7 @@ guard_render() {
     fi
     mapfile -t images < <(stack_images)
     python3 -I -B "$HERE/render_guard.py" --namespace "$TA_NAMESPACE" --resources "$work/resources" \
-        --allow "${images[@]}" --ingress-host "$TA_INGRESS_HOST" ${backend:+--backend "$backend"} <"$work/objects.json" >"$work/images" || rc=$?
+        --allow "${images[@]}" ${backend:+--backend "$backend"} ${analytics:+--analytics "$analytics"} <"$work/objects.json" >"$work/images" || rc=$?
     if [ "$rc" = 0 ] && [ -n "${GUARD_IMAGES:-}" ]; then cp "$work/images" "$GUARD_IMAGES"; fi
     rm -rf "$work"
     [ "$rc" = 0 ] || die "render refused"
@@ -257,7 +287,6 @@ pull_images() {
         nice -n19 docker pull -q "$(normalize_image "$image")" >&2
     done <"$1"
     image_local "$TA_PROXY_IMAGE" || die "proxy image $TA_PROXY_IMAGE is not local (it is never pulled)"
-    image_local "$TA_SERVICE_IMAGE" || die "service image $TA_SERVICE_IMAGE is not local (build-team-analytics-service.sh)"
 }
 
 # ---------------------------------------------------------------- namespace
@@ -342,7 +371,8 @@ wait_ready() {
     for w in deploy/"$TA_RELEASE"-backend-server deploy/"$TA_RELEASE"-backend-worker-utils \
              deploy/"$TA_RELEASE"-backend-worker-webhooks deploy/"$TA_RELEASE"-frontend deploy/"$TA_RELEASE"-opa \
              statefulset/"$TA_RELEASE"-kvrocks statefulset/"$TA_RELEASE"-clickhouse-shard0 \
-             statefulset/"$TA_RELEASE"-vector deploy/team-analytics deploy/ta-proxy; do
+             statefulset/"$TA_RELEASE"-redis-master statefulset/"$TA_RELEASE"-vector \
+             deploy/"$TA_RELEASE"-backend-worker-team-analytics deploy/ta-proxy; do
         "${K[@]}" -n "$TA_NAMESPACE" rollout status "$w" --timeout=15m >&2 || { report_failures; die "$w not ready"; }
     done
 }
@@ -352,36 +382,6 @@ report_failures() {
     "${K[@]}" -n "$TA_NAMESPACE" get events --field-selector reason=FailedCreate -o custom-columns=OBJ:.involvedObject.name,MSG:.message --no-headers >&2 || true
     "${K[@]}" -n "$TA_NAMESPACE" describe quota >&2 || true
     "${K[@]}" -n "$TA_NAMESPACE" get pods >&2 || true
-}
-
-# The service's own manifests (team-analytics/k8s) with the stack's image, release and refresh
-# interval. Its Ingress is applied apart (apply_ingress); the proxy stays the stack's address. Applied before the proxy,
-# whose nginx resolves the service name at start.
-render_service() {
-    local rendered
-    rendered="$(for f in config.yaml deployment.yaml service.yaml; do cat "$SERVICE_K8S/$f"; echo ---; done |
-        sed -e "s|image: cvat/team-analytics:v2.82.0|image: $TA_SERVICE_IMAGE|" \
-            -e "s|imagePullPolicy: IfNotPresent|imagePullPolicy: Never|" \
-            -e "s|http://cvat-backend-service:8080|http://$TA_RELEASE-backend-service:8080|" \
-            -e "s|TEAM_ANALYTICS_REFRESH_INTERVAL_S: \"600\"|TEAM_ANALYTICS_REFRESH_INTERVAL_S: \"$TA_REFRESH_INTERVAL_S\"|" \
-            -e "s|TEAM_ANALYTICS_TECHNICAL_ACCOUNTS: \"\"|TEAM_ANALYTICS_TECHNICAL_ACCOUNTS: \"$TA_TECHNICAL_ACCOUNTS\"|")"
-    grep -q "image: $TA_SERVICE_IMAGE\$" <<<"$rendered" && grep -q "INTERVAL_S: \"$TA_REFRESH_INTERVAL_S\"" <<<"$rendered" \
-        && grep -q "TECHNICAL_ACCOUNTS: \"$TA_TECHNICAL_ACCOUNTS\"" <<<"$rendered" \
-        || die "could not set the service image or refresh interval in team-analytics/k8s"
-    printf '%s\n' "$rendered"
-}
-
-# Both apply only what the render guard accepts, as the chart and the Ingress.
-apply_service() {
-    local rendered="$STATE_DIR/service.yaml"
-    mkdir -p "$STATE_DIR"
-    render_service >"$rendered"
-    guard_render "$rendered"
-    log "applying the Team Analytics service ($TA_SERVICE_IMAGE, refresh every $TA_REFRESH_INTERVAL_S s)"
-    "${K[@]}" -n "$TA_NAMESPACE" apply -f "$rendered" >&2
-    # the service reads its ConfigMap at start: a changed configuration restarts it on a rerun
-    "${K[@]}" -n "$TA_NAMESPACE" patch deploy team-analytics --type merge -p \
-        "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"ta-stack/config-revision\":\"$(sha256sum <"$rendered" | cut -c1-12)\"}}}}}" >&2
 }
 
 render_proxy() {
@@ -427,7 +427,7 @@ start_port_forward() {
     stop_port_forward
     port_listening && die "host port $TA_HOST_PORT is in use by another process; not touching it"
     mkdir -p "$STATE_DIR"
-    setsid "${K[@]}" -n "$TA_NAMESPACE" port-forward --address 127.0.0.1 svc/ta-proxy "$TA_HOST_PORT:8080" \
+    setsid "${K[@]}" -n "$TA_NAMESPACE" port-forward --address 127.0.0.1 "${PF_TARGET:-svc/ta-proxy}" "$TA_HOST_PORT:8080" \
         >"$STATE_DIR/port-forward.log" 2>&1 </dev/null &
     local pid=$!
     echo "$pid $(awk '{print $22}' "/proc/$pid/stat")" >"$PF_STATE"
@@ -490,41 +490,59 @@ check_event() {
     die "event $marker did not reach ClickHouse within 2 minutes"
 }
 
-# Working time loaded through the CVAT API as real accounts after the service started, so only a
-# scheduled refresh can bring it to the figures; nothing triggers one.
+# The analytics worker (templates/cvat_backend/worker_team_analytics): its pod, the liveness probe's own
+# command (every process of the queue registered), restarts, and what it logged since start.
+worker_pod() {
+    "${K[@]}" -n "$TA_NAMESPACE" get pods -l "app.kubernetes.io/instance=$TA_RELEASE,tier=backend,component=worker-team-analytics" \
+        --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}'
+}
+check_worker() {
+    local pod procs restarts
+    pod="$(worker_pod)"
+    [ -n "$pod" ] || die "no running analytics worker pod"
+    procs="$("${K[@]}" -n "$TA_NAMESPACE" get pod "$pod" -o jsonpath='{.spec.containers[0].env[?(@.name=="NUMPROCS")].value}')"
+    # the processes register a few seconds after the pod is running
+    local i
+    for i in $(seq 1 30); do
+        "${K[@]}" -n "$TA_NAMESPACE" exec "$pod" -c cvat-backend -- django-admin workerprobe team_analytics --expected-num-workers "$procs" >&2 && break
+        [ "$i" = 30 ] && die "the analytics worker's probe fails: fewer than $procs processes of the team_analytics queue registered after 90 s"
+        sleep 3
+    done
+    restarts="$("${K[@]}" -n "$TA_NAMESPACE" get pod "$pod" -o jsonpath='{.status.containerStatuses[0].restartCount}')"
+    log "analytics worker $pod: $procs processes of the team_analytics queue registered (workerprobe), $restarts restarts, args $("${K[@]}" -n "$TA_NAMESPACE" get pod "$pod" -o jsonpath='{.spec.containers[0].args}')"
+    "${K[@]}" -n "$TA_NAMESPACE" get events --field-selector "involvedObject.name=$pod,reason=Unhealthy" \
+        -o custom-columns=AT:.lastTimestamp,MSG:.message --no-headers >&2 || true
+    mkdir -p "$STATE_DIR"
+    "${K[@]}" -n "$TA_NAMESPACE" logs "$pod" -c cvat-backend >"$STATE_DIR/worker.log" 2>&1 || true
+    log "the worker's log: $(wc -l <"$STATE_DIR/worker.log") lines in $(show_path "$STATE_DIR/worker.log"); its last lines:"
+    tail -n 15 "$STATE_DIR/worker.log" >&2
+}
+
+# Working time loaded through the CVAT API as real accounts, so only a scheduled refresh can bring it to
+# the figures; nothing triggers one. A refresh is seen by the status endpoint's stamp
+# (refresh.last_success_at), which must advance twice while the worker's container keeps running.
 check_tracer() {
-    local pod started seeded_at refreshes=0
-    pod="$("${K[@]}" -n "$TA_NAMESPACE" get pods -l app.kubernetes.io/name=team-analytics \
-        --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')"
+    local pod started
+    pod="$(worker_pod)"
     container_started() {
         "${K[@]}" -n "$TA_NAMESPACE" get pod "$pod" -o jsonpath='{.status.containerStatuses[0].state.running.startedAt}'
     }
-    # log lines start with the container's UTC time, so they compare as text
-    refreshes_since() {
-        "${K[@]}" -n "$TA_NAMESPACE" logs "$pod" | { grep ' refreshed ' || true; } | awk -v t="$1" '$1 " " substr($2, 1, 8) >= t' | wc -l
-    }
     started="$(container_started)"
-    seeded_at="$(date -u '+%Y-%m-%d %H:%M:%S')"
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I "$HERE/stack_api.py" seed-work
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" \
         python3 -I "$HERE/stack_api.py" check-tracer "$((TA_REFRESH_INTERVAL_S * 3 + 60))"
-    # a rerun finds the figures already there; it still sees a refresh the schedule ran after loading
-    for _ in $(seq 1 $((TA_REFRESH_INTERVAL_S * 2 / 5 + 2))); do
-        refreshes="$(refreshes_since "$seeded_at")"
-        [ "$refreshes" -ge 1 ] && break
-        sleep 5
-    done
-    "${K[@]}" -n "$TA_NAMESPACE" logs "$pod" | { grep ' refreshed ' || true; } | tail -n 3 >&2
-    log "service container running since $started; $refreshes scheduled refreshes since the load at $seeded_at UTC"
-    [ -n "$started" ] && [ "$started" = "$(container_started)" ] && [ "$refreshes" -ge 1 ] \
-        || die "the figures did not come from a scheduled refresh of the running service"
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" \
+        python3 -I "$HERE/stack_api.py" check-refresh "$((TA_REFRESH_INTERVAL_S * 4 + 60))"
+    log "analytics worker $pod running since $started"
+    [ -n "$started" ] && [ "$started" = "$(container_started)" ] \
+        || die "the analytics worker's container restarted while the figures were checked"
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
         nice -n19 node "$HERE/browser_check.cjs"
 }
 
 # The final run (ticket 18): the real UI annotates in a browser and its records reach the events
 # table; the figures for that work and for loaded volume; every account against every endpoint; the
-# page in a browser; then, with the service stopped, the error panel and annotation unaffected.
+# page in a browser; then, with the analytics worker at zero, the error panel and annotation unaffected.
 # Every run annotates a new project, so it can be repeated on the same stack.
 final_py() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
@@ -542,7 +560,7 @@ final_ui() {
     final_browser annotate "$1"
     final_py check-ui-records "$1"
 }
-# Only the real UI's part and its figures (ticket 25): no volume, access, page or service stop.
+# Only the real UI's part and its figures (ticket 25): no volume, access, page or worker stop.
 check_final_ui() {
     local state="$STATE_DIR/final-ui-only.json"
     mkdir -p "$STATE_DIR"
@@ -550,14 +568,14 @@ check_final_ui() {
     final_py check-ui-figures "$state" $((TA_REFRESH_INTERVAL_S * 5 + 120))
     log "final run, real UI part: passed"
 }
-service_replicas() {
-    "${K[@]}" -n "$TA_NAMESPACE" scale deploy/team-analytics --replicas="$1" >&2
-    if [ "$1" = 0 ]; then
-        "${K[@]}" -n "$TA_NAMESPACE" wait --for=delete pod -l app.kubernetes.io/name=team-analytics --timeout=5m >&2
-    else
-        "${K[@]}" -n "$TA_NAMESPACE" rollout status deploy/team-analytics --timeout=10m >&2
-    fi
+# Scales the analytics worker; back up, it waits until a status read is answered again (the checks that
+# follow need figures).
+ops_py() {
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
+        TA_NAMESPACE="$TA_NAMESPACE" TA_RELEASE="$TA_RELEASE" TA_REFRESH_INTERVAL_S="$TA_REFRESH_INTERVAL_S" \
+        python3 -I -B "$HERE/acceptance.py" "$@"
 }
+worker_replicas() { ops_py worker-replicas "$1"; }
 
 # The volume (ticket 26): the annotators' accounts and their memberships through seed_users.py (and the
 # organization, owned by ta-owner-v, when it is missing), then final_run.py lays out their jobs, inserts
@@ -585,11 +603,13 @@ check_final() {
     final_py check-access
     final_py page-context "$state" >"$page"
     final_browser page "$page"
-    log "final run: the service stopped"
-    trap 'service_replicas 1' EXIT
-    service_replicas 0
+    log "final run: the analytics worker at zero"
+    trap 'worker_replicas 1' EXIT
+    worker_replicas 0
+    # answers the page read before are cached under the current generation; a new one makes every read a miss
+    ops_py cache advance
     final_browser service-down "$state"
-    service_replicas 1
+    worker_replicas 1
     trap - EXIT
     log "final run passed"
 }
@@ -654,37 +674,11 @@ check_policies() {
     [ "$rc" = 0 ] || exit "$rc"
 }
 
-# ---------------------------------------------------------------- Ingress and access cases
-
-# The service's own Ingress (team-analytics/k8s/ingress.yaml) beside the proxy, under the cluster's
-# Ingress class and the stack's host name. It is namespaced and goes with the namespace. The host is
-# a single label under k8s.docker.internal, so the platform's default certificate covers it; the host
-# does not resolve it, so the check connects to the ingress controller on 127.0.0.1:443 by that name.
-render_ingress() {
-    local rendered
-    rendered="$(sed -e "s|^  # ingressClassName: .*|  ingressClassName: $TA_INGRESS_CLASS|" \
-                    -e "s|^    - host: cvat.local\$|    - host: $TA_INGRESS_HOST|" "$SERVICE_K8S/ingress.yaml")"
-    grep -q "^  ingressClassName: $TA_INGRESS_CLASS\$" <<<"$rendered" && grep -q "^    - host: $TA_INGRESS_HOST\$" <<<"$rendered" \
-        || die "could not set the Ingress class or host in team-analytics/k8s/ingress.yaml"
-    printf '%s\n' "$rendered"
-}
-
-apply_ingress() {
-    local rendered="$STATE_DIR/ingress.yaml"
-    "${K[@]}" get ingressclass "$TA_INGRESS_CLASS" >/dev/null || die "the cluster has no Ingress class $TA_INGRESS_CLASS"
-    mkdir -p "$STATE_DIR"
-    render_ingress >"$rendered"
-    guard_render "$rendered"
-    log "applying the service's Ingress (class $TA_INGRESS_CLASS, host $TA_INGRESS_HOST)"
-    "${K[@]}" -n "$TA_NAMESPACE" apply -f "$rendered" >&2
-}
+# ---------------------------------------------------------------- access cases
 
 access_py() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/access_cases.py" "$@"
 }
-
-# One status request through the Ingress with a session, and the same without one.
-check_ingress() { access_py check-ingress "$TA_INGRESS_HOST"; }
 
 # The access cases' own accounts (access_accounts.json); makes the removed member a member again.
 seed_access() {
@@ -710,23 +704,16 @@ check_access_cases() {
     done
 }
 
-# After down: no Ingress anywhere names the stack's host, and the controller has no route for it.
-check_ingress_gone() {
-    local code
-    [ -z "$(ns_phase)" ] || die "namespace $TA_NAMESPACE still exists"
-    if "${K[@]}" get ingress -A -o jsonpath='{range .items[*]}{range .spec.rules[*]}{.host}{"\n"}{end}{end}' \
-        | grep -qx "$TA_INGRESS_HOST"; then
-        die "an Ingress for $TA_INGRESS_HOST remains"
-    fi
-    # the controller may answer 503 for a moment while it drops the route
-    for _ in $(seq 1 15); do
-        code="$(curl -sS -o /dev/null -w '%{http_code}' --resolve "$TA_INGRESS_HOST:443:127.0.0.1" \
-            "https://$TA_INGRESS_HOST/team-analytics-api/v1/status")" || die "no answer from the ingress controller"
-        [ "$code" = 404 ] && break
-        sleep 2
-    done
-    [ "$code" = 404 ] || die "the ingress controller answers $code for $TA_INGRESS_HOST, expected 404 (no route)"
-    log "no Ingress names $TA_INGRESS_HOST; the controller answers 404 for it"
+# Only administrators create organizations (ORGANIZATIONS_MIN_ROLE_TO_CREATE = "admin" in the fork's settings):
+# org_creation.py has accounts with the global role user and worker and an owner and a maintainer of an
+# organization refused, an administrator create one (deleted again), and the seeded organizations answer their
+# maintainers. Its worker and user accounts come from issue_accounts.json and accounts.json, loaded here (the
+# seed creates organizations through the ORM, not through the API the rule guards).
+check_org_creation() {
+    log "organization creation: loading the accounts of accounts.json and issue_accounts.json"
+    backend_shell "$HERE/seed_users.py" "$(cat "$HERE/accounts.json")" >/dev/null
+    backend_shell "$HERE/seed_users.py" "$(cat "$HERE/issue_accounts.json")" >/dev/null
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/org_creation.py" check
 }
 
 # ---------------------------------------------------------------- issue matrix
@@ -749,7 +736,7 @@ check_issues() {
 # and issue_matrix.py judges. MODE patched reads the import's policies, MODE stock those of
 # STOCK_TAG, as verify/policy_test.sh does; each mode has its own expectation column.
 check_issue_policies() {
-    local mode="${1:-patched}" work p image="${OPA_IMAGE:-openpolicyagent/opa:1.12.2}" stock_tag="${STOCK_TAG:-cvat-v2.82.0-widened}"
+    local mode="${1:-patched}" work p image="${OPA_IMAGE:-openpolicyagent/opa:1.12.2}" stock_tag="${STOCK_TAG:-v2.82.0}"
     local policies=(cvat/apps/engine/rules/issues.rego cvat/apps/engine/rules/comments.rego
         cvat/apps/iam/rules/utils.rego cvat/apps/organizations/rules/organizations.rego)
     case "$mode" in patched | stock) ;; *) die "usage: run.sh check-issue-policies [patched|stock]" ;; esac
@@ -777,8 +764,8 @@ check_issue_policies() {
 
 # Each fix of the defect-fixes spec along the path that failed (ticket 27), on a stack up has passed on (it
 # needs the final run's tagged work and volume). Steps that change the stack's own state come last:
-# unprocessed holds the refresh lease and adds a marker event for at most two minutes, cutover-restart
-# stops the service, empties its stored cutover and starts it again. Screenshots of look go to
+# unprocessed holds the refresh lock and adds a marker event for at most two minutes, cutover-restart
+# scales the analytics worker to zero, empties the stored cutover and the ready mark and scales it up again. Screenshots of look go to
 # TA_SCREENSHOT_DIR, by default beside the state directory, which down leaves alone.
 FIX_STEPS=(status-roles technical-project gestures look unprocessed sessions-at-limit cutover-restart)
 FIX_SHOTS="${TA_SCREENSHOT_DIR:-$TA_CACHE_DIR/screenshots/$TA_NAMESPACE}"
@@ -814,6 +801,50 @@ check_fixes() {
         esac
     done
     log "defect fixes: ${only:-all steps} passed"
+}
+
+# ---------------------------------------------------------------- acceptance of the backend path
+
+# Each judged by acceptance.py, with its measured numbers in the output. They change the stack's state
+# for a while (the worker or ClickHouse at zero, the totals database dropped, history marked for
+# recomputing) and restore it, also on a failure.
+acceptance() {
+    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    ops_py "$@"
+}
+
+# The release reinstalled with analytics disabled (the same namespace and data): the server starts and
+# answers, the render has no analytics worker, none runs, no refresh is scheduled, /api/team-analytics/ is
+# 404. Checked through the backend's own Service on the stack's port: the proxy's nginx names Grafana,
+# which goes away with analytics. The stack stays so; run down after it.
+check_analytics_off() {
+    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    build_chart
+    TA_ANALYTICS=off install_chart_off
+    "${K[@]}" -n "$TA_NAMESPACE" rollout status deploy/"$TA_RELEASE"-backend-server --timeout=15m >&2
+    "${K[@]}" -n "$TA_NAMESPACE" wait --for=delete pod -l "app.kubernetes.io/instance=$TA_RELEASE,component=worker-team-analytics" --timeout=5m >&2 || true
+    [ -z "$("${K[@]}" -n "$TA_NAMESPACE" get deploy,pod -l "app.kubernetes.io/instance=$TA_RELEASE,component=worker-team-analytics" -o name)" ] \
+        || die "an analytics worker is still there with analytics disabled"
+    log "analytics disabled: no analytics worker Deployment or pod in $TA_NAMESPACE"
+    # the reinstall's initializer job (named by the release revision) runs syncperiodicjobs: with the queue still
+    # defined and the schedule no longer configured, it deletes the stored refresh schedule
+    local init
+    init="$("${K[@]}" -n "$TA_NAMESPACE" get jobs -l "app.kubernetes.io/instance=$TA_RELEASE,component=initializer" \
+        --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')"
+    "${K[@]}" -n "$TA_NAMESPACE" wait --for=condition=complete --timeout=10m "job/$init" >&2
+    log "initializer $init, syncperiodicjobs on the team_analytics queue:"
+    "${K[@]}" -n "$TA_NAMESPACE" logs "job/$init" | grep -A3 'Processing queue team_analytics' >&2 || true
+    "${K[@]}" -n "$TA_NAMESPACE" logs "job/$init" | grep -q 'Deleting job team_analytics_refresh' \
+        || die "the initializer of the reinstall did not delete the refresh schedule"
+    stop_port_forward
+    PF_TARGET="svc/$TA_RELEASE-backend-service" start_port_forward
+    ops_py analytics-off
+}
+install_chart_off() {
+    local args
+    mapfile -t args < <(helm_args)
+    log "reinstalling chart release $TA_RELEASE with analytics disabled"
+    "${H[@]}" upgrade --install "${args[@]}" --timeout 20m >&2
 }
 
 # ---------------------------------------------------------------- teardown
@@ -862,7 +893,19 @@ preflight() {
     RENDERED="$(mktemp)" RENDER_IMAGES="$(mktemp)"
     trap 'rm -f "$RENDERED" "$RENDER_IMAGES"' EXIT
     render >"$RENDERED"
-    GUARD_IMAGES="$RENDER_IMAGES" guard_render "$RENDERED" "$TA_SERVER_IMAGE"
+    GUARD_IMAGES="$RENDER_IMAGES" guard_render "$RENDERED" "$TA_SERVER_IMAGE" on
+    log "render accepted, with the analytics worker"
+    check_render_off
+}
+
+# The render with analytics disabled holds no analytics worker (and passes the same guard).
+check_render_off() {
+    local off
+    off="$(mktemp)"
+    TA_ANALYTICS=off render >"$off"
+    (guard_render "$off" "$TA_SERVER_IMAGE" off) || { rm -f "$off"; die "the render with analytics disabled was refused"; }
+    log "render with analytics disabled accepted: no analytics worker in it ($(grep -c '^kind: Deployment' "$off") Deployments)"
+    rm -f "$off"
 }
 
 up() {
@@ -876,20 +919,19 @@ up() {
     trap - EXIT
     ensure_namespace
     install_chart
-    apply_service
     apply_proxy
-    apply_ingress
     wait_ready
     start_port_forward
+    check_worker
     check_policies
     seed
-    check_ingress
     check_event
     check_tracer
     check_task_progress
     check_final
     check_issues
     check_access_cases
+    check_org_creation
     log "up:$BASE_URL (accounts: see README.md, password \$TA_SEED_PASSWORD)"
 }
 
@@ -898,6 +940,7 @@ case "${1:-}" in
     down) teardown ;;
     cycle) rc=0; bash "$0" up || rc=$?; teardown; exit "$rc" ;;
     seed) seed ;;
+    check-worker) check_worker ;;
     check-event) check_event ;;
     check-tracer) check_tracer ;;
     check-final) check_final ;;
@@ -915,14 +958,16 @@ case "${1:-}" in
     build-chart) build_chart; show_path "$CHART_DIR" ;;
     render) build_chart; render ;;
     check-render) [ -f "${2:-}" ] || die "usage: run.sh check-render FILE"
-        guard_render "$2" "$TA_SERVER_IMAGE"; log "render accepted" ;;
-    render-ingress) render_ingress ;;
-    render-service) render_service ;;
+        guard_render "$2" "$TA_SERVER_IMAGE" "${TA_ANALYTICS:-on}"; log "render accepted" ;;
     render-proxy) render_proxy ;;
-    check-ingress) check_ingress ;;
     seed-access) seed_access ;;
     check-access) check_access_cases "${2:-}" ;;
-    check-ingress-gone) check_ingress_gone ;;
+    check-org-creation) check_org_creation ;;
     check-fixes) check_fixes "${2:-}" ;;
+    check-cross-org) acceptance cross-org ;;
+    check-isolation) acceptance isolation ${2:+"$2"} ;;
+    check-load) acceptance load ;;
+    check-review) acceptance review ;;
+    check-analytics-off) check_analytics_off ;;
     *) sed -n '5,/^set -euo/p' "$0" | sed '$d' >&2; exit 2 ;;
 esac

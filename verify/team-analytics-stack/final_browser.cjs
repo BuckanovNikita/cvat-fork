@@ -13,8 +13,9 @@
 //                                           back, trends comparing two annotators, the overview's
 //                                           length with 100 annotators and 40 long-named projects,
 //                                           no overflow, a narrow window.
-//   node final_browser.cjs service-down STATE   with the service stopped: the error panel, and the
-//                                           annotation view still draws and saves.
+//   node final_browser.cjs service-down STATE   with the analytics worker at zero: the error panel (after
+//                                           cvat-core's retries of 429), and the annotation view still
+//                                           draws and saves.
 //
 // Environment: TA_BASE_URL, TA_SEED_PASSWORD, TA_BROWSER_BIN, TA_SCREENSHOT_DIR (optional).
 'use strict';
@@ -626,7 +627,7 @@ async function pageChecks(contextFile) {
     }
 }
 
-// ---------------------------------------------------------------- service stopped
+// ---------------------------------------------------------------- analytics worker at zero
 
 async function serviceDown(stateFile) {
     const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
@@ -635,11 +636,13 @@ async function serviceDown(stateFile) {
     try {
         browser = await launch(profile);
         const owner = await signIn(browser, 'ta-owner-c', state.org);
+        const opened = Date.now();
         await owner.goto(`${BASE}/team-analytics`);
         const panel = await owner.waitFor('document.querySelector(".cvat-team-analytics-error")?.textContent.trim()', 'the error panel', 90000);
+        const panelAfterS = ((Date.now() - opened) / 1000).toFixed(1);
         await owner.screenshot('final-service-down');
         check(panel.includes('could not be loaded'), `error panel reads "${panel}"`);
-        log(`service stopped: the page shows "${panel.slice(0, 70)}"`);
+        log(`analytics worker at zero: the page shows "${panel.slice(0, 70)}" ${panelAfterS} s after it was opened`);
 
         const page = await signIn(browser, state.worker, state.org);
         await openJob(page, state.down);
@@ -651,8 +654,8 @@ async function serviceDown(stateFile) {
         await keys.press('s', { ctrl: true });
         const saved = await page.waitFor(`fetch("/api/jobs/${state.down.job_id}/annotations").then((r) => r.json()).then((j) => j.shapes.length)`, 'the saved box');
         const errors = await count(page, '.ant-notification-notice-error');
-        check(saved === 1 && errors === 0, `annotation with the service stopped: ${saved} shapes saved, ${errors} error notices`);
-        log(`service stopped: ${state.worker} drew and saved a box in job ${state.down.job_id} (${saved} shape on the server, no error notice)`);
+        check(saved === 1 && errors === 0, `annotation with the analytics worker at zero: ${saved} shapes saved, ${errors} error notices`);
+        log(`analytics worker at zero: ${state.worker} drew and saved a box in job ${state.down.job_id} (${saved} shape on the server, no error notice)`);
     } finally {
         await browser?.close();
         fs.rmSync(profile, { recursive: true, force: true });

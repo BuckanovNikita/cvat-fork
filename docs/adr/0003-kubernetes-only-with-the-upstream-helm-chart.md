@@ -29,3 +29,7 @@ Decided by the owner; see `.scratch/defect-fixes/plan.md` for the work that foll
 - The two Compose checks are migrated to the Kubernetes stack, and the Compose overlay and launchers are removed. The last consequence above no longer holds.
 - There are three custom images, not two: ADR 0004 adds a fork server image.
 
+## Amendments, 2026-11-15
+
+- **Two custom images, not three.** The analytics service and its manifests are gone ([ADR 0006](0006-team-analytics-inside-the-backend-with-reads-on-a-worker.md)): the UI image and the fork server image remain, and the analytics worker is a Deployment of the chart that runs the fork server image.
+- **The chart is upstream's own directory.** The repository is a full-source fork ([ADR 0005](0005-a-full-source-fork-joined-to-upstream-history.md)), so `helm-chart/` is at the root and arrives by merge. The fork adds one template for the analytics worker; its values have their defaults in the template, so upstream's `values.yaml` is not edited. The stack's proxy no longer routes a service prefix.

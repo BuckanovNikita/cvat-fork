@@ -1,5 +1,5 @@
-# Reverse proxy of the Team Analytics test stack: joins the CVAT UI, the CVAT API and
-# the Team Analytics service under one address. It replaces the chart's ingress, which
+# Reverse proxy of the Team Analytics test stack: joins the CVAT UI, the CVAT API (which
+# serves Team Analytics at /api/team-analytics/) and Grafana under one address. It replaces the chart's ingress, which
 # stays off (ADR 0003). Routing mirrors helm-chart/templates/ingress.yaml and
 # templates/analytics/{ingress.yaml,middlewares/*} of the pinned chart.
 # __RELEASE__ is replaced by run.sh with the Helm release name.
@@ -14,7 +14,6 @@ data:
     upstream cvat_backend  { server __RELEASE__-backend-service:8080; }
     upstream cvat_frontend { server __RELEASE__-frontend-service:8000; }
     upstream cvat_grafana  { server __RELEASE__-grafana:80; }
-    upstream team_analytics { server team-analytics:8000; }
 
     server {
         listen 8080;
@@ -31,11 +30,6 @@ data:
 
         location ~ ^/(api|admin|static|django-rq|profiler)(/|$) {
             proxy_pass http://cvat_backend;
-        }
-
-        # Team Analytics service (team-analytics/k8s), as its Ingress routes it in an installation.
-        location ^~ /team-analytics-api {
-            proxy_pass http://team_analytics;
         }
 
         # Grafana: CVAT authorizes every request (chart middleware "forwardauth"), and the

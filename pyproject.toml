@@ -1,13 +1,14 @@
-# Tools of the fork's check pipeline (prek.toml) that come from Python packages.
-# uv.lock locks them; ruff.toml holds ruff's settings. Not a package: the table
-# below only gives uv the Python range the lock is resolved for.
-[project]
-name = "cvat-fork-checks"
-version = "0"
-requires-python = ">=3.10"
+[tool.isort]
+profile = "black"
+forced_separate = ["tests"]
+line_length = 100
+skip_gitignore = true # align tool behavior with Black
+extend_skip=[
+    # Correctly ordering the imports in serverless functions would
+    # require a pyproject.toml in every function; don't bother with it for now.
+    "serverless",
+]
 
-[dependency-groups]
-lint = ["ruff==0.17.3"]
-
-[tool.uv]
-package = false
+[tool.black]
+line-length = 100
+target-version = ['py311']

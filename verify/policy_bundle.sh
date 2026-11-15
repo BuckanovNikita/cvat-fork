@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
-# Checks that an OPA bundle built or served by the CVAT server carries the import's issue and
+# Checks that an OPA bundle built or served by the CVAT server carries the tree's issue and
 # comment policies, each compared byte for byte by itself.
 #
-#   verify/policy_bundle.sh from-image IMAGE   writes the bundle that the server's own builder
+#   verify/policy_bundle.sh from-image IMAGE [analytics]
+#                                              writes the bundle that the server's own builder
 #                                              (get_opa_bundle) makes in IMAGE to stdout: a
-#                                              one-off container, no mounts, no network
+#                                              one-off container, no mounts, no network. With
+#                                              `analytics` the server is configured as where
+#                                              analytics is enabled, which is where the Team
+#                                              Analytics app is installed and loads its policy
 #   verify/policy_bundle.sh check [REF]        reads a bundle (tar.gz) on stdin and compares
 #                                              rules/issues.rego and rules/comments.rego with
-#                                              the import's files in the working tree, or
-#                                              with the files of an upstream mirror tag REF
-#                                              (cvat-v2.82.0-widened for the stock policies)
+#                                              the files in the working tree, or with
+#                                              the files of an upstream release tag REF
+#                                              (v2.82.0 for the stock policies)
+#   verify/policy_bundle.sh check-analytics    reads a bundle on stdin and compares the issue,
+#                                              comment and Team Analytics policies with the
+#                                              files in the working tree: the bundle of a fork
+#                                              server image where analytics is enabled
 #   verify/policy_bundle.sh check-stock REF    reads a bundle on stdin and compares all four
-#                                              policy files the import carries (the two
-#                                              policies and their two helpers) with REF's: the
+#                                              policy files (the two policies and their
+#                                              two helpers) with REF's: the
 #                                              bundle of a stock server image of REF's release
 #
 # Before comparing, every check refuses a bundle that is not a readable archive, that holds an
@@ -24,9 +32,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Upstream paths; the import has them under cvat/. The bundle holds each under rules/<name>.
+# Paths in the tree. The bundle holds each under rules/<name>.
 POLICY_PATHS=(cvat/apps/engine/rules/issues.rego cvat/apps/engine/rules/comments.rego)
 STOCK_PATHS=("${POLICY_PATHS[@]}" cvat/apps/iam/rules/utils.rego cvat/apps/organizations/rules/organizations.rego)
+ANALYTICS_PATHS=("${POLICY_PATHS[@]}" cvat/apps/team_analytics/rules/team_analytics.rego)
 
 # Judges the archive's listing before anything is extracted ($1 is the archive). Each entry's
 # name is normalised as extraction resolves it (a leading ./ or /, a doubled /, a . segment), so
@@ -77,15 +86,15 @@ compare_bundle() {
         if [ -n "$ref" ]; then
             git -C "$ROOT" show "$ref:$path" > "$work/expected/$name"
         else
-            cp "$ROOT/cvat/$path" "$work/expected/$name"
+            cp "$ROOT/$path" "$work/expected/$name"
         fi
         if [ ! -f "$work/bundle/rules/$name" ]; then
             echo "missing  rules/$name" >&2
             status=1
         elif cmp -s "$work/expected/$name" "$work/bundle/rules/$name"; then
-            echo "equal    rules/$name = ${ref:-import}:$path"
+            echo "equal    rules/$name = ${ref:-tree}:$path"
         else
-            echo "DIFFERS  rules/$name != ${ref:-import}:$path" >&2
+            echo "DIFFERS  rules/$name != ${ref:-tree}:$path" >&2
             status=1
         fi
     done
@@ -94,8 +103,14 @@ compare_bundle() {
 
 case "${1:-}" in
 from-image)
-    image="${2:?usage: $0 from-image IMAGE}"
-    docker run --rm --network none --cpus=1 -w /opt/cvat \
+    image="${2:?usage: $0 from-image IMAGE [analytics]}"
+    analytics=()
+    case "${3:-}" in
+    "") ;;
+    analytics) analytics=(-e CVAT_ANALYTICS=1) ;;
+    *) echo "usage: $0 from-image IMAGE [analytics]" >&2; exit 2 ;;
+    esac
+    docker run --rm --network none --cpus=1 -w /opt/cvat "${analytics[@]}" \
         --entrypoint /opt/venv/bin/python "$image" -c '
 import os, sys, django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cvat.settings.production")
@@ -106,11 +121,14 @@ sys.stdout.buffer.write(get_opa_bundle()[0])'
 check)
     compare_bundle "${2:-}" "${POLICY_PATHS[@]}"
     ;;
+check-analytics)
+    compare_bundle "" "${ANALYTICS_PATHS[@]}"
+    ;;
 check-stock)
     compare_bundle "${2:?usage: $0 check-stock REF}" "${STOCK_PATHS[@]}"
     ;;
 *)
-    echo "usage: $0 from-image IMAGE | check [REF] | check-stock REF" >&2
+    echo "usage: $0 from-image IMAGE [analytics] | check [REF] | check-analytics | check-stock REF" >&2
     exit 2
     ;;
 esac

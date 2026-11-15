@@ -2,18 +2,18 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, loadPage, mount, suppliedFetch,
+    React, loadPage, mount, suppliedService,
 } = require('./helper.cjs');
 
 const ORGANIZATION_STATE = { organizations: { current: { slug: 'team-org' } } };
 const reduxBoundary = { useSelector: (select) => select(ORGANIZATION_STATE) };
 const routerBoundary = { useHistory: () => ({ push() {} }) };
 
-function pageModule(fetch) {
+function pageModule(request) {
     return loadPage('team-analytics-page.tsx', {
         'react-redux': reduxBoundary,
         'react-router': routerBoundary,
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
     });
 }
 
@@ -26,14 +26,14 @@ const Sibling = () => React.createElement('nav', { id: 'rest-of-cvat' }, 'Projec
 const app = (Route) => React.createElement('div', null, React.createElement(Sibling), React.createElement(Route));
 
 test('the page module is loaded only when the route renders, then shows the figures', async () => {
-    const { fetch, requests } = suppliedFetch(() => ({
+    const { request, requests } = suppliedService(() => ({
         body: { by_annotator: { rows: [{ user_id: 11, user_name: 'alice', working_time_ms: 7200000 }] } },
     }));
     let loads = 0;
     const boundaries = {};
     Object.defineProperty(boundaries, './team-analytics-page', {
         enumerable: true,
-        get() { loads += 1; return pageModule(fetch); },
+        get() { loads += 1; return pageModule(request); },
     });
     const Route = route(boundaries);
     assert.equal(loads, 0, 'the page must not be loaded with the application');
@@ -83,8 +83,8 @@ test('a page that throws while rendering is contained the same way', async () =>
 });
 
 test('an unreachable service shows the error panel on the page', async () => {
-    const { fetch } = suppliedFetch(() => new TypeError('Failed to fetch'));
-    const Route = route({ './team-analytics-page': pageModule(fetch) });
+    const { request } = suppliedService(() => new TypeError('Failed to fetch'));
+    const Route = route({ './team-analytics-page': pageModule(request) });
     const view = await mount(app(Route));
     await view.settle();
     assert.ok(view.container.querySelector('.cvat-team-analytics-error'));
@@ -92,10 +92,11 @@ test('an unreachable service shows the error panel on the page', async () => {
     await view.unmount();
 });
 
-test('the page names the organization selected in CVAT to the service', async () => {
-    const { fetch, requests } = suppliedFetch(() => ({ body: { by_annotator: { rows: [] } } }));
-    const view = await mount(app(route({ './team-analytics-page': pageModule(fetch) })));
+test('the page leaves the organization selected in CVAT to cvat-core and names none itself', async () => {
+    const { request, requests } = suppliedService(() => ({ body: { by_annotator: { rows: [] } } }));
+    const view = await mount(app(route({ './team-analytics-page': pageModule(request) })));
     await view.settle();
-    assert.equal(new URL(requests[0].url, 'http://localhost').searchParams.get('org'), 'team-org');
+    assert.ok(requests.length > 0);
+    for (const sent of requests) assert.equal(Object.hasOwn(sent.params, 'org'), false, sent.url);
     await view.unmount();
 });

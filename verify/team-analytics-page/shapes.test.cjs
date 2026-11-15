@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const { createMemoryHistory } = dependency('history');
@@ -102,9 +102,9 @@ test('the page opens on Bounding boxes; All shapes is kept in the address', () =
 });
 
 test('the switch is sent to the service with the other selections', async () => {
-    const { fetch, requests } = suppliedFetch(() => ({ body: { by_annotator: { rows: [] } } }));
-    await service.loadOverview({ organization: 'team-org', timeZone: 'UTC', shapes: 'bounding_boxes' }, fetch);
-    await service.loadOverview({ organization: 'team-org', timeZone: 'UTC', shapes: 'all' }, fetch);
+    const { request, requests } = suppliedService(() => ({ body: { by_annotator: { rows: [] } } }));
+    await service.loadOverview({ organization: 'team-org', timeZone: 'UTC', shapes: 'bounding_boxes' }, request);
+    await service.loadOverview({ organization: 'team-org', timeZone: 'UTC', shapes: 'all' }, request);
     const sent = requests.map((request) => new URL(request.url, 'http://localhost').searchParams.get('shapes'));
     assert.deepEqual(sent, ['bounding_boxes', 'all']);
 });
@@ -124,11 +124,11 @@ function answer(url) {
 
 test('switching to All shapes reads and shows all-shape figures and records the choice', async () => {
     const history = createMemoryHistory({ initialEntries: ['/team-analytics'] });
-    const { fetch, requests } = suppliedFetch(answer);
+    const { request, requests } = suppliedService(answer);
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
         'react-router': { useHistory: () => history },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
         './project-names': { lookupProjectNames: async () => ({}) },
     }).default;
     const created = (container) => text(container.querySelector('.cvat-team-analytics-objects-created').innerHTML);

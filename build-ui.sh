@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Builds the customised CVAT frontend image with CVAT's own Dockerfile, so the whole
-# bundle is compiled inside the image. Needs network access for the npm registry,
+# bundle is compiled inside the image. The build context is the repository root, cut down
+# to the frontend packages by Dockerfile.ui.dockerignore. Needs network access for the npm registry,
 # so run it outside the closed contour and transfer the result with docker save/load.
 set -euo pipefail
 
-IMAGE="${IMAGE:-cvat/ui:v2.82.0-progress-colors}"
+IMAGE="${IMAGE:-cvat/ui:v2.82.0-fork}"
 # Dockerfile.ui builds on the floating node:lts-slim tag; pin it here so the image is
 # reproducible. CVAT documents Node 20 as the minimum.
 NODE_IMAGE="${NODE_IMAGE:-node:24.19.0-slim}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-cd "$ROOT/cvat"
+cd "$ROOT"
 # webpack does not clean its output directory, and cvat-ui/dist is part of the build
 # context, so a stale host build would be copied into the image alongside the fresh one
 git clean -xdqf -- cvat-ui/dist

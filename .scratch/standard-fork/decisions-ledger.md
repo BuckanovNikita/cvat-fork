@@ -7,6 +7,17 @@ plan" and the rows that argue for that plan (O1 to O3) describe it and no
 longer say what will happen. What is planned now is in
 [`../defect-fixes/plan.md`](../defect-fixes/plan.md).
 
+**Note, 2026-11-15:** the owner took the conversion up again and decided it
+([ADR 0005](../../docs/adr/0005-a-full-source-fork-joined-to-upstream-history.md),
+[ADR 0006](../../docs/adr/0006-team-analytics-inside-the-backend-with-reads-on-a-worker.md));
+the work is specified in [`spec.md`](spec.md) and ticketed under `issues/`.
+The column "Under the new plan" again describes what is planned, with three
+differences from the first draft: the reads run on a dedicated worker and not
+in the API process (rows S1, S12); the defect fixes of 2026-11-14 have already
+settled rows S9, S13, S15, Q6, Q8, Q9, A4, L2, L10, P9 and P10 and the
+verification gaps V4, V5 and V7; and the repository joins upstream's history
+by a merge, with no rewrite of `main`.
+
 Compiled 2026-11-14 for `plan.md`. "The first plan" is
 `.scratch/team-analytics/spec.md`, its eighteen tickets,
 `docs/design/team-analytics/`, ADRs 0001 to 0003 and `GLOSSARY.md` as they

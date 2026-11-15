@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const { createMemoryHistory } = dependency('history');
@@ -66,8 +66,8 @@ test('large counts are shortened in the tile with the exact value on hover', () 
 });
 
 test('operations reach the page from the overview response', async () => {
-    const { fetch } = suppliedFetch(() => ({ body: { by_annotator: { rows: [] }, operations: OPERATIONS } }));
-    const state = await service.loadOverview({ organization: 'team-org', timeZone: 'UTC' }, fetch);
+    const { request } = suppliedService(() => ({ body: { by_annotator: { rows: [] }, operations: OPERATIONS } }));
+    const state = await service.loadOverview({ organization: 'team-org', timeZone: 'UTC' }, request);
     assert.equal(state.kind, 'ready');
     assert.deepEqual(state.overview.operations, OPERATIONS);
 });
@@ -197,11 +197,11 @@ function filteredAnswer(url) {
 
 test('the operations cards show the figures read with the chosen project and annotator', async () => {
     const history = createMemoryHistory({ initialEntries: ['/team-analytics'] });
-    const { fetch, requests } = suppliedFetch(filteredAnswer);
+    const { request, requests } = suppliedService(filteredAnswer);
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
         'react-router': { useHistory: () => history },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
         './project-names': { lookupProjectNames: async () => ({ 2: 'Retail shelves' }) },
     }).default;
     const click = async (element) => {

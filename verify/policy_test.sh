@@ -5,15 +5,15 @@
 #   verify/policy_test.sh stock      stock policies of STOCK_TAG, stock expectations
 #
 # Both runs read the two resource policies and their two helper policies; the
-# patched run from the import in the working tree, the stock run from the tag the
-# import was filtered to. Needs Docker and the OPA image (OPA_IMAGE, default the
+# patched run from the working tree, the stock run from the upstream release tag
+# the fork is based on. Needs Docker and the OPA image (OPA_IMAGE, default the
 # chart's image); no network, no outside checkout.
 set -euo pipefail
 
 mode="${1:-patched}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 image="${OPA_IMAGE:-openpolicyagent/opa:1.12.2}"
-stock_tag="${STOCK_TAG:-cvat-v2.82.0-widened}"
+stock_tag="${STOCK_TAG:-v2.82.0}"
 
 policies=(
     cvat/apps/engine/rules/issues.rego
@@ -28,7 +28,7 @@ args=(/test/opa_issues_test.rego)
 case "$mode" in
 patched)
     for p in "${policies[@]}"; do
-        mounts+=(-v "$root/cvat/$p:/policies/$p:ro")
+        mounts+=(-v "$root/$p:/policies/$p:ro")
         args+=("/policies/$p")
     done
     ;;

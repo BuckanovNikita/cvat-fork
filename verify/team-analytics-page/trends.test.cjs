@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const HOUR = 3600000;
@@ -252,9 +252,9 @@ function trendsAnswer(url) {
     return { body: trends({ step, compare: query.get('compare'), lines }) };
 }
 
-function section(fetch, props = {}) {
+function section(request, props = {}) {
     const Section = loadPage('trends-section.tsx', {
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
         './project-names': { lookupProjectNames: async () => ({}) },
     }).default;
     return React.createElement(Section, {
@@ -281,8 +281,8 @@ function offer(container, name) {
 const rgb = (hex) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
 
 test('a compared line keeps its colour while others are added and removed', async () => {
-    const { fetch, requests } = suppliedFetch(trendsAnswer);
-    const page = await mount(section(fetch));
+    const { request, requests } = suppliedService(trendsAnswer);
+    const page = await mount(section(request));
     try {
         await page.settle();
         for (const name of ['alice', 'bob', 'carol']) {
@@ -311,8 +311,8 @@ test('a compared line keeps its colour while others are added and removed', asyn
 });
 
 test('typing narrows the offer; switching to projects or months asks the service again', async () => {
-    const { fetch, requests } = suppliedFetch(trendsAnswer);
-    const page = await mount(section(fetch));
+    const { request, requests } = suppliedService(trendsAnswer);
+    const page = await mount(section(request));
     try {
         await page.settle();
         const input = page.container.querySelector('input[type="search"]');
@@ -342,7 +342,7 @@ test('typing narrows the offer; switching to projects or months asks the service
 test('trends follow the filters and the shape switch but not the period', async () => {
     const { createMemoryHistory } = dependency('history');
     const history = createMemoryHistory({ initialEntries: ['/team-analytics'] });
-    const { fetch, requests } = suppliedFetch((url) => {
+    const { request, requests } = suppliedService((url) => {
         if (url.includes('/trends?')) return trendsAnswer(url);
         if (url.includes('/status?')) return { body: {} };
         return { body: { by_annotator: { rows: [] } } };
@@ -350,7 +350,7 @@ test('trends follow the filters and the shape switch but not the period', async 
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } }, shortcuts: { keyMap: {}, normalizedKeyMap: {} } }) },
         'react-router': { useHistory: () => history },
-        './service': { ...loadPage('service.ts'), fetchService: fetch },
+        './service': { ...loadPage('service.ts'), requestService: request },
         './project-names': { lookupProjectNames: async () => ({}) },
     }).default;
     const trendRequests = () => requests.filter((r) => r.url.includes('/trends?'))
@@ -370,7 +370,7 @@ test('trends follow the filters and the shape switch but not the period', async 
         assert.equal(last.get('project'), '3');
         assert.equal(last.get('annotator'), '11');
         assert.equal(last.get('shapes'), 'all');
-        assert.equal(last.get('org'), 'team-org');
+        assert.equal(last.get('org'), null, 'cvat-core attaches the organization');
         // weeks follow the viewer's time zone
         assert.equal(last.get('tz'), Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
     } finally {
@@ -379,9 +379,9 @@ test('trends follow the filters and the shape switch but not the period', async 
 });
 
 test('trends are asked for again as history is processed', async () => {
-    const { fetch, requests } = suppliedFetch(trendsAnswer);
+    const { request, requests } = suppliedService(trendsAnswer);
     let advance;
-    const { type: Section, props } = section(fetch);
+    const { type: Section, props } = section(request);
     function Holder() {
         const [progress, setProgress] = React.useState('false|2026-11-09T00:00:00+00:00');
         advance = setProgress;
