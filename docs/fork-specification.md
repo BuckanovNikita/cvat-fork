@@ -278,8 +278,9 @@ stage, to `python:3.12-slim-bookworm`: Debian 12, with Python 3.12 from the
 official Python image, the version upstream builds and pins its requirements
 for. Rust for the Datumaro wheel comes from a `rust:1.85-slim-bookworm` stage,
 and smokescreen from the Go image upstream's `Dockerfile` names. Every base is
-pinned by digest: the Python and Rust images as the defaults of
-`Dockerfile.server`'s `ARG`s, the Go image in `build-server.sh`. Each place
+pinned by digest, all three (`BASE_IMAGE`, `RUST_IMAGE`, `GOLANG_IMAGE`) as
+the defaults of `Dockerfile.server`'s `ARG`s, and every `FROM` names one of
+them or an earlier stage. Each place
 where `Dockerfile.server` differs from upstream's `Dockerfile` carries a
 comment that says why. Upstream's `Dockerfile` stays as upstream wrote it, and
 the fork's build does not use it. `Dockerfile.server` has no `# syntax=` line,
@@ -320,12 +321,15 @@ checks, each in a one-off container of the image without network:
 2. the image's bundle with analytics enabled also holds the tree's Team
    Analytics policy, so the app is installed and loads its rules;
 3. `python`, `python3`, `django-admin` and `uvicorn`, the programs the process
-   configuration starts, are the venv's and run on Python 3.12, and
-   `supervisord` runs;
+   configuration starts, are the venv's and run on Python 3.12,
+   `supervisord` runs, and `nginx -t` accepts the image's nginx configuration
+   as the unprivileged user;
 4. no shared object under the venv and no FFmpeg or OpenH264 library has a
-   dependency that is not found (the libraries a wheel bundles in its own
-   `.libs` directory are loaded through the wheel's modules, which are
-   scanned);
+   dependency that is not found: the check judges `ldd`'s output, not its exit
+   status (which is 0 when a dependency is missing), fails on any "not found"
+   in it and skips only files that are not dynamic (the libraries a wheel
+   bundles in its own `.libs` directory are loaded through the wheel's
+   modules, which are scanned);
 5. Django sets up on the production settings with `CVAT_ANALYTICS` set to 1
    and to 0, with the Team Analytics app installed and its API routed exactly
    when analytics is enabled;
@@ -338,10 +342,16 @@ the failure names its ID and says that this run did not check it. `SAVE=1`
 additionally exports a compressed image archive, after the checks, for an
 installation without network access.
 
+The checks cover the default build. The `CLAM_AV=yes` and
+`CVAT_DEBUG_ENABLED=yes` branches of `Dockerfile.server` are covered by no
+check and have never been built.
+
 The image is not byte for byte upstream's (ADR 0007). Known deviations:
 Debian 12's glibc and system packages where upstream's image has Ubuntu
 24.04's, among them older nginx, git, poppler and OpenLDAP, and `unrar` from
-Debian's non-free component; the official image's Python 3.12 under
+Debian's non-free component (enabled in the apt sources only while `unrar`,
+and in the `CLAM_AV=yes` branch the ClamAV library `libclamunrar`, are
+installed; the final image's sources have the main component only); the official image's Python 3.12 under
 `/usr/local` in place of Ubuntu's; a second interpreter, Debian's Python 3.11
 under `/usr/bin`, which Debian's `supervisor` package brings and which runs
 supervisord only (check 3 holds that every program CVAT starts runs on the
