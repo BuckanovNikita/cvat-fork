@@ -492,6 +492,7 @@ backend path are not part of `up`; run them on a stack brought up with
 
 ```bash
 verify/team-analytics-stack/run.sh check-cross-org
+verify/team-analytics-stack/run.sh check-fixes page   # the page in a browser: filter bar, selectors, operations card, tooltips, settings
 verify/team-analytics-stack/run.sh check-isolation   # or one part: worker-down, clickhouse-down, totals-dropped
 verify/team-analytics-stack/run.sh check-load          # needs the volume data (see the README)
 verify/team-analytics-stack/run.sh check-analytics-off   # last: it leaves the stack with analytics disabled

@@ -1382,12 +1382,12 @@ decision on whether it is an operation. A rename breaks the figures silently.
 | TA-B | Stock event logging and working time are unchanged by the new logging; the closing input summary leaves with the closing save | Seam 2; `check-final` (client scopes, `client_id`, `send:working_time`, all event POSTs answered 201) |
 | TA-C | For given events the app returns the agreed figures for sessions, working time, operations, creation methods, Model, saved boxes, keyboard and mouse, projects, trends, history and late events | Seam 1 (`verify/team_analytics_backend.sh`, the calculation tests against a real ClickHouse); `check-final` for real UI work and loaded volume |
 | TA-D | Administrators read Team Analytics with and without an organization selected, and every other account, an organization's owner and maintainer included, is refused with 403 on every endpoint, the settings included; signed out is 401; a removed member is refused on the next request; no cached answer is served across organizations or between an organization and the instance | Upstream's generated policy tests for `rules/team_analytics.rego`; `check-tracer`, `check-final`, `check-access` and `check-settings` against the real CVAT; `check-cross-org` for cached answers |
-| TA-E | The page renders every state, filters (the Project and Annotator selectors among them), full views, comparison, long names and large numbers; the terms' tooltips carry their definitions; the settings dialog shows, edits and saves the Technical accounts list and says why a save failed | Seam 3 (`node --test verify/team_analytics_page.cjs`); `check-final` in a browser |
-| TA-F | With a hundred annotators and forty long-named projects the overview keeps its length and nothing overflows; on a narrow window cards stack and wide tables scroll sideways, the operations card's table excepted | `check-final` in headless Chrome (seam 3 has no layout) |
-| TA-J | The Technical accounts list: a save refuses a bad body and changes nothing, advances the answer generation by one, and applies to past periods at the next read; removing an account restores the figures; a deleted user stays listed; the user search and the project names reach the whole instance | Seam 1 for the list's rules and the reads by user id; `check-settings` against the real CVAT |
+| TA-E | The page renders every state, filters (the Project and Annotator selectors among them), full views, comparison, long names and large numbers; the terms' tooltips carry their definitions; the settings dialog shows, edits and saves the Technical accounts list and says why a save failed | Seam 3 (`node --test verify/team_analytics_page.cjs`); `check-final` and `check-fixes page` in a browser |
+| TA-F | With a hundred annotators and forty long-named projects the overview keeps its length and nothing overflows; on a narrow window cards stack and wide tables scroll sideways, the operations card's table excepted; the filter bar's controls share one height | `check-final` and `check-fixes page` in headless Chrome (seam 3 has no layout) |
 | TA-G | With the Team Analytics worker stopped, with ClickHouse stopped and with the totals database missing, the page shows its error panel, and signing in, the task list and opening and saving a job still work | `check-isolation [worker-down\|clickhouse-down\|totals-dropped]`; `check-worker` (part of `up`) for the worker itself |
 | TA-H | The fork server image is built from the fork's tree on public bases with upstream's requirements and carries the app with its migration; the UI image serves the page; with analytics off the server starts, no worker is rendered, no refresh is scheduled and the endpoints answer 404 | `build-server.sh` (its refusals and its six checks), `build-ui.sh`; the stack run uses both images; `check-analytics-off`, and the analytics-off render check inside `preflight` |
 | TA-I | While others load uncached Team Analytics views, CVAT's own endpoints answer as fast as without them, and the views return figures within cvat-core's retries (29 s with the defaults) | `check-load` |
+| TA-J | The Technical accounts list: a save refuses a bad body and changes nothing, advances the answer generation by one, and applies to past periods at the next read; removing an account restores the figures; a deleted user stays listed; the user search and the project names reach the whole instance | Seam 1 for the list's rules and the reads by user id; `check-settings` against the real CVAT |
 
 Seams 1 to 3 run real code with the boundaries supplied: the calculation tests
 run the working tree's app in the fork server image (`SERVER_IMAGE`, default
@@ -1411,10 +1411,15 @@ credentials against the real CVAT. `run.sh check-settings` runs the settings
 endpoints against it: refusals, writes with their CSRF and token rules, bad
 bodies, the generation, the user search, a retroactive change of the list,
 project names and a deleted user. `run.sh check-fixes` drives each defect fix
-along the path that failed. The stack does not cover a deployed model function.
+along the path that failed; its `page` step checks the page in a browser as an
+administrator: the filter bar's height and centre line, the operations card
+over a sweep of window widths, the selectors, the terms' tooltips and the
+settings dialog. The refusal page for non-administrators is part of
+`check-tracer`. The stack does not cover a deployed model function.
 The stack's own subcommands and what each judges are in its
 [README](../verify/team-analytics-stack/README.md). The independent review of
-the access rules is recorded with the dated evidence.
+the access rules recorded with the dated evidence is of the rules before
+Team Analytics became administrators-only.
 
 ## Acceptance scenarios
 
@@ -1429,7 +1434,7 @@ the access rules is recorded with the dated evidence.
 | IAM-B | Nonmembers, removed members, other organizations and sandbox/context mismatches do not gain access from the patch | Same policy suites; the stack's matrix for a nonmember, another organization's member, each organization's members on the other's issue, the personal workspace and an account with no global role. A removed member is covered by the policy suites only |
 | IAM-C | Sandbox behavior and upstream filter shape remain compatible with the target release | Stock-versus-patched policy suite with the release's helpers; upstream's generated suite on the merged tree |
 | IAM-D | Only administrators create organizations: an account with the `user` or `worker` role, and an organization's owner or maintainer, is refused with 403 and nothing is created; an administrator creates one | The stack's `run.sh check-org-creation` (part of `up`) against the real API |
-| BUILD-A | Built image serves the changed UI without stale bundles/source maps; the backend runs the fork server image, built from the fork's tree by `Dockerfile.server` with the known deviations from upstream's image (BUILD-1) and no other | Image inspection and browser verification; `build-server.sh`'s refusals and six checks; a one-time comparison of the built image with the previous fork server image, kept as dated evidence (the earlier comparison, `docs/evidence/2026-11-14-fork-server-image.md`, is of the overlay image and does not cover this build); the stack's render check for the backend image name only |
+| BUILD-A | Built image serves the changed UI without stale bundles/source maps; the backend runs the fork server image, built from the fork's tree by `Dockerfile.server` with the known deviations from upstream's image (BUILD-1) and no other | Image inspection and browser verification; `build-server.sh`'s refusals and six checks; a one-time comparison of the built image with the previous fork server image, to be kept as dated evidence once it is made (the earlier comparison, `docs/evidence/2026-11-14-fork-server-image.md`, is of the overlay image and does not cover this build); the stack's render check for the backend image name only |
 | BUILD-B | Both served policy files equal the tree's, each by itself, and real requests exhibit the patched behavior | `verify/policy_bundle.sh` on the image, `run.sh check-policies` on the served bundle, and `run.sh check-issues`; not marker presence alone |
 
 The frontend suite executes real TypeScript, Redux and server-rendered React
