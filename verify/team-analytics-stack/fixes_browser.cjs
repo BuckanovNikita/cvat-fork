@@ -329,8 +329,19 @@ async function gestures(stateFile) {
 
 // ---------------------------------------------------------------- look
 
-async function fullShot(page, name) {
-    const { data } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+// The page scrolls inside CVAT's layout, not the document, so the window is made as tall as the page for the
+// shot and set back after it.
+async function fullShot(page, name, width) {
+    const tall = await page.evaluate(`(() => {
+        const e = document.querySelector(".cvat-team-analytics-page");
+        return Math.ceil(e.getBoundingClientRect().top + e.scrollHeight + 40);
+    })()`);
+    await page.send('Emulation.setDeviceMetricsOverride', {
+        width, height: Math.min(tall, 16000), deviceScaleFactor: 1, mobile: false,
+    });
+    await sleep(1500);
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
     fs.mkdirSync(SHOTS, { recursive: true });
     fs.writeFileSync(path.join(SHOTS, `${name}.png`), Buffer.from(data, 'base64'));
 }
@@ -376,7 +387,9 @@ const LOOK = `(() => {
     };
 })()`;
 
-async function look(org) {
+// `split`: some row of each card must be in two parts or more (an organization whose rows have several
+// operations; the volume's rows are almost all creation, so there a bar in one part is right)
+async function look(org, split) {
     check(!!SHOTS, 'TA_SCREENSHOT_DIR must name a directory outside the repository for the screenshots');
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ta-fixes-'));
     let browser;
@@ -394,12 +407,12 @@ async function look(org) {
             await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
             await sleep(2500);
             const seen = await page.evaluate(LOOK);
-            await fullShot(page, `look-${width}`);
+            await fullShot(page, `look-${org}-${width}`, width);
             for (const card of seen.cards) {
                 check(!card.missing, `no ${card.kind} card at ${width} px`);
                 check(card.legend.length >= 2, `${card.kind} card legend at ${width} px: ${JSON.stringify(card.legend)}`);
                 check(card.rows.length > 0 && card.rows.every((r) => r.parts >= 1 && r.inside)
-                    && card.rows.some((r) => r.parts >= 2), `${card.kind} card bars at ${width} px: ${JSON.stringify(card.rows)}`);
+                    && (!split || card.rows.some((r) => r.parts >= 2)),`${card.kind} card bars at ${width} px: ${JSON.stringify(card.rows)}`);
             }
             const d = seen.definitions;
             check(!!d && d.terms.length === 4 && d.items_inside && d.inside_page && d.inside_window && d.below_details && d.last,
@@ -414,7 +427,7 @@ async function look(org) {
             log(`${width} px: bars split by operation in both cards (legends ${seen.cards.map((c) => c.legend.join('/')).join('; ')}; `
                 + `${seen.cards.map((c) => `${c.rows.filter((r) => r.parts >= 2).length}/${c.rows.length} rows in several parts`).join(', ')}); `
                 + `definitions ${d.terms.join(' ')} in ${d.columns} column(s), below the details table, last, inside the page's column`
-                + `${width === 400 ? ` (CVAT's own header keeps the app ${seen.app} px wide)` : ''}; screenshot look-${width}.png`);
+                + `${width === 400 ? ` (CVAT's own header keeps the app ${seen.app} px wide)` : ''}; screenshot look-${org}-${width}.png`);
         }
         // a full view shows no definitions
         await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -429,13 +442,13 @@ async function look(org) {
     }
 }
 
-const [phase, arg] = process.argv.slice(2);
+const [phase, arg, option] = process.argv.slice(2);
 const phases = { gestures, look };
 if (!phases[phase] || !arg) {
-    process.stderr.write('usage: fixes_browser.cjs gestures STATE | look ORG\n');
+    process.stderr.write('usage: fixes_browser.cjs gestures STATE | look ORG [split]\n');
     process.exit(2);
 }
-phases[phase](arg).catch((error) => {
+phases[phase](arg, option === 'split').catch((error) => {
     process.stderr.write(`fixes browser check (${phase}) failed: ${error.message}\n`);
     process.exit(1);
 });

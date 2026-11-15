@@ -803,6 +803,9 @@ check_fixes() {
                 fixes_browser gestures "$state"
                 fixes_py check-gestures "$state" ;;
             look)
+                # ta-org-c's rows hold every operation (the bars must show several parts); the volume's
+                # organization fills both cards with eight rows and long names
+                fixes_browser look ta-org-c split
                 fixes_browser look "${TA_VOLUME_ORG:-ta-org-v}"
                 log "screenshots: $(show_path "$FIX_SHOTS")" ;;
             *) fixes_py "$step" ;;
