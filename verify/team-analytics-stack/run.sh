@@ -27,8 +27,13 @@
 #                         in a browser with the stack's UI image: legend, segments, colours, total
 #   run.sh check-policies fetch the policy bundle the running server serves and check both
 #                         patched policies in it, each by itself
-#   run.sh forward        (re)start the port-forward of a running stack
-#   run.sh status         what exists now, and whether the namespace predates the cluster's last restart
+#   run.sh forward        (re)start the port-forward of a running stack; every subcommand that talks to the
+#                         stack over HTTP first checks that localhost:$TA_HOST_PORT is this namespace's own
+#                         port-forward (its arguments and the port's listener) and stops otherwise
+#   run.sh restore-chart  the release back to the stack's own values with analytics on (a release left
+#                         pending by a cut-off upgrade is rolled back first), the port-forward on the proxy;
+#                         what the evidence steps run when they end or fail, and print when that fails
+#   run.sh status        what exists now, and whether the namespace predates the cluster's last restart
 #   run.sh preflight      what up does before it touches the cluster: the server image check,
 #                         check-issue-policies on both sides, the chart build and the render
 #                         checks (render_guard.py, analytics on and off); creates and pulls nothing
@@ -78,7 +83,8 @@
 #   run.sh check-evidence STEP
 #                         ticket 09's evidence (evidence.py): rq-start-race (read-only), liveness, killed-worker,
 #                         idle-generation (refresh interval 600 s, upgraded and back), two-replicas (two worker
-#                         replicas, upgraded and back), off-then-on (analytics off and on by upgrades in place)
+#                         replicas, upgraded and back), off-then-on (analytics off and on by upgrades in place); each
+#                         puts the stack's own values back also on a failure or an interrupt
 #   run.sh check-review   the review fixes: ignored parameters from the cache, length limits, no-store on
 #                         refusals and 429, the generation a counter, the piled-up refresh copies removed
 #   run.sh check-analytics-off
@@ -440,17 +446,47 @@ apply_proxy() {
 
 # ---------------------------------------------------------------- port-forward
 
-# The state file holds the PID and the process start time; a process is ours only when both
-# still match, so a reused PID is never signalled.
-pf_alive() {
+# The state file (one per namespace) holds the PID, the process start time and the host port; a
+# process is ours only when the PID and the start time still match, so a reused PID is never
+# signalled.
+pf_owned() {
     [ -f "$PF_STATE" ] || return 1
     local pid start
-    read -r pid start <"$PF_STATE"
+    read -r pid start _ <"$PF_STATE"
     [ -r "/proc/$pid/stat" ] && [ "$(awk '{print $22}' "/proc/$pid/stat")" = "$start" ]
+}
+# Ours, and forwarding TA_HOST_PORT: a namespace's port-forward on another port does not count.
+pf_alive() {
+    pf_owned || return 1
+    local port
+    read -r _ _ port <"$PF_STATE"
+    [ "$port" = "$TA_HOST_PORT" ]
+}
+
+# Every step that reads, writes or disrupts through $BASE_URL first makes sure that the address
+# serves TA_NAMESPACE: the namespace's own port-forward runs, its arguments name this namespace
+# and this port, and it is the process listening on the port. Otherwise kubectl would act on one
+# namespace while HTTP went to another stack (a TA_RUN_ID given without its TA_HOST_PORT).
+require_own_stack() {
+    local pid args listener recorded="" hint=""
+    if ! pf_alive; then
+        if pf_owned; then
+            read -r _ _ recorded <"$PF_STATE"
+            hint=" (the port-forward of $TA_NAMESPACE that runs forwards port ${recorded:-unrecorded}; set TA_HOST_PORT to it, or run.sh forward again)"
+        fi
+        die "no port-forward of $TA_NAMESPACE on port $TA_HOST_PORT is running$hint; run.sh forward with the same TA_RUN_ID (or TA_NAMESPACE) and TA_HOST_PORT"
+    fi
+    read -r pid _ <"$PF_STATE"
+    args=" $(tr '\0' ' ' <"/proc/$pid/cmdline")"
+    [[ "$args" == *" -n $TA_NAMESPACE "* && "$args" == *" port-forward "* && "$args" == *" $TA_HOST_PORT:8080 "* ]] \
+        || die "the port-forward (pid $pid) is not the one of $TA_NAMESPACE on port $TA_HOST_PORT: its arguments are$args"
+    listener="$(ss -Hltnp "sport = :$TA_HOST_PORT" || true)"
+    grep -q "pid=$pid," <<<"$listener" \
+        || die "port $TA_HOST_PORT is not served by the port-forward of $TA_NAMESPACE (pid $pid); listening there: ${listener:-nothing}"
 }
 
 stop_port_forward() {
-    if pf_alive; then
+    if pf_owned; then
         local pid
         read -r pid _ <"$PF_STATE"
         log "stopping port-forward (pid $pid)"
@@ -469,7 +505,7 @@ start_port_forward() {
     setsid "${K[@]}" -n "$TA_NAMESPACE" port-forward --address 127.0.0.1 "${PF_TARGET:-svc/ta-proxy}" "$TA_HOST_PORT:8080" \
         >"$STATE_DIR/port-forward.log" 2>&1 </dev/null &
     local pid=$!
-    echo "$pid $(awk '{print $22}' "/proc/$pid/stat")" >"$PF_STATE"
+    echo "$pid $(awk '{print $22}' "/proc/$pid/stat") $TA_HOST_PORT" >"$PF_STATE"
     for _ in $(seq 1 40); do
         if curl -fs -o /dev/null "$BASE_URL/api/server/about"; then
             log "stack reachable at $BASE_URL"
@@ -840,7 +876,7 @@ fixes_browser() {
 check_fixes() {
     local only="${1:-}" step state="$STATE_DIR/fixes-gestures.json"
     [ -z "$only" ] || [[ " ${FIX_STEPS[*]} " == *" $only "* ]] || die "unknown step $only (${FIX_STEPS[*]})"
-    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    require_own_stack
     mkdir -p "$STATE_DIR"
     for step in "${FIX_STEPS[@]}"; do
         [ -z "$only" ] || [ "$step" = "$only" ] || continue
@@ -871,7 +907,7 @@ check_fixes() {
 # for a while (the worker or ClickHouse at zero, the totals database dropped, history marked for
 # recomputing) and restore it, also on a failure.
 acceptance() {
-    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    require_own_stack
     ops_py "$@"
 }
 
@@ -880,7 +916,7 @@ acceptance() {
 # 404. Checked through the backend's own Service on the stack's port: the proxy's nginx names Grafana,
 # which goes away with analytics. The stack stays so; run down after it.
 check_analytics_off() {
-    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    require_own_stack
     build_chart
     TA_ANALYTICS=off install_chart_off
     "${K[@]}" -n "$TA_NAMESPACE" rollout status deploy/"$TA_RELEASE"-backend-server --timeout=15m >&2
@@ -913,7 +949,9 @@ install_chart_off() {
 
 # Evidence checks for a verification stack (its own TA_RUN_ID and port), each judged by evidence.py or
 # acceptance.py. Steps that need other chart values upgrade the release in place with them (TA_EXTRA_SET, or
-# another TA_REFRESH_INTERVAL_S) and upgrade it back to the stack's own values afterwards, also on a failure.
+# another TA_REFRESH_INTERVAL_S) and upgrade it back to the stack's own values afterwards, also on a failure or
+# an interrupt (an EXIT trap runs chart_restore); off-then-on likewise puts analytics back on and the
+# port-forward back on the proxy. When the restore itself fails, it prints the command to run by hand.
 EVIDENCE_STEPS=(rq-start-race liveness killed-worker idle-generation two-replicas off-then-on)
 ev_py() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
@@ -927,13 +965,46 @@ chart_upgrade() {
     install_chart
     wait_ready
 }
-# Back to the stack's own values (stack.env's refresh interval, nothing extra).
-chart_restore() {
+# The release's own state. An upgrade, install or rollback cut off (an interrupt during helm upgrade) leaves
+# it pending-upgrade, pending-install or pending-rollback, and helm refuses every upgrade while it is: the
+# release is first rolled back to its revision before (the last one deployed).
+release_settle() {
+    local state
+    state="$("${H[@]}" status "$TA_RELEASE" -n "$TA_NAMESPACE" -o json \
+        | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["info"]["status"])')"
+    case "$state" in
+        pending-*)
+            log "release $TA_RELEASE is $state (an operation was cut off): rolling it back to its revision before"
+            "${H[@]}" rollback "$TA_RELEASE" -n "$TA_NAMESPACE" --wait --timeout 20m >&2 ;;
+        *) log "release $TA_RELEASE is $state" ;;
+    esac
+}
+# run.sh restore-chart: the stack's own values (stack.env's refresh interval, nothing extra, analytics on), the
+# workloads ready, and the port-forward on the proxy again.
+restore_chart() {
+    release_settle
     log "chart: back to the stack's own values"
-    (
-        unset TA_EXTRA_SET
-        TA_REFRESH_INTERVAL_S="$STACK_REFRESH_INTERVAL_S" chart_upgrade
-    )
+    build_chart
+    install_chart
+    wait_ready
+    start_port_forward
+}
+# The command restore-chart runs with, for a person to run by hand from the repository root.
+restore_command() {
+    printf 'TA_KUBE_CONTEXT=%q TA_NAMESPACE=%q TA_RELEASE=%q TA_HOST_PORT=%q TA_REFRESH_INTERVAL_S=%q TA_SERVER_IMAGE=%q TA_UI_IMAGE=%q bash verify/team-analytics-stack/run.sh restore-chart' \
+        "$TA_KUBE_CONTEXT" "$TA_NAMESPACE" "$TA_RELEASE" "$TA_HOST_PORT" "$STACK_REFRESH_INTERVAL_S" "$TA_SERVER_IMAGE" "$TA_UI_IMAGE"
+}
+# Back to the stack's own values, in a process of its own: the values a step set for itself (TA_EXTRA_SET,
+# TA_ANALYTICS, another TA_REFRESH_INTERVAL_S, PF_TARGET) may still be in force when an interrupt runs the EXIT
+# trap in the middle of that step, and a fresh process has set -e in force wherever it is called from.
+chart_restore() {
+    env -u TA_EXTRA_SET -u TA_ANALYTICS -u PF_TARGET \
+        TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" TA_NAMESPACE="$TA_NAMESPACE" TA_RELEASE="$TA_RELEASE" \
+        TA_HOST_PORT="$TA_HOST_PORT" TA_REFRESH_INTERVAL_S="$STACK_REFRESH_INTERVAL_S" \
+        TA_SERVER_IMAGE="$TA_SERVER_IMAGE" TA_UI_IMAGE="$TA_UI_IMAGE" bash "$0" restore-chart && return 0
+    log "error: the stack could not be put back to its own values; run by hand, from the repository root:"
+    log "  $(restore_command)"
+    return 1
 }
 STACK_REFRESH_INTERVAL_S="$TA_REFRESH_INTERVAL_S"
 
@@ -954,7 +1025,7 @@ expect_upgrade() {
 check_evidence() {
     local step="${1:-}" state rev
     [[ " ${EVIDENCE_STEPS[*]} " == *" $step "* ]] || die "usage: run.sh check-evidence STEP (${EVIDENCE_STEPS[*]})"
-    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    require_own_stack
     mkdir -p "$STATE_DIR"
     case "$step" in
         idle-generation)
@@ -975,6 +1046,9 @@ check_evidence() {
             state="$STATE_DIR/evidence-off-then-on.json"
             ev_py snapshot "$state"
             rev="$(helm_last)"; rev="${rev%% *}"
+            # from here until analytics is on again and the port-forward is on the proxy, a failure or an
+            # interrupt restores both (check_analytics_off leaves analytics off and forwards to the backend)
+            trap chart_restore EXIT
             check_analytics_off
             expect_upgrade "$rev" "analytics off"
             log "analytics on again, upgraded in place"
@@ -984,6 +1058,7 @@ check_evidence() {
             expect_upgrade "$((rev + 1))" "analytics on again"
             stop_port_forward
             start_port_forward
+            trap - EXIT
             ev_py back-on "$state" ;;
         *) ev_py "$step" ;;
     esac
@@ -1080,6 +1155,7 @@ up() {
     apply_proxy
     wait_ready
     start_port_forward
+    require_own_stack
     check_worker
     check_policies
     seed
@@ -1093,6 +1169,15 @@ up() {
     check_org_creation
     log "up:$BASE_URL (accounts: see README.md, password \$TA_SEED_PASSWORD)"
 }
+
+# Every subcommand that talks to the stack through $BASE_URL checks first that the address serves TA_NAMESPACE.
+case "${1:-}" in
+    seed | check-event | check-tracer | check-final | check-final-ui | load-volume | check-volume \
+        | check-task-progress | check-policies | check-access | check-org-creation | check-settings | check-issues \
+        | check-fixes | check-cross-org | check-isolation | check-load | check-evidence | check-review \
+        | check-analytics-off)
+        require_own_stack ;;
+esac
 
 case "${1:-}" in
     up) up ;;
@@ -1127,12 +1212,13 @@ case "${1:-}" in
     check-cross-org) acceptance cross-org ;;
     check-isolation)
         case "${2:-}" in
-            redis-down) pf_alive || die "the stack's port-forward is not running (run.sh forward)"; ev_py redis-down ;;
+            redis-down) require_own_stack; ev_py redis-down ;;
             "") acceptance isolation; ev_py redis-down ;;  # Redis last: it restarts what depends on it
             *) acceptance isolation "$2" ;;
         esac ;;
     check-load) check_load ;;
     check-evidence) check_evidence "${2:-}" ;;
+    restore-chart) restore_chart ;;
     check-review) acceptance review ;;
     check-analytics-off) check_analytics_off ;;
     *) sed -n '5,/^set -euo/p' "$0" | sed '$d' >&2; exit 2 ;;
