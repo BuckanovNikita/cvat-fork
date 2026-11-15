@@ -619,9 +619,14 @@ it:
   member but one counts again. Either happens with every suite green: both
   suites hand-order the calls, and the handler declares its own detail type,
   so a renamed field is no type error either.
-  The stack's group drag (`run.sh check-fixes gestures`: a group drag and a
-  selection-box move made in the browser and read back from the events table)
-  is what catches it;
+  The stack's gestures (`run.sh check-fixes gestures`) catch a change in the
+  group record itself: a selection moved by its header label and a pasted
+  selection dragged are read back from the events table, one group record
+  each. They do not catch a reordered or deferred grabbed drag: on the stack
+  (2026-11-15) neither gesture produced CVAT's own drag of a grabbed member.
+  Right after a region selection a press on a member clears the selection,
+  and a press inside a selected pair hits the selection box, so the grabbed
+  path was not reached in a browser;
 - frame changes: the shown frame changes only through `changeFrameAsync`, and
   nothing between a navigation shortcut's handler and the start of
   `changeFrameAsync` waits for a later task (the top bar's frame search and
@@ -631,9 +636,13 @@ it:
   not move or not counted for one it did; a handler that comes to wait for a
   later task makes its key count nothing. Neither fails a suite, since the
   harness drives the top bar over supplied searches. The stack's held-key
-  step (`run.sh check-fixes gestures`: a navigation key held on a slow frame,
-  its count compared with the frames shown and with CVAT's `change:frame`
-  events) is what catches it.
+  step (`run.sh check-fixes gestures`: a navigation key held while the frame
+  data requests are held back, its count compared with the frames shown)
+  catches a stale last shown frame. It does not reach a handler that waits:
+  on the stack (2026-11-15) the frame change did not wait for the frame's
+  data, so every key-down moved a frame. CVAT's merged `change:frame` records
+  count fewer steps than were shown (a record already sent keeps its count),
+  so they are not a measure of frames moved.
 
 A new upstream event type, scope, call site or shortcut action needs a
 decision on whether it is an operation. A rename breaks the figures silently.

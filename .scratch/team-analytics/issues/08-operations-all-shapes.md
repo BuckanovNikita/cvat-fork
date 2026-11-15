@@ -15,9 +15,11 @@
 - [x] A chart shows how working time divides between the operations and Other, with its legend inside the card and shares readable without hovering.
 - [x] A table lists each operation with its count, average time, total time and share of working time.
 - [x] Headline figures show objects created and the average time to create one.
-- [x] For a period with no shape-tagged events the page shows the legacy-period notice and marks class change as not recorded.
+- [ ] For a legacy period the page shows the legacy-period notice and marks class change as not recorded: shown by the page suite with supplied answers; the service now decides a legacy period from the stored cutover (fork specification, Legacy rule). Not seen on the stack, where all job work lies after the cutover.
 - [x] The figures respect the period and, once ticket 07 is in, the project and annotator filters.
 
 ## Comments
 
 2026-11-14: Resolved on `feat/team-analytics-page` by merge `d7494fe`. Review fixes that followed are in merge `401576e`. Live results, review outcomes and what remains unverified: `docs/evidence/2026-11-14-team-analytics-final-run.md`.
+
+2026-11-15: Ticket 27 of the defect fixes restated the legacy-period criterion, ticked on a reading under a rule since replaced (decisions ledger, V11). Original wording: "For a period with no shape-tagged events the page shows the legacy-period notice and marks class change as not recorded." It is unticked: a fresh stack holds no legacy period with job work. Evidence: `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`.
