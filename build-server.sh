@@ -3,9 +3,8 @@
 # Dockerfile.server, a port of upstream's Dockerfile to Debian 12 with Python 3.12 from the
 # official Python image. The server and every worker run this one image.
 #
-# The build needs network access: it pulls the pinned bases (the Python and Rust images named in
-# Dockerfile.server, and the Go image pinned here; nothing else: Dockerfile.server needs no
-# external frontend image), downloads and compiles OpenH264 and FFmpeg, and downloads the Python
+# The build needs network access: it pulls the pinned bases (the Python, Rust and Go images named
+# in Dockerfile.server; nothing else: Dockerfile.server needs no external frontend image), downloads and compiles OpenH264 and FFmpeg, and downloads the Python
 # packages. It never pushes. Run it outside the closed contour and transfer the result (SAVE=1).
 #
 # The build context is the tracked files of the paths Dockerfile.server copies, as they are in
@@ -24,7 +23,8 @@
 #   the tree's two patched policies, each once, byte for byte;
 # - with analytics enabled the bundle also holds the tree's Team Analytics policy;
 # - python and python3 are the venv's Python 3.12, and so are django-admin and uvicorn, the
-#   programs the process configuration starts; supervisord runs;
+#   programs the process configuration starts; supervisord runs; nginx -t accepts the image's
+#   configuration as the unprivileged user;
 # - no shared object under /opt/venv and no FFmpeg or OpenH264 library under /usr/lib has a
 #   dependency that is not found (the libraries a wheel bundles in its .libs directory are
 #   loaded through the wheel's own modules and are scanned with them);
@@ -45,9 +45,6 @@ BUNDLE="$ROOT/verify/policy_bundle.sh"
 # sha256 of upstream's Dockerfile (v2.82.0) that Dockerfile.server is a port of. After porting
 # a release's changes into Dockerfile.server, record the hash of its Dockerfile here.
 PORTED_FROM_SHA256=caee3eed999d8330d76128e1bde86ab635beb0907c9eacd5c9bf08a8aea8907f
-# The smokescreen stage is upstream's text, FROM golang:1.27.2; this pins that tag's digest.
-GOLANG_TAG=golang:1.27.2
-GOLANG_IMAGE=golang:1.27.2@sha256:820153096fda4de6ac1b7194d12e416b7dd8f4e9a33d17e0345b111b945162d8
 # What Dockerfile.server copies from the context (cvat/ holds the requirements and nginx.conf).
 COPIED=(
     backend_entrypoint.d cvat supervisord utils backend_entrypoint.sh
@@ -69,9 +66,9 @@ if [ "$upstream_sha256" != "$PORTED_FROM_SHA256" ]; then
     exit 1
 fi
 
-# The two bases are the defaults of Dockerfile.server's ARGs; each must be pinned by digest.
+# The three bases are the defaults of Dockerfile.server's ARGs; each must be pinned by digest.
 bases=()
-for arg in BASE_IMAGE RUST_IMAGE; do
+for arg in BASE_IMAGE RUST_IMAGE GOLANG_IMAGE; do
     ref="$(sed -n "s/^ARG $arg=//p" "$ROOT/Dockerfile.server")"
     if ! [[ "$ref" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]]; then
         echo "Dockerfile.server: ARG $arg is not one image pinned by digest: '$ref'" >&2
@@ -113,14 +110,13 @@ tar -C "$ROOT" -cf - --null --verbatim-files-from -T "$work/files" | tar -C "$wo
 chmod -R u=rwX,go=rX "$work/context"
 echo "context: $(tr -cd '\0' <"$work/files" | wc -c) tracked files of ${COPIED[*]}" >&2
 
-for ref in "${bases[@]}" "$GOLANG_IMAGE"; do
+for ref in "${bases[@]}"; do
     docker pull -q "$ref" >/dev/null
 done
 
 DOCKER_BUILDKIT=1 docker build \
     --pull=false \
     --provenance=false \
-    --build-context "$GOLANG_TAG=docker-image://$GOLANG_IMAGE" \
     --build-arg "MAKE_JOBS=$MAKE_JOBS" \
     --iidfile "$work/id" \
     -t "$tmp_tag" \
@@ -162,6 +158,7 @@ for p in python python3; do
     if [ "$v" = 3.12 ]; then echo "ok       $p is Python $v"; else echo "WRONG    $p is Python $v"; fail=1; fi
 done
 if v="$(supervisord --version 2>&1)"; then echo "ok       supervisord $v"; else echo "WRONG    supervisord does not run: $v"; fail=1; fi
+if v="$(nginx -t 2>&1)"; then echo "ok       nginx -t accepts /etc/nginx/nginx.conf"; else echo "WRONG    nginx -t: $v"; fail=1; fi
 exit "$fail"' || status=1
 
 echo "checking the shared objects of the venv and of FFmpeg for missing dependencies" >&2
@@ -172,12 +169,14 @@ if [ -z "$libs" ]; then echo "MISSING  no FFmpeg or OpenH264 library under /usr/
     n=0 bad=0
     while IFS= read -r f; do
         n=$((n + 1))
-        out="$(ldd "$f" 2>&1)" || continue
+        # Judged by the output alone: ldd exits 0 when a dependency is not found.
+        out="$(ldd "$f" 2>&1)" || true
+        case "$out" in *"not a dynamic executable"*) continue ;; esac
         missing="$(printf "%s\n" "$out" | grep "not found")" || continue
         echo "MISSING  $f:"; printf "%s\n" "$missing"
         bad=1
     done
-    echo "ok       $n shared objects scanned"
+    if [ "$bad" = 0 ]; then echo "ok       $n shared objects scanned"; else echo "WRONG    $n shared objects scanned"; fi
     exit "$bad"
 }' || status=1
 

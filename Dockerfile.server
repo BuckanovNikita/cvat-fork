@@ -10,14 +10,16 @@
 # so the frontend built into the Docker installation's BuildKit builds it (RUN --mount needs
 # BuildKit; the legacy builder cannot build this file).
 #
-# Built by build-server.sh, which gives it a context of the tracked files it copies, pins the Go
-# image, and refuses to build when upstream's Dockerfile changed since this port
+# Built by build-server.sh, which gives it a context of the tracked files it copies, refuses a
+# base that is not pinned by digest, and refuses to build when upstream's Dockerfile changed since this port
 # (docs/upstream-upgrade.md, section 3). The server and every worker run this one image.
 
 # python:3.12-slim-bookworm
 ARG BASE_IMAGE=python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
 # rust:1.85-slim-bookworm
 ARG RUST_IMAGE=rust:1.85-slim-bookworm@sha256:9f841bbe9e7d8e37ceb96ed907265a3a0df7f44e3737d0b100e7907a679acb36
+# golang:1.27.2, the tag upstream's smokescreen stage names
+ARG GOLANG_IMAGE=golang:1.27.2@sha256:820153096fda4de6ac1b7194d12e416b7dd8f4e9a33d17e0345b111b945162d8
 
 # Upstream takes Rust 1.85 from Ubuntu's cargo-1.85 package. Debian 12's cargo is far older, so
 # the toolchain comes from the Rust image, built on the same Debian release. Datumaro's wheel
@@ -112,8 +114,8 @@ RUN --mount=type=cache,target=/root/.cache/pip/http-v2 \
     -r /tmp/cvat/requirements/${CVAT_CONFIGURATION}.txt \
     -w /tmp/wheelhouse
 
-# As upstream's Dockerfile has it; build-server.sh pins the image's digest.
-FROM golang:1.27.2 AS build-smokescreen
+# Upstream's stage, with its golang:1.27.2 pinned by digest (GOLANG_IMAGE above).
+FROM ${GOLANG_IMAGE} AS build-smokescreen
 
 RUN git clone --filter=blob:none --no-checkout https://github.com/stripe/smokescreen.git
 RUN cd smokescreen && git checkout eb1ac09 && go build -o /tmp/smokescreen
@@ -192,6 +194,10 @@ RUN if [ "$CLAM_AV" = "yes" ]; then \
         chown -R ${USER}:${USER} /var/lib/clamav && \
         rm -rf /var/lib/apt/lists/*; \
     fi
+
+# The apt sources go back to upstream's main component only, now that unrar and libclamunrar
+# are installed: nothing later in the image comes from non-free.
+RUN sed -i 's/^Components: main non-free$/Components: main/' /etc/apt/sources.list.d/debian.sources
 
 # Install wheels from the build image
 # The venv is made from the base's Python 3.12, named in full: Debian's python3 is 3.11.
