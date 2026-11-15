@@ -321,7 +321,9 @@ class TechnicalAccountFilterTest(ModelCase):
         body = self.overview(shapes="bounding_boxes", annotator=IMPORTER[0])
         self.assertEqual(body["saved_boxes"], {"boxes": 0, "by_annotator": [], "by_project": []})
         self.assertEqual(body["headline"], {"annotators": 0, "projects": 0})
-        self.assertEqual(body["by_annotator"]["rows"], [])
+        # the rows by annotator drop their own filter, as the full view does: every annotator stays
+        # listed so another can be picked, and the technical account is never one of them
+        self.assertEqual([row["user_id"] for row in body["by_annotator"]["rows"]], [ALICE[0]])
         self.assertEqual(body["by_project"]["rows"], [])
         self.assertEqual(body["creation_methods"]["model"]["objects"], 0)
         self.assertEqual(body["creation_methods"]["total"]["objects"], 0)
