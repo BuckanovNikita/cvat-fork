@@ -7,14 +7,20 @@ restored by run.sh around it).
                                     wait; back up, the refresh schedule is there (restored with django-admin
                                     syncperiodicjobs when it was lost) and the figures come back
     evidence.py killed-worker       a read job whose worker processes are killed while it reads (ClickHouse held
-                                    with SIGSTOP so that the job is mid-read) is queued again once the abandoned
-                                    limit has passed: 429 until then, then an answer; the worker's log lines
-    evidence.py idle-generation     (refresh interval raised by run.sh) the generation stands still over at least
-                                    five minutes of runs with nothing due, read against the worker's log
+                                    with SIGSTOP so that the job is mid-read; at least one rq process killed and
+                                    gone from the pod) is queued again once the abandoned limit has passed: 429
+                                    from the first request until at least the limit, then an answer within the
+                                    limit, the read wait and a minute; the worker's log shows two executions
+    evidence.py idle-generation     (refresh interval raised by run.sh) the interval in force on the server is the
+                                    one asked for; the generation stands still over at least five minutes of runs
+                                    with nothing due, read against the worker's log
     evidence.py liveness            a Team Analytics worker that loses one of its rq processes fails its liveness
-                                    probe and is restarted; restart counts before and after
-    evidence.py two-replicas        (two worker replicas set by run.sh) both pods ready, refresh runs that wrote
-                                    never overlap, a burst of reads is served, by which pods
+                                    probe and is restarted; restart counts before and after; the probe's own
+                                    command passes again (exit 0) within 90 s of the rollout
+    evidence.py two-replicas        (two worker replicas set by run.sh) both pods ready; a burst of reads is
+                                    served, by both pods; over eight minutes at least five refresh runs that
+                                    wrote, one from each pod at least, every run read from the logs with its
+                                    timestamps, and none overlapping
     evidence.py snapshot FILE       the Technical accounts list and its table, before analytics is switched off
     evidence.py back-on FILE        after analytics is on again: the list and the table as in FILE, the refresh
                                     schedule back, the figures back
@@ -63,6 +69,11 @@ TABLE = "team_analytics_technicalaccount"
 REPLY_MARGIN_S = 2.0
 YEAR_S = 31_536_000  # rq's default failure TTL, the refresh job's
 READ_FAILURE_TTL_S = 60  # views.enqueue_read's failure_ttl of a read job
+# two-replicas: eight minutes of scheduled runs, one a minute and each due at the stack's 60 s interval, so about
+# eight that write; at least five of them, and one from each pod (both pods take jobs from the one queue: all eight
+# on one pod would be about one chance in a hundred and twenty-eight, and a failure to look into)
+TWO_REPLICAS_WINDOW_S = 480
+TWO_REPLICAS_MIN_WROTE = 5
 
 
 class Failed(Exception):
@@ -183,6 +194,89 @@ def clickhouse_signal(signal: str) -> int:
     return int(out.strip() or 0)
 
 
+# Run with python3 in the worker's container: SIGKILL to every rq process of the container and to their children
+# (the work horse a worker forks for the job). They are found by their command line (supervisord starts them as
+# `django-admin rqworker ...`; the horse is a fork with the same command line); when none matches, by the pids rq's
+# worker registry in Redis records for this pod (argv[1], comma-separated). Prints how they were found and the pids.
+KILL_RQ = """
+import json, os, signal, sys
+def cmdline(pid):
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            return f.read().replace(b"\\0", b" ").decode(errors="replace")
+    except OSError:
+        return ""
+def parent(pid):
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return int(f.read().rsplit(")", 1)[1].split()[1])
+    except (OSError, IndexError, ValueError):
+        return None
+pids = [int(d) for d in os.listdir("/proc") if d.isdigit() and int(d) != os.getpid()]
+by_command = [p for p in pids if "rqworker" in cmdline(p)]
+by_registry = [int(p) for p in sys.argv[1].split(",") if p and int(p) in pids]
+roots, how = (by_command, "command line") if by_command else (by_registry, "rq's worker registry")
+targets = set(roots)
+while True:
+    more = {p for p in pids if parent(p) in targets} - targets
+    if not more:
+        break
+    targets |= more
+for p in targets:
+    try:
+        os.kill(p, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+print(json.dumps({"how": how, "pids": sorted(targets)}))
+"""
+
+# Run with python3 in the worker's container: which of the pids (argv[1:]) still run (absent or a zombie is gone).
+STILL_RUNNING = """
+import sys
+alive = []
+for pid in sys.argv[1:]:
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            state = f.read().rsplit(")", 1)[1].split()[0]
+    except OSError:
+        continue
+    if state != "Z":
+        alive.append(int(pid))
+print(" ".join(map(str, alive)))
+"""
+
+
+def registry_pids(pod: str) -> list[str]:
+    """The pids rq's worker registry records for the queue's workers on `pod` (each worker's hash in Redis names its
+    host, the pod, and its pid in the container)."""
+    pids = []
+    for line in redis("SMEMBERS", f"rq:workers:{QUEUE}").splitlines():
+        key = line.split(")", 1)[-1].strip().strip('"')
+        if not key.startswith("rq:worker:"):
+            continue
+        host, pid = (redis("HGET", key, field).strip('"') for field in ("hostname", "pid"))
+        if host == pod and pid.isdigit():
+            pids.append(pid)
+    return pids
+
+
+def kill_rq(pod: str) -> tuple[str, list[int]]:
+    """SIGKILL to the rq processes of `pod` (KILL_RQ); how they were found and their pids. Fails unless at least one
+    was killed and, a few seconds on, none of them runs any more."""
+    registered = registry_pids(pod)
+    out = kubectl("exec", pod, "-c", "cvat-backend", "--", "python3", "-c", KILL_RQ, ",".join(registered))
+    found = json.loads(out.strip().splitlines()[-1])
+    how, pids = found["how"], found["pids"]
+    need(bool(pids), f"no rq process of {pod} found to kill, neither by its command line ('rqworker') nor by the "
+                     f"worker registry's pids {registered}: the read job was not killed")
+    time.sleep(3)
+    alive = kubectl("exec", pod, "-c", "cvat-backend", "--", "python3", "-c", STILL_RUNNING, *map(str, pids)).split()
+    need(not alive, f"rq processes {alive} of {pod} still run 3 s after SIGKILL")
+    log(f"rq processes of {pod} found by {how} (registry pids {registered}): SIGKILL to {pids}; 3 s on none of them "
+        "runs (supervisord starts new ones)")
+    return how, pids
+
+
 def started_reads() -> list[str]:
     out = redis("ZRANGE", f"rq:wip:{QUEUE}", "0", "-1")
     return [line.split(")", 1)[-1].strip().strip('"') for line in out.splitlines() if "team-analytics-read-" in line]
@@ -202,6 +296,7 @@ def killed_worker() -> str:
         stopped = clickhouse_signal("STOP")  # the read job's statements wait on ClickHouse: the job is mid-read
         log(f"ClickHouse's server process stopped (SIGSTOP to {stopped} processes)")
         need(stopped > 0, "no ClickHouse server process found to stop")
+        queued_at = time.monotonic()  # the first request queues the read: the abandoned limit counts from here
         first = timed(in_org, path)
         log(f"first request: {first[0]} after {first[1]:.1f} s")
         for _ in range(10):
@@ -212,10 +307,8 @@ def killed_worker() -> str:
             time.sleep(0.5)
         need(job is not None, f"no read job started while ClickHouse was held (rq:wip:{QUEUE} empty)")
         log(f"read job {job} started: {redis('HGET', f'rq:job:{job}', 'status')}")
-        killed = kubectl("exec", pod, "-c", "cvat-backend", "--", "sh", "-c", SIGNAL_MATCHING, "9", "rqworker").strip()
+        how, killed = kill_rq(pod)
         killed_at = time.monotonic()
-        log(f"{killed} rq processes of {pod} killed with SIGKILL (the work horse with them); supervisord starts new "
-            "ones")
     finally:
         log(f"ClickHouse's server process continued (SIGCONT to {clickhouse_signal('CONT')} processes)")
     timeline = []
@@ -235,12 +328,21 @@ def killed_worker() -> str:
     for line in lines[-30:]:
         print(f"    {line}", flush=True)
     others = [t for t in timeline[:-1] if t[1] != 429]
+    since_queued = time.monotonic() - queued_at
+    # the job ran twice: the run that was killed, and the run after it was queued again
+    runs = [line for line in lines if "Preparing for execution" in line]
     need(status == 200 and not others, f"expected 429 until the job was queued again, then 200; saw {timeline}")
+    need(len(runs) >= 2, f"the worker's log shows {len(runs)} executions of {job}, expected two (killed, then queued again)")
+    # rq's own clean-up of the started registry runs only at a worker's start (before the job's timeout has passed)
+    # and then every ten minutes, so the read is queued again by the API's abandoned rule, not earlier
+    need(since_queued >= limit_s - 15,
+         f"the answer came {since_queued:.0f} s after the read was queued, before the abandoned limit {limit_s} s "
+         f"(2 x {timeout_s} + 120): something other than the abandoned rule queued it again")
     need(after_s <= limit_s + read_wait_s() + 60,
          f"the answer came {after_s:.0f} s after the kill, beyond the abandoned limit {limit_s} s (2 x "
          f"{timeout_s} + 120) and the wait")
-    return (f"read job {job} killed mid-read: 429 for {after_s:.0f} s ({len(timeline) - 1} answers), then 200; "
-            f"abandoned limit {limit_s} s")
+    return (f"read job {job} killed mid-read ({len(killed)} rq processes, found by {how}): 429 for {after_s:.0f} s ({len(timeline) - 1} answers), "
+            f"then 200, {since_queued:.0f} s after it was first queued; abandoned limit {limit_s} s; {len(runs)} executions")
 
 
 # ---------------------------------------------------------------- the generation when nothing is due
@@ -250,7 +352,11 @@ def idle_generation(interval_s: int) -> str:
     """A run is due once every `interval_s`; between two due runs the minute's runs have nothing to do. After a run
     that wrote, the next five and a half minutes hold only runs with nothing due (the interval is at least 600 s):
     the generation must stand still and the worker's log must show those runs."""
-    need(interval_s >= 600, f"the refresh interval in force is {interval_s} s; this needs at least 600 (run.sh sets it)")
+    from stack_ops import django_settings
+
+    in_force = int(django_settings("TEAM_ANALYTICS_REFRESH_INTERVAL_S")["TEAM_ANALYTICS_REFRESH_INTERVAL_S"])
+    need(in_force == interval_s and in_force >= 600,
+         f"the refresh interval in force on the server is {in_force} s; expected {interval_s} (run.sh sets it), at least 600")
     status, body = reader("").call(analytics("status"))
     need(status == 200 and (body.get("history") or {}).get("complete"), f"history not complete: {status} {body}")
     since = utc_now()
@@ -311,12 +417,17 @@ def liveness() -> str:
     log(f"Unhealthy events of {pod}:\n{events.strip()}")
     kubectl("rollout", "status", WORKER, "--timeout=10m")
     procs = kubectl("get", "pod", pod, "-o", 'jsonpath={.spec.containers[0].env[?(@.name=="NUMPROCS")].value}').strip()
+    passed = False
     for _ in range(30):
-        probe_ok = kubectl("exec", pod, "-c", "cvat-backend", "--", "django-admin", "workerprobe", QUEUE,
-                           "--expected-num-workers", procs, check=False)
-        if "expected at least" not in probe_ok:
+        try:  # kubectl() stops on a non-zero exit, which is workerprobe's failure; passing is exit 0
+            kubectl("exec", pod, "-c", "cvat-backend", "--", "django-admin", "workerprobe", QUEUE,
+                    "--expected-num-workers", procs)
+            passed = True
             break
+        except SystemExit as error:
+            last = str(error)
         time.sleep(3)
+    need(passed, f"after the restart the liveness probe still fails 90 s on: {last[:300]}")
     return (f"{pod}: one of {len(names)} rq processes stopped, liveness failed, container restarted after "
             f"{after_s:.0f} s; restarts {before} -> {restarts(pod)}; the probe passes again")
 
@@ -364,37 +475,55 @@ def two_replicas() -> str:
     for t in threads:
         t.join(client_budget_s() + 30)
     log(f"burst of 12 uncached overviews (status, seconds): {sorted(results)}")
-    time.sleep(240)  # several minutes of scheduled runs on two replicas
+    time.sleep(TWO_REPLICAS_WINDOW_S)  # scheduled runs (one a minute, each due at the stack's 60 s) on two replicas
     by_pod = logs_by_pod(since)
-    spans = []
+    spans, reads_by_pod, wrote_by_pod, problems = [], {}, {}, []
     for pod, lines in by_pod.items():
-        reads = sum(1 for line in lines if READ_LINE.search(line))
-        runs = run_spans(lines)
-        log(f"{pod}: {reads} read jobs, {len(runs)} refresh runs, {sum(1 for r in runs if r[2])} wrote")
+        reads_by_pod[pod] = sum(1 for line in lines if READ_LINE.search(line))
+        runs, started, unparsed = run_spans(lines)
+        wrote_by_pod[pod] = sum(1 for r in runs if r[2])
+        log(f"{pod}: {reads_by_pod[pod]} read jobs, {started} refresh runs started, {len(runs)} read with their start "
+            f"and end, {wrote_by_pod[pod]} wrote; {unparsed} without a readable timestamp")
+        # every run read whole: a run may still be going when the logs are read (one per pod), nothing else is lost
+        if unparsed or len(runs) < started - 1:
+            problems.append(f"{pod}: {started} runs started, {len(runs)} read with start and end, {unparsed} timestamps "
+                            "not parsed")
         spans += [(begin, end, pod) for begin, end, wrote in runs if wrote]
     spans.sort()
     overlaps = [(a, b) for a, b in zip(spans, spans[1:]) if b[0] < a[1]]
     need(len(results) == 12 and all(st == 200 for st, _ in results),
          f"expected 12 answers 200 within the client's budget {client_budget_s():.0f} s, saw {sorted(results)}")
+    # something to judge: logs of both pods, both serving reads, and refresh runs that wrote read with their start
+    # and end, from each pod, enough of them over the window
+    need(len(by_pod) == 2 and all(n > 0 for n in reads_by_pod.values()),
+         f"expected logs and read jobs of both pods, saw read jobs by pod {reads_by_pod}")
+    need(not problems, f"refresh runs not read whole from the logs: {problems}")
+    need(len(spans) >= TWO_REPLICAS_MIN_WROTE and len(wrote_by_pod) == 2 and all(n > 0 for n in wrote_by_pod.values()),
+         f"expected at least {TWO_REPLICAS_MIN_WROTE} refresh runs that wrote in {TWO_REPLICAS_WINDOW_S} s, at least one "
+         f"from each pod; saw {len(spans)}, by pod {wrote_by_pod}")
     need(not overlaps, f"refresh runs that wrote overlapped across the replicas: {overlaps}")
     return (f"2 ready replicas; 12 uncached reads 200; {len(spans)} refresh runs that wrote, none overlapping; read "
             f"jobs by pod {[(p, sum(1 for line in ls if READ_LINE.search(line))) for p, ls in by_pod.items()]}")
 
 
-def run_spans(lines: list[str]) -> list[tuple[float, float, bool]]:
-    """The refresh runs of one pod's log: (start, end, wrote), read as acceptance.refresh_runs reads them."""
-    spans, current = [], None
+def run_spans(lines: list[str]) -> tuple[list[tuple[float, float, bool]], int, int]:
+    """The refresh runs of one pod's log, read as acceptance.refresh_runs reads them: the runs with a start and an
+    end, (start, end, wrote); how many started; how many start or end lines had no timestamp that could be read."""
+    spans, current, started, unparsed = [], None, 0, 0
     for line in lines:
         if "jobs.refresh_totals()" in line:
+            started += 1
             current = {"begin": _log_time(line), "wrote": False}
+            unparsed += current["begin"] is None
         elif current is not None and ("core.refresh: refreshed" in line or "core.history: history:" in line):
             current["wrote"] = True
         elif current is not None and "Job OK (team_analytics_refresh)" in line:
             end = _log_time(line)
+            unparsed += end is None
             if current["begin"] is not None and end is not None:
                 spans.append((current["begin"], end, current["wrote"]))
             current = None
-    return spans
+    return spans, started, unparsed
 
 
 def _log_time(line: str) -> float | None:

@@ -8,12 +8,17 @@ the list is put back as the seed set it, and the command exits non-zero when a p
 
 Parts:
   refusals        an owner, a maintainer and a worker get 403 on GET and PUT settings, GET settings/users and GET
-                  project-names, with and without their organization; signed out is 401; nothing is saved
+                  project-names, with and without their organization; signed out is 401; the refused PUTs send a
+                  changed list (the seeded one plus ta-outsider), and the list read back is still the seeded one
+  writes          no-store on every settings answer; a PUT with the session cookie and its CSRF token saves, one
+                  without the token and one with a read-only access token are refused (both sending a changed
+                  list, the list unchanged); the server's log, read whole and not empty, never names the removed
+                  variable
   bad-bodies      PUT settings refuses (400 bad_request) a non-list, a missing list, a negative id, zero, a
                   duplicate and an id of no user that is not on the list; neither the list nor the answer
                   generation changes
-  generation      a save advances the answer generation by exactly one; a save of the same list answers 200 and
-                  keeps the list (its step is printed)
+  generation      every save advances the answer generation by exactly one, a save of the same list too (it
+                  answers 200 and keeps the list)
   user-search     with an organization selected, the search finds a user of another organization and a user of
                   none, answers at most 20 users ordered by username, and refuses a search over 150 characters
   project-names   names projects of two organizations in one answer and leaves out an unknown id; refuses a bad id
@@ -127,7 +132,12 @@ class WorkerStopped:
     the API process, not by the worker. Back up, it waits until status is answered again."""
 
     def __enter__(self) -> WorkerStopped:
-        scale(WORKER, 0, WORKER_SELECTOR)
+        try:
+            scale(WORKER, 0, WORKER_SELECTOR)
+        except BaseException:
+            # __exit__ does not run when __enter__ fails: the worker is brought back here
+            scale(WORKER, 1, WORKER_SELECTOR)
+            raise
         log("analytics worker at 0 while the generation is measured")
         return self
 
@@ -147,10 +157,19 @@ class WorkerStopped:
 # ---------------------------------------------------------------- parts
 
 
+def changed_list(admin: Session, base: list[int]) -> list[int]:
+    """The seeded list plus ta-outsider (a real user, never technical): what a refused PUT sends, so that a save
+    accepted by mistake would show in the list read back."""
+    extra = user_id(admin, "ta-outsider")
+    need(extra not in base, f"ta-outsider is already on the seeded list {base}")
+    return [*base, extra]
+
+
 def refusals(admin: Session, base: list[int]) -> str:
+    changed = changed_list(admin, base)
     requests = [
         ("GET", SETTINGS, None),
-        ("PUT", SETTINGS, {"technical_accounts": base}),
+        ("PUT", SETTINGS, {"technical_accounts": changed}),
         ("GET", USER_SEARCH + "?search=ta-", None),
         ("GET", PROJECT_NAMES + "?ids=1", None),
     ]
@@ -227,8 +246,9 @@ def writes(admin: Session, base: list[int]) -> str:
     need(ids_of(answers["PUT settings (cookie and X-CSRFToken)"][1]["technical_accounts"]) == sorted(base),
          "the PUT with the CSRF token answered another list")
 
-    # the session cookie without its CSRF token: Origin sent, X-CSRFToken not
-    status, answer, _ = send_full(admin.opener, "PUT", SETTINGS, {"technical_accounts": base},
+    # the session cookie without its CSRF token: Origin sent, X-CSRFToken not; a changed list, so a wrong save shows
+    changed = changed_list(admin, base)
+    status, answer, _ = send_full(admin.opener, "PUT", SETTINGS, {"technical_accounts": changed},
                                   headers={"Origin": BASE_URL})
     detail = answer.get("detail", "") if isinstance(answer, dict) else str(answer)
     need(status == 403 and "csrf" in str(detail).lower(),
@@ -246,7 +266,7 @@ def writes(admin: Session, base: list[int]) -> str:
         bare = urllib.request.build_opener()
         bearer = {"Authorization": f"Bearer {token['value']}"}
         read_status, read_body, _ = send_full(bare, "GET", SETTINGS, headers=bearer)
-        put_status, put_body, _ = send_full(bare, "PUT", SETTINGS, {"technical_accounts": base}, headers=bearer)
+        put_status, put_body, _ = send_full(bare, "PUT", SETTINGS, {"technical_accounts": changed}, headers=bearer)
     finally:
         admin.request("DELETE", f"/api/auth/access_tokens/{token['id']}")
     log(f"read-only token: GET settings {read_status}, PUT settings {put_status} {str(put_body)[:120]}")
@@ -255,8 +275,9 @@ def writes(admin: Session, base: list[int]) -> str:
                             "expected 403")
     need(ids_of(technical_accounts(admin)) == sorted(base), "a refused PUT changed the list")
 
-    warned = [line for line in kubectl("logs", "-l", SERVER_SELECTOR, "-c", "cvat-backend", "--tail=-1", "--max-log-requests=10",
-                                       check=False).splitlines() if "TEAM_ANALYTICS_TECHNICAL_ACCOUNTS" in line]
+    server_log = kubectl("logs", "-l", SERVER_SELECTOR, "-c", "cvat-backend", "--tail=-1", "--max-log-requests=10")
+    need(server_log.strip() != "", "the server's log came back empty: the warning cannot be looked for")
+    warned = [line for line in server_log.splitlines() if "TEAM_ANALYTICS_TECHNICAL_ACCOUNTS" in line]
     need(not warned, f"the server's log names TEAM_ANALYTICS_TECHNICAL_ACCOUNTS although the stack no longer sets it: "
                      f"{warned[:3]}")
     return ("no-store on 200, 400 and 403 of the settings; PUT with the cookie and X-CSRFToken 200, without the token "
@@ -283,9 +304,11 @@ def generation_steps(admin: Session, base: list[int]) -> str:
     need(isinstance(g0, int), f"no answer generation in the cache ({g0})")
     need(g1 == g0 + 1, f"adding an account moved the generation {g0} -> {g1}, expected exactly one step")
     need(g3 == g2 + 1, f"removing it moved the generation {g2} -> {g3}, expected exactly one step")
+    # a save advances the generation whether or not the list changed (docs/fork-specification.md, views.py)
+    need(g2 == g1 + 1, f"saving the same list again moved the generation {g1} -> {g2}, expected exactly one step")
     need(ids_of(same) == sorted([*base, extra]), f"the same list saved again answered {ids_of(same)}")
-    return (f"each changing save advanced the generation by one ({g0}->{g1}, {g2}->{g3}); the same list saved again "
-            f"answered 200 with the list unchanged (generation {g1}->{g2})")
+    return (f"every save advanced the generation by one: adding {g0}->{g1}, the same list again {g1}->{g2} (answered "
+            f"200, list unchanged), removing {g2}->{g3}")
 
 
 def user_search(admin: Session) -> str:
