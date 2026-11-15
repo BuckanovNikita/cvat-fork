@@ -35,8 +35,9 @@ Team Analytics — страница, её API и её настройки — д�
 остальные, получают 403. Список технических учётных записей (Technical
 accounts list) один на экземпляр; его ведут администраторы в окне «Team
 Analytics settings» на странице. Переменная окружения
-`TEAM_ANALYTICS_TECHNICAL_ACCOUNTS` больше не читается: после обновления список
-пуст, и администратор заполняет его заново
+`TEAM_ANALYTICS_TECHNICAL_ACCOUNTS` больше не задаёт список: если она осталась,
+при запуске выводится одно предупреждение, что она не действует. После обновления
+список пуст, и администратор заполняет его заново
 ([шаг обновления](docs/upstream-upgrade.md#an-instance-on-a-fork-version-that-read-team_analytics_technical_accounts)).
 
 Перед обновлением CVAT используйте:
