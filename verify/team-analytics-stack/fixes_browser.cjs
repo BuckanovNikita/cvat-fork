@@ -437,6 +437,26 @@ async function overviewReady(page, what) {
     await sleep(1500);
 }
 
+// The page in `org` (a slug; "" for instance scope, no organization). The page reads its organization from the one
+// CVAT has selected, not from the address: an `org=` in the address alone is replaced by the selected one. So CVAT's
+// selection (localStorage "currentOrganization", read when the app loads, as browser_check.cjs signIn sets it) is
+// switched first, then the page is loaded, and both the header and the address must name `org` before anything
+// is measured.
+async function openTA(page, org, query) {
+    await page.evaluate(org ? `localStorage.setItem("currentOrganization", ${JSON.stringify(org)})`
+        : 'localStorage.removeItem("currentOrganization")');
+    await page.goto(`${BASE}/team-analytics?${query}${org ? `&org=${org}` : ''}`);
+    if (org) {
+        await page.waitFor(`document.querySelector(".cvat-header-menu-user-dropdown-organization")?.textContent.trim() === ${JSON.stringify(org)}`,
+            `CVAT's selected organization ${org} in the header`, 30000);
+    }
+    const inAddress = await page.waitFor(`(() => { const o = new URLSearchParams(location.search).get("org") || "";
+        return o === ${JSON.stringify(org)} ? (o || "(none)") : null; })()`, `org=${org || '(none)'} in the address`, 30000)
+        .catch(async () => `${await page.evaluate('location.search')} (expected org=${org || 'none'})`);
+    check(inAddress === (org || '(none)'), `the page did not open in ${org || 'instance scope'}: the address reads ${inAddress}`);
+    log(`[${org || 'instance scope'}] /team-analytics?${query}: CVAT's selected organization and the address name ${org || 'no organization'}`);
+}
+
 const setWidth = (page, width, height = 900) => page.send('Emulation.setDeviceMetricsOverride', {
     width, height, deviceScaleFactor: 1, mobile: false,
 });
@@ -478,7 +498,7 @@ const BAR = `(() => {
 // 1. every filter control and the Settings button 36 px tall; controls on one line share a centre (±0.5 px)
 async function filterBar(page, org) {
     const month = new Date().toISOString().slice(0, 7); // a month period shows the step arrows too
-    await page.goto(`${BASE}/team-analytics?period=month&month=${month}&org=${org}`);
+    await openTA(page, org, `period=month&month=${month}`);
     await overviewReady(page, `the month ${month}`);
     for (const width of [1024, 1400, 1920]) {
         await setWidth(page, width);
@@ -526,7 +546,7 @@ const SWEEP = `(() => {
 
 async function widthSweep(page, org) {
     await setWidth(page, 1400);
-    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await openTA(page, org, `period=week`);
     await overviewReady(page, 'the week');
     const seen = new Map();
     const scrolling = new Map();
@@ -710,11 +730,11 @@ async function pick(page, keys, kind) {
 
 async function selectors(page, keys, api, org) {
     await setWidth(page, 1400);
-    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await openTA(page, org, `period=week`);
     await overviewReady(page, 'the week');
     await selectorRequests(page, keys, api, 'project');
     await selectorRequests(page, keys, api, 'annotator');
-    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await openTA(page, org, `period=week`);
     await overviewReady(page, 'the week');
     const unfiltered = await pick(page, keys, 'project');
     await pick(page, keys, 'annotator');
@@ -775,7 +795,7 @@ const ANNOTATOR_GAP = `(() => {
 
 async function popupFit(page, keys, org) {
     await setWidth(page, 1400);
-    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await openTA(page, org, `period=week`);
     await overviewReady(page, 'the week');
     // the width at which the Annotator selector sits nearest the container's right edge
     let edge = null;
@@ -833,7 +853,7 @@ const TERMS ='[...document.querySelectorAll(".cvat-team-analytics-page button.cv
 
 async function terms(page, keys, org) {
     await setWidth(page, 1400);
-    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await openTA(page, org, `period=week`);
     await overviewReady(page, 'the week');
     // two terms exist only with their data: the Model row of the creation methods when the period has Model objects,
     // and the details' Model column unless the period is legacy (its column is "Boxes saved" then, with no term)
@@ -881,7 +901,7 @@ async function terms(page, keys, org) {
         }
     }
     log(`${found.length} terms: each tooltip shown on hover and on focus, inside the window, with the glossary's text, hidden after`);
-    await page.goto(`${BASE}/team-analytics?period=week&org=${org}&view=annotators`);
+    await openTA(page, org, `period=week&view=annotators`);
     await page.waitFor('document.querySelectorAll(".cvat-team-analytics-full-list-row").length > 0', 'the full view', 90000);
     const inFull = await page.evaluate(`${TERMS}.length`);
     check(inFull === 0, `the full view has ${inFull} terms, expected none`);
@@ -890,7 +910,7 @@ async function terms(page, keys, org) {
 
 // 5. nothing left of what tickets 01-04 replaced
 async function gone(page, org) {
-    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await openTA(page, org, `period=week`);
     await overviewReady(page, 'the week');
     const left = await page.evaluate(`(() => {
         const page = document.querySelector(".cvat-team-analytics-page");
@@ -918,7 +938,7 @@ async function openModal(page, keys) {
 }
 
 async function settingsModal(page, keys, api, org, seeded, other) {
-    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await openTA(page, org, `period=week`);
     await overviewReady(page, 'the week');
     let from = api.length;
     await openModal(page, keys);
@@ -993,7 +1013,7 @@ async function settingsModal(page, keys, api, org, seeded, other) {
 // itself shows them inside the organization: what instance scope must name too.
 async function orgProjectNames(page, keys, org) {
     try {
-        await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+        await openTA(page, org, `period=week`);
         await overviewReady(page, `the week of ${org}`);
         await openSelector(page, keys, 'project');
         await page.waitFor(OPTIONS_LOADED, `${org}'s project options loaded`, 30000);
@@ -1019,7 +1039,7 @@ async function instanceNames(browser, orgs) {
     log(`project names this week by organization: ${JSON.stringify(Object.fromEntries(Object.entries(byOrg).map(([o, n]) => [o, n.length])))}`);
     check(named.length >= 2, `fewer than two of ${JSON.stringify(orgs)} have projects with work this week (${JSON.stringify(byOrg)}): `
         + 'the stack has no data for this part (run check-final first)');
-    await page.goto(`${BASE}/team-analytics?period=week`);
+    await openTA(page, '', 'period=week');
     await overviewReady(page, 'instance scope');
     const subtitle = await page.evaluate('document.querySelector(".cvat-team-analytics-heading")?.textContent || ""');
     check(subtitle.includes('All organizations and personal workspaces'), `the heading reads "${subtitle.trim()}", expected instance scope`);
@@ -1041,7 +1061,7 @@ async function instanceNames(browser, orgs) {
 async function screenshots(page, keys, org) {
     for (const width of [1400, 1024]) {
         await setWidth(page, width);
-        await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+        await openTA(page, org, `period=week`);
         await overviewReady(page, 'the week');
         await fullShot(page, `page-${org}-${width}-overview`, width);
         await openSelector(page, keys, 'project');
