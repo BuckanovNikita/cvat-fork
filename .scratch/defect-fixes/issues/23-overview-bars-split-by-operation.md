@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 (First lint run on the fork's UI code), 14 (Unprocessed periods carry no figures).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Test first, through the service's read interface: each overview row by annotator and by project carries its operation parts, and they equal that row in the full view.
 - [x] The remainder row carries the parts of the rows it stands for.
@@ -45,3 +45,5 @@ The last criterion stays unticked; it remains ticket 27's.
 2026-11-15: The code review of the integrated branch (finding 4, recorded in `docs/evidence/2026-11-15-integrated-branch-review.md`) is recorded, not fixed. The overview's rows by annotator and by project each run the full view's whole row read, and that one shared read is what keeps an overview row's split equal to the full view's. Overview latency is outside this spec. The fork specification now lists the cost as known and not measured at scale.
 
 2026-11-15: The last criterion, restated as what was shown, is ticked from ticket 27's final run (evidence: `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`, "The look beside the prototype"). `run.sh check-fixes look` measured both cards at 1400 px and 400 px on `ta-org-c` (every row in several parts) and on the volume's organization (eight rows, long names; its rows are almost all creation, so their bars are one part), and the full-page screenshots were looked at and compared with `Main.dc.html`, `Narrow.dc.html` and `design.md`. The prototype was not rendered: its sources need the design canvas's runtime. Differences seen are listed in the evidence: the row layout (name and hours above the bar), the legend's added hint and its wrap at 400 px, the gaps of empty parts showing before Other rather than at the bar's end; no neutral bar was seen, since every row came with its parts. Hover titles were not checked.
+
+2026-11-15: Resolved on `feat/team-analytics-page` by merge `ba33aeb4` (ticket 27's final run); the look in a browser on the stack, compared with the prototype's source and not with a rendered prototype, is in `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`.

@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 (Re-import the release with the widened filter), 07 (Fork server image).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The launcher takes the chart from the import. The download of the upstream source archive, its cache and its settings are gone.
 - [x] Chart dependencies are still built from the fork-owned lock and checked against the recorded hashes.
@@ -50,3 +50,5 @@
 2026-11-15: Changed by the follow-up to the review of the follow-ups (branch `fix/last-review`, findings 1 and 4). The render guard also refuses a Service other than ClusterIP or with external IPs, host networking, PID or IPC, a host port, a host path volume, privileged mode, added capabilities, and a RoleBinding to a ClusterRole or to a subject other than a ServiceAccount of the namespace; the genuine render holds none and is accepted, the reviewer's three doctored renders are refused. The service's and the proxy's manifests now pass the guard before they are applied (`render-service` and `render-proxy` print them); each, judged alone as those functions judge it, is accepted and a copy with a NodePort or LoadBalancer Service is refused; the functions themselves were not run inside an `up`. `check-bundle` refuses a link anywhere in a bundle and two spellings of one name. Criterion 6 stays outstanding. Evidence: `docs/evidence/2026-11-15-integrated-branch-review.md`, "Review of the follow-ups".
 
 2026-11-15: Criterion 6 shown in ticket 27's final run (evidence: `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`). From an empty namespace, with the three images built from `b8521e3f`, a fresh `up` passed every existing check from start to finish on its second attempt; the first stopped at a 429 from CVAT's sign-in throttle after the volume's hundred sign-ins, a fault in the launcher fixed in `d61dd877`, after which the namespace was deleted and `up` repeated from an empty one. `down` then left nothing behind: no namespace, no Ingress for the host, none of the five volumes, no port-forward or listener on 8490, no state directory.
+
+2026-11-15: Resolved on `feat/team-analytics-page` by merge `ba33aeb4` (ticket 27's final run); the fresh `up` that passed from start to finish and the `down` that left nothing are in `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`.

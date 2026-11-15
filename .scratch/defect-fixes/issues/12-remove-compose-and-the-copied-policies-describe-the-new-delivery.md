@@ -4,7 +4,7 @@
 
 **Blocked by:** 09 (Issue and comment permissions checked on the stack), 10 (Task progress checked on the stack).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The Compose overlay, the three Compose verification files, the two Compose launchers and the copied policy directory are deleted. Seed and check scripts the stack uses stay; the others go with them.
 - [x] A search for their names finds only history, dated evidence and the ledger.
@@ -28,3 +28,5 @@ Outstanding: a stack `up` after the removal (criterion 7). The stack was in use 
 2026-11-15: The independent review of the delivery change as integrated is done (criterion 8): who reviewed, the verdict, the nine findings and what branch `fix/delivery-review` did about each, the failing cases before and the outcomes after, what held and what was not checked are in `docs/evidence/2026-11-15-compose-removed.md`, "Independent review of the delivery change, 2026-11-15".
 
 2026-11-15: Criterion 7 shown in ticket 27's final run (evidence: `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`): a fresh `up` from an empty namespace passed on the tree without the Compose files (second attempt; the first stopped at CVAT's sign-in throttle, fixed in the launcher), and so did a second `up` on the running stack (second attempt; the first failed the seed check on a stack holding the volume, fixed in `abb02a10`).
+
+2026-11-15: Resolved on `feat/team-analytics-page` by merge `ba33aeb4` (ticket 27's final run); the stack `up` after the removal is in `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`.
