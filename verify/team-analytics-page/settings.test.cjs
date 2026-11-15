@@ -267,6 +267,66 @@ test('Cancel sends nothing and leaves the list as it was', async () => {
     });
 });
 
+test('a refusal while the modal is open closes it: a 401 on the settings, a 403 on the user search', async () => {
+    const signedOut = openPage({ settings: () => ({ status: 401, body: null }) });
+    await opened(signedOut.Page, async (view) => {
+        await openSettings(view);
+        assert.equal(modal(), null, 'closed');
+        assert.ok(view.container.querySelector('.cvat-team-analytics-signed-out'));
+    });
+    const refused = openPage({ users: () => ({ status: 403, body: null }) });
+    await opened(refused.Page, async (view) => {
+        await openSettings(view);
+        assert.ok(modal(), 'open with its list');
+        await searchFor(view, 'ta');
+        assert.equal(modal(), null, 'closed');
+        assert.ok(view.container.querySelector('.cvat-team-analytics-denied'));
+    });
+});
+
+test('a refused settings read and a refused user search are asked once, even with the modal left open', async () => {
+    // the modal alone, without the page that would close it on the refusal
+    let settingsAnswer = () => ({ status: 401, body: null });
+    const figures = suppliedService(() => ({ status: 403, body: null }));
+    const saved = suppliedSettings(() => settingsAnswer());
+    const SettingsModal = loadPage('settings-modal.tsx', {
+        './service': { ...loadPage('service.ts'), requestService: figures.request, requestSettings: saved.request },
+    }).default;
+    let setOpen;
+    function Host() {
+        const [open, change] = React.useState(true);
+        setOpen = change;
+        return React.createElement(SettingsModal, { open, onClose() {}, onSaved() {} });
+    }
+    const reads = () => saved.requests.filter((sent) => sent.method === 'GET').length;
+    const view = await mount(React.createElement(Host));
+    try {
+        await view.settle();
+        await wait(300);
+        await view.settle();
+        assert.equal(reads(), 1, 'a refused read is asked once');
+        await act(async () => { setOpen(false); });
+        await view.settle();
+        await act(async () => { setOpen(true); });
+        await view.settle();
+        await wait(300);
+        assert.equal(reads(), 2, 'opening again asks once more');
+
+        settingsAnswer = () => ({ body: SETTINGS });
+        await act(async () => { setOpen(false); });
+        await act(async () => { setOpen(true); });
+        await view.settle();
+        await searchFor(view, 'ta');
+        await wait(600);
+        await view.settle();
+        assert.deepEqual(endpoints(figures.requests), ['settings/users'], 'a refused search is asked once');
+        assert.equal(reads(), 3);
+    } finally {
+        await view.unmount();
+        document.body.querySelectorAll('.ant-modal-root').forEach((element) => element.remove());
+    }
+});
+
 // --- the service functions and the real boundary -------------------------------------------------------------
 
 const service = loadPage('service.ts');

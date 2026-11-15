@@ -327,3 +327,22 @@ test('an address with filters but no organization applies them only without an o
         assert.deepEqual(filterParams(lastOverview(own.requests)), ['5', null], 'a link of the same organization keeps its filter');
     });
 });
+
+test('ids the names lookup did not name are not asked again until the data is reloaded', async () => {
+    // project 2 no longer exists: the lookup answers without it
+    const projects = { by: 'projects', legacy: false, shapes: 'all', total: { count: 2, working_time_ms: HOUR },
+        rows: [1, 2].map((id) => ({ id, user_name: null, working_time_ms: HOUR })) };
+    const { history, lookups, Page } = mountPage({
+        names: async () => ({ 1: 'Street scenes' }),
+        answer: (url) => ({ body: url.includes('/list?') ? projects : OVERVIEW }),
+    });
+    await opened(Page, async (view) => {
+        assert.deepEqual([...lookups[0]].sort(), [1, 2]);
+        await act(async () => { history.push('/team-analytics?project=7&org=team-org'); });
+        await view.settle();
+        assert.deepEqual(lookups.at(-1), [7], 'project 2 is not asked again');
+        await click(view.container.querySelector('.cvat-team-analytics-filter-project .cvat-team-analytics-filter-button'));
+        await view.settle();
+        assert.ok(lookups.flat().filter((id) => id === 2).length === 1, `asked once: ${JSON.stringify(lookups)}`);
+    });
+});

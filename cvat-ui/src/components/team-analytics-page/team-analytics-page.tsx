@@ -24,15 +24,15 @@ import TeamAnalyticsView from './team-analytics-view';
 import TrendsSection, { useTrendsSelection } from './trends-section';
 import DetailsSection from './details-section';
 import SettingsModal from './settings-modal';
+import { isTeamAnalyticsReader } from './access';
 
 // The status (last refresh) is read again this often while the page is open.
 const STATUS_INTERVAL_MS = 60000;
 
-// The page, loaded on demand by team-analytics-route.tsx. It reads the organization CVAT has
-// selected and the selection kept in the page address (period and filters), asks the API for its
-// figures, its status and the shown projects' names, and opens Team Analytics settings; everything it
-// shows is in TeamAnalyticsView.
-export default function TeamAnalyticsPage(): JSX.Element {
+// The page of an administrator. It reads the organization CVAT has selected and the selection kept in the
+// page address (period and filters), asks the API for its figures, its status and the shown projects' names,
+// and opens Team Analytics settings; everything it shows is in TeamAnalyticsView.
+function AdministratorPage(): JSX.Element {
     const organization = useSelector((state: CombinedState) => state.organizations.current?.slug ?? null);
     const history = useHistory();
     // hotkeys are labelled with the viewer's own keymap
@@ -59,8 +59,27 @@ export default function TeamAnalyticsPage(): JSX.Element {
     // the project names known so far, for the selector's names lookup
     const knownNames = useRef<ProjectNames>(projectNames);
     knownNames.current = projectNames;
+    // ids the names lookup answered without a name (deleted projects): not asked again until the data is reloaded
+    const unnamed = useRef(new Set<number>());
 
-    useEffect(() => { filterOptions.current.clear(); }, [reloads]);
+    useEffect(() => {
+        filterOptions.current.clear();
+        unnamed.current.clear();
+    }, [reloads]);
+
+    // asks the names of `ids` not known and not already answered without a name, and remembers both
+    const lookUpNames = (ids: number[]): (() => void) => {
+        const asked = [...new Set(ids)]
+            .filter((id) => id > 0 && !(id in knownNames.current) && !unnamed.current.has(id));
+        let current = true;
+        if (asked.length) {
+            lookupProjectNames(asked, requestService).then((names) => {
+                asked.filter((id) => !(id in names)).forEach((id) => unnamed.current.add(id));
+                if (current) setProjectNames((known) => ({ ...known, ...names }));
+            }).catch(() => { /* shown by identifier, asked again later */ });
+        }
+        return () => { current = false; };
+    };
 
     const loadOptions = (kind: FilterKind): Promise<FilterOptions> => {
         const key = [organization ?? '', address.period, address.month ?? '', kind].join('|');
@@ -73,15 +92,7 @@ export default function TeamAnalyticsPage(): JSX.Element {
                 filterOptions.current.delete(key);
                 return options;
             }
-            if (kind === 'projects') {
-                const unnamed = options.options.map((option) => option.id)
-                    .filter((id) => id > 0 && !(id in knownNames.current));
-                if (unnamed.length) {
-                    lookupProjectNames(unnamed, requestService).then((names) => {
-                        setProjectNames((known) => ({ ...known, ...names }));
-                    }).catch(() => { /* shown by identifier */ });
-                }
-            }
+            if (kind === 'projects') lookUpNames(options.options.map((option) => option.id));
             return options;
         });
         filterOptions.current.set(key, loading);
@@ -117,6 +128,8 @@ export default function TeamAnalyticsPage(): JSX.Element {
     useEffect(() => onRefusal((refusal) => {
         setState(refusal);
         setPending(false);
+        // the settings screen is not left open over the refusal
+        setSettingsOpen(false);
     }), []);
 
     // the shown period was not wholly processed; once a status read says it is, its figures are loaded
@@ -159,14 +172,7 @@ export default function TeamAnalyticsPage(): JSX.Element {
     if (address.project !== null) shownProjects.push(address.project);
     const wanted = [...new Set(shownProjects.filter((id) => id > 0 && !(id in projectNames)))].sort((a, b) => a - b);
     const wantedKey = wanted.join(',');
-    useEffect(() => {
-        if (wanted.length === 0) return undefined;
-        let current = true;
-        lookupProjectNames(wanted, requestService).then((names) => {
-            if (current) setProjectNames((known) => ({ ...known, ...names }));
-        }).catch(() => { /* shown by identifier */ });
-        return () => { current = false; };
-    }, [wantedKey]);
+    useEffect(() => lookUpNames(wanted), [wantedKey]);
 
     return (
         <>
@@ -232,4 +238,18 @@ export default function TeamAnalyticsPage(): JSX.Element {
             />
         </>
     );
+}
+
+// The page, loaded on demand by team-analytics-route.tsx. Team Analytics is for administrators only: anyone
+// else gets the "not available" panel at once and the page asks the API nothing. (The API refuses the same; a
+// 403 for an account whose rights changed leads to the same panel.)
+export default function TeamAnalyticsPage(): JSX.Element {
+    const groups = useSelector((state: CombinedState) => state.auth.user?.groups);
+    const history = useHistory();
+    if (!isTeamAnalyticsReader(groups)) {
+        return (
+            <TeamAnalyticsView organization={null} state={{ kind: 'denied' }} onBackToTasks={() => history.push('/tasks')} />
+        );
+    }
+    return <AdministratorPage />;
 }
