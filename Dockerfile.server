@@ -1,12 +1,14 @@
-# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-# (docker/dockerfile:1, the frontend line upstream's Dockerfile has, pinned)
-
 # Fork server image (ADR 0007): the whole CVAT backend built from the fork's tree on public bases,
 # Debian 12 with Python 3.12 from the official Python image. It ports upstream's Dockerfile, which
 # stays as upstream wrote it, stage by stage: the build base, OpenH264 + FFmpeg + PyAV, the other
 # wheels, smokescreen, the runtime. Where this file differs from it, a comment says why: package
 # names that differ between Ubuntu 24.04 and Debian 12, Rust 1.85 from the Rust image, Python and
 # its headers, pip and venv from the base instead of apt.
+#
+# It deliberately needs no external Dockerfile frontend image: upstream's `# syntax=` line is left
+# out and its one COPY --parents is written as plain COPY instructions with explicit destinations,
+# so the frontend built into the Docker installation's BuildKit builds it (RUN --mount needs
+# BuildKit; the legacy builder cannot build this file).
 #
 # Built by build-server.sh, which gives it a context of the tracked files it copies, pins the Go
 # image, and refuses to build when upstream's Dockerfile changed since this port
@@ -220,14 +222,13 @@ RUN python -m pip uninstall -y pip && \
 
 # Install and initialize CVAT, copy all necessary files
 COPY cvat/nginx.conf /etc/nginx/nginx.conf
-COPY --parents \
-    backend_entrypoint.d cvat supervisord utils \
-    backend_entrypoint.sh \
-    components/analytics/clickhouse/init.py \
-    manage.py \
-    rqscheduler.py \
-    wait_for_deps.sh \
-    /opt/cvat/
+# Upstream's COPY --parents of the same paths, one COPY each, to the same places under /opt/cvat.
+COPY backend_entrypoint.d /opt/cvat/backend_entrypoint.d/
+COPY cvat /opt/cvat/cvat/
+COPY supervisord /opt/cvat/supervisord/
+COPY utils /opt/cvat/utils/
+COPY backend_entrypoint.sh manage.py rqscheduler.py wait_for_deps.sh /opt/cvat/
+COPY components/analytics/clickhouse/init.py /opt/cvat/components/analytics/clickhouse/init.py
 
 RUN python -m compileall -q /opt/cvat
 

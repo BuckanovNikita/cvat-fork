@@ -4,9 +4,9 @@
 # official Python image. The server and every worker run this one image.
 #
 # The build needs network access: it pulls the pinned bases (the Python and Rust images named in
-# Dockerfile.server, and the Go image pinned here; BuildKit also fetches the pinned Dockerfile
-# frontend), downloads and compiles OpenH264 and FFmpeg, and downloads the Python packages. It
-# never pushes. Run it outside the closed contour and transfer the result (SAVE=1).
+# Dockerfile.server, and the Go image pinned here; nothing else: Dockerfile.server needs no
+# external frontend image), downloads and compiles OpenH264 and FFmpeg, and downloads the Python
+# packages. It never pushes. Run it outside the closed contour and transfer the result (SAVE=1).
 #
 # The build context is the tracked files of the paths Dockerfile.server copies, as they are in
 # the working tree. The script refuses to build when
