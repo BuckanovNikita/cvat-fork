@@ -778,12 +778,15 @@ first one's release and its `down` deletes it. Give each concurrent run its own
 without the label and stops only its own port-forward.
 
 Before anything is applied, the launcher's render check (`render_guard.py`,
-listed in the stack's README) judges every object. What could reach another
-project on the shared cluster through storage or routes is judged by
+listed in the stack's README) judges every object. These ways of reaching
+another project on the shared cluster through storage or routes are judged by
 allowlist, against what the genuine render contains: pod volume sources,
 claims naming a volume, the hosts of an Ingress (the stack's own only, and
 no annotation, which could add one),
-hand-written Endpoints or EndpointSlices, and Secret types. The checks for
+hand-written Endpoints or EndpointSlices, and Secret types. Not judged: a
+claim, or a claim template, that binds an existing volume without naming it
+(a label selector, a data source, or an empty storage class); the genuine
+render has none. The checks for
 reaching the host still refuse by list. It judges the `helm template` render,
 not what the installation creates.
 
@@ -803,7 +806,11 @@ and Ingress host, which carry the machine user's name; and a machine path
 outside the home directory in `INFRA_MIGRATION.md`, the platform's own notice
 text. Older evidence is not rewritten. The seed password
 reaches the backend pod through the seed script's standard input, not a
-command line. The check pipeline's output is not redacted: a failing hook
+command line. One more of upstream's chart defaults matters for a real
+deployment, not for the stack: with analytics enabled, the chart's Grafana
+gives every visitor the Admin role without a sign-in. The stack reaches it
+only through the loopback port-forward, after CVAT's own analytics access
+check, but any pod in the cluster can reach its Service directly. The check pipeline's output is not redacted: a failing hook
 prints absolute paths, so its output must not be pasted into evidence.
 
 ## Changes that do not need reimplementation

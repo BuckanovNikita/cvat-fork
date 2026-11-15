@@ -360,3 +360,32 @@ in the tooling was shown by rerunning its step on that stack.
    70.
 
 Not done here: ticket 27 is not ticked again; nothing in it changed.
+
+### Second pass of the review of the final run's tooling (2026-11-15)
+
+The same reviewer, under the same rules, reviewed `236b3878..02e5423d`: the answers above
+and the answers to the security review (`docs/evidence/2026-11-15-security-review.md`). It
+changed no tracked file and used no cluster.
+
+- All seven findings are answered as this section says, checked against the code and the
+  logs of the reruns. No answer broke a step. For finding 1 the failure path itself was not
+  provoked; for finding 5 a misplaced annotator was not staged.
+- One note on finding 7: the search for `ta-worker-c` finds that person only while `up`'s
+  final run lies within the last seven days, so on an older kept stack `technical-project`
+  fails, not passes.
+- The security answers: the idle limit applies to each wait on the socket, so it does not
+  cut a slow answer while the service computes; it would cut a proxy that keeps idle
+  connections longer than 120 s. The reviewer ran `tests.test_http` on the default
+  ClickHouse image (`Ran 5 tests`, `OK`), and read that the test fails without the fix. The
+  guard accepted the genuine chart, service, proxy and Ingress renders in the replay and on
+  the live `up`. One more harmless false refusal: a ConfigMap data key named `volumes`.
+- No new finding.
+- Not checked: an `up` on a stack already in place with the changed guard (the render does
+  not depend on the data); the idle defaults of the proxies of a real deployment.
+
+With this, ticket 27's review criterion is met: the policies
+(`docs/evidence/2026-11-14-policies-role-floor.md`) and the access rules and reads were each
+reviewed on their own, the refresh, the page, the logging, the delivery and the whole branch
+were reviewed in turn, the security review covered the fork's own work as a whole, and this
+review covered what came after the last of those. Every finding is fixed or recorded in the
+evidence of its review.

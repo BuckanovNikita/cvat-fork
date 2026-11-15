@@ -281,11 +281,12 @@ history carries the same details, so a redaction at the tip would withdraw nothi
 - The owner's decision on finding 1 (issue 19).
 - ~~With a live stack: merge, rebuild, `up`, live `check-render`, the pod under the
   restrictions, `down`.~~ Done; see part four.
-- The reviewer's second pass over the commits after `fe87ffaf`, these fixes included, before any
-  criterion of ticket 28 is ticked.
-- The whole service suite on both ClickHouse images (run by the orchestrator from the first
+- ~~The reviewer's second pass over the commits after `fe87ffaf`, these fixes included, before any
+  criterion of ticket 28 is ticked.~~ Done; see part five.
+- ~~The whole service suite on both ClickHouse images (run by the orchestrator from the first
   step's head; nothing under `team-analytics/service/`, the ClickHouse component or
-  `verify/team_analytics_service.sh` changed after it, the merge included).
+  `verify/team_analytics_service.sh` changed after it, the merge included).~~ Done; see part
+  five.
 
 ## Part four: the live run, 2026-11-15
 
@@ -346,3 +347,94 @@ left in place.
 A read-only root filesystem (not tried). The guard's refusals were seen only on doctored
 renders judged offline; live, only acceptances were seen. The worker pool, the NetworkPolicy,
 the ClickHouse account and the limits on reads remain as recorded.
+
+## Part five: the reviewer's second pass and the whole suite, 2026-11-15
+
+The same reviewer, under the same rules, reviewed the integration tip `02e5423d`: the 22
+commits after `fe87ffaf`, which hold the rest of the final run, the answers of part two and
+the answers to the review of the final run's tooling
+(`docs/evidence/2026-11-15-integrated-branch-review.md`). It changed no tracked file, used no
+cluster and built no image.
+
+### What it ran
+
+- The idle probe again on the real server, with the limit shortened to 3 s: 50 silent and 50
+  half-sent connections were all closed and their threads ended.
+- Every doctored render of all the reviews that it had, and 14 new ones, against the changed
+  guard (PyYAML in place of kubectl, as before).
+- The two refusals of the service image build (a base that is not local; an image name equal
+  to the base). Neither built anything.
+- The scan of blobs, commit messages and secrets over the new range and the tip.
+- One advisory query to the public OSV database with the 70 package names and versions of
+  `verify/package-lock.json` and ruff's, and nothing else.
+
+### The six findings of part one
+
+1. Cutover and self-reported figures: recorded accurately in the fork specification, in
+   issue 19 of the Team Analytics tracker and in this file, and not softer than the finding.
+   Waits for the owner.
+2. Idle connections: fixed as claimed. A client that sends a byte now and then keeps its
+   connection, since the limit applies to each read: 20 connections that sent one header
+   byte every 1.5 s were all still open after 12 s. The specification says so.
+3. Privilege: fixed in the manifest; the live pod of part four was read, not rerun. The
+   ClickHouse account and the limits on reads are recorded.
+4. Render guard: fixed for every form the review named. The stack's own Ingress is
+   accepted; a foreign host, a wildcard, an annotation, a host in other letter case, NFS,
+   inline CSI, Endpoints, a claim naming a volume and a token Secret are refused. The
+   review's assumption that kubectl refuses duplicate keys was wrong (part four).
+5. Builds: fixed as claimed. As with `build-server.sh`, `--pull=false` protects only on the
+   default builder; another builder was not tried.
+6. Public history: recorded, with an accurate reason.
+
+### New in the second pass
+
+7. **Low, recorded: a claim can still bind an existing volume without naming it.** The guard
+   accepted three renders added to the genuine one: a PersistentVolumeClaim with an empty
+   storage class and a label selector, the same in a StatefulSet's claim templates, and an
+   empty storage class alone. On a shared cluster such a claim can bind another project's
+   free volume. Only a changed chart or stack manifest could bring one: the genuine render
+   has none, and the guard is not in what was pushed. It stands, for this reason: it was
+   found in the second pass, after the guard's change had been shown on a live `up`, and a
+   further change to the guard would need that showing again; the rule set before the
+   second pass was that a new low finding is recorded. The fork specification and the
+   stack's README now name these forms as not judged, so that neither says more than the
+   guard checks. A later change to the guard should refuse a claim or claim template with a
+   selector, a data source or a storage class other than unset.
+8. **Note, not a defect of the fork: the chart's Grafana is anonymous Admin.** With analytics
+   enabled, upstream's chart deploys Grafana with anonymous access in the Admin role and the
+   sign-in form off. Through the stack it is reachable only on the loopback port-forward and
+   only after the proxy has asked CVAT, which grants it to accounts with analytics access.
+   Any pod in the cluster can reach its Service directly. There is no default password to
+   guess. It matters for a real deployment that keeps the chart's analytics defaults; the
+   fork specification now says so beside upstream's other defaults.
+
+### The rest of the second pass
+
+- The launcher changes of the final run put no credential on a host command line or in a
+  log, and what they write into the cluster stays inside the disposable namespace.
+- This file was compared with the review's report: faithful in kinds, counts, file names,
+  runs and the list of what was not checked; no home prefix, no account name, no e-mail
+  address other than the two no-reply ones.
+- What a push of the tip would add, restated for `6cedd049..02e5423d` (331 commits, 722
+  blobs outside the import, all scanned, with all messages): no binary blob, no home prefix,
+  no e-mail address, no host name of the machine, no private address, no key, certificate,
+  Secret, token or cookie value apart from test fixtures, and passwords only of the
+  disposable stack and the tests. The account name inside the namespace is in the same
+  seven tracked files as before. A push would add no new kind of identifying detail and no
+  secret.
+- Advisories, as of 2026-11-15: OSV lists none for the 70 package versions of
+  `verify/package-lock.json` or for ruff 0.17.3. A version known to be vulnerable, sent as a
+  control, came back with advisories.
+- Not checked in the second pass: any live run; 13 doctored renders that only the
+  implementer had; a real build of the service image; a builder other than the default;
+  whether a claim with a selector would in fact bind another project's volume on this
+  cluster.
+
+### The whole service suite with these fixes
+
+Run by the orchestrator from a snapshot of the service tree at `21ed4fdc`. Nothing under
+`team-analytics/service/`, `cvat/components/analytics/clickhouse/` or
+`verify/team_analytics_service.sh` differs between that commit and `02e5423d`
+(`git diff --stat`, empty). Last lines of the two logs:
+`cvat/clickhouse:23.12.2-debian-11-r0`: `Ran 321 tests in 2586.225s`, `OK`, `exit=0`;
+`clickhouse/clickhouse-server:23.11-alpine`: `Ran 321 tests in 2471.951s`, `OK`, `exit=0`.

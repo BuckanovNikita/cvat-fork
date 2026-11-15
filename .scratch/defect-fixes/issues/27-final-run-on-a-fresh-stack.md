@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 to 26 (every ticket before this one).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] `up`, `up`, `down` from an empty namespace, with all three images built from the integrated branch, passes and leaves nothing behind.
 - [x] The full service suite passes on both ClickHouse versions; the three fast frontend suites and the gate pass.
@@ -16,7 +16,7 @@
 - [x] The fork specification states the limits that remain: counts lost on tab close; tags and objects made with the interactive AI or OpenCV tools are not counted; a session is at most a day long; in 3D jobs only sessions and working time are measured; a shape-tagged event with a wrongly early date. Limits that were fixed are gone from it.
 - [x] The ten acceptance criteria of the Team Analytics tickets that were ticked on a reading are restated in their tickets as what was shown, and ticked again only where this run shows them.
 - [x] One dated evidence file separates live outcomes from tests with supplied boundaries and lists what remains unverified.
-- [ ] The integrated branch gets an independent review, with the access rules and the policies reviewed on their own. Findings are fixed or recorded.
+- [x] The integrated branch gets an independent review, with the access rules and the policies reviewed on their own. Findings are fixed or recorded.
 - [x] The stack is torn down unless the owner asks to keep it.
 
 ## Comments
@@ -26,3 +26,5 @@
 2026-11-15: Part two run; evidence in `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`. Images built from the integrated branch at `b8521e3f`. The first fresh `up` passed on its second attempt: the first stopped at a 429 from CVAT's sign-in throttle after the volume's hundred sign-ins (fixed in the launcher, `d61dd877`; the namespace was deleted and `up` repeated from an empty one). The second `up` passed on its second attempt: the first failed the seed check on a stack holding the volume (fixed, `abb02a10`). `run.sh check-fixes` needed changes to five of its steps on first contact with the stack (commits `c61ec366`, `674ab90c`); it then passed end to end. Two criteria were split under the accepted ticking rule: criterion 3's two paths the browser could not reach, and criterion 4's side-by-side rendering. Criterion 9 is left unticked: the reviews named in the evidence cover the branch up to `de181cd7` and the three follow-ups; whether the last follow-up (`b8521e3f`) and this ticket's stack tooling get an independent review is the orchestrator's call. `down` left nothing behind.
 
 2026-11-15: The gate: `prek run --all-files` with hook skips cleared passed on `20d9e45b` (ESLint, stylelint, the type check, ruff, both policy tests, the three fast frontend suites); the integration branch at `b8521e3f` is merged.
+
+2026-11-15 (last): The review criterion is ticked. The policies and the access rules were each reviewed on their own, the other parts in turn, and the whole branch by a code review; a fresh reviewer then covered what came after the last of those (`de181cd7..02e5423d`: the answers to the last review, this run's tooling, and the answers to the security review), in two passes. Its seven low findings on this run's tooling are fixed or recorded, the fixed ones shown on a live stack (`docs/evidence/2026-11-15-integrated-branch-review.md`, the last two sections); the security review is ticket 28. Resolved on `feat/team-analytics-page` by merges `ba33aeb4` and `02e5423d`, with two lines left unticked on purpose: the two paths a browser did not reach, and the prototype rendered beside the page. Both are listed for the owner as not shown.
