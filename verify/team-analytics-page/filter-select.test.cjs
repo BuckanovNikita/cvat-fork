@@ -306,3 +306,130 @@ test('a card row click still sets the filter, and the selector shows it', async 
         assert.match(button(view.container, 'annotator').textContent, /alice/);
     });
 });
+
+test('after typing, the first match is active and Enter picks it; with no match nothing is active', async () => {
+    const { history, Page } = openPage();
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        const input = selector(view.container, 'annotator').querySelector('input[role="combobox"]');
+        const activeName = () => {
+            const active = input.getAttribute('aria-activedescendant');
+            return active ? document.getElementById(active).textContent : null;
+        };
+        await type(input, 'nobody');
+        assert.equal(activeName(), null, 'no match: no active option');
+        await press(input, 'Enter');
+        assert.equal(history.location.search, '', 'Enter does nothing');
+        assert.ok(selector(view.container, 'annotator').querySelector('[role="listbox"]'), 'still open');
+        await type(input, 'ZO');
+        assert.equal(activeName(), 'zoe', 'the first match, not All');
+        await press(input, 'Enter');
+        await view.settle();
+        assert.equal(history.location.search, '?annotator=40&org=team-org&period=week');
+    });
+});
+
+test('typing while the list loads makes the first match active once it arrives', async () => {
+    let answer;
+    const pending = new Promise((resolve) => { answer = resolve; });
+    const { Page } = openPage({ lists: () => pending });
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        const input = selector(view.container, 'annotator').querySelector('input[role="combobox"]');
+        await type(input, 'ali');
+        answer({ body: ANNOTATORS });
+        await view.settle();
+        assert.equal(document.getElementById(input.getAttribute('aria-activedescendant')).textContent, 'alice');
+    });
+});
+
+test('the clear button gives the focus to the selector\'s button', async () => {
+    const { Page } = openPage({ search: '?annotator=11&org=team-org' });
+    await opened(Page, async (view) => {
+        const clear = selector(view.container, 'annotator').querySelector('.cvat-team-analytics-filter-clear');
+        clear.focus();
+        await click(clear);
+        await view.settle();
+        assert.equal(selector(view.container, 'annotator').querySelector('.cvat-team-analytics-filter-clear'), null);
+        assert.equal(document.activeElement, button(view.container, 'annotator'));
+    });
+});
+
+test('an open dropdown closes when the period or the organization changes under it', async () => {
+    const { history, Page } = openPage();
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        assert.ok(selector(view.container, 'annotator').querySelector('[role="listbox"]'));
+        await act(async () => { history.push('/team-analytics?period=two_weeks&org=team-org'); });
+        await view.settle();
+        assert.equal(selector(view.container, 'annotator').querySelector('[role="listbox"]'), null, 'closed');
+        assert.equal(button(view.container, 'annotator').getAttribute('aria-expanded'), 'false');
+        assert.equal(document.activeElement, button(view.container, 'annotator'), 'the focus was in it: back to the button');
+        // a filter change keeps the options: an open dropdown stays open
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        await act(async () => { history.push('/team-analytics?period=two_weeks&project=1&org=team-org'); });
+        await view.settle();
+        assert.ok(selector(view.container, 'annotator').querySelector('[role="listbox"]'), 'still open');
+    });
+});
+
+const { placePopup } = loadPage('filter-select.tsx');
+
+test('the popup is placed inside the page container', () => {
+    const container = { left: 0, right: 1000 };
+    assert.deepEqual(placePopup({ left: 100, right: 300 }, 360, container), { side: 'left' });
+    assert.deepEqual(placePopup({ left: 800, right: 990 }, 360, container), { side: 'right' }, 'near the right edge');
+    // a box too far right for a left-anchored popup and too far left for a right-anchored one: shifted to the
+    // container's left edge, no wider than the container
+    assert.deepEqual(placePopup({ left: 150, right: 300 }, 360, { left: 0, right: 400 }),
+        { side: 'shifted', left: -150, maxWidth: 400 });
+});
+
+test('opening near the right edge of the page anchors the popup to the box\'s right edge', async () => {
+    const { Page } = openPage();
+    const rects = {
+        'cvat-team-analytics-page': { left: 0, right: 1000, width: 1000 },
+        'cvat-team-analytics-filter-annotator': { left: 800, right: 990, width: 190 },
+        'cvat-team-analytics-filter-project': { left: 32, right: 250, width: 218 },
+        'cvat-team-analytics-filter-popup': { left: 799, right: 1159, width: 360 },
+    };
+    const original = window.HTMLElement.prototype.getBoundingClientRect;
+    window.HTMLElement.prototype.getBoundingClientRect = function measured() {
+        const found = Object.keys(rects).find((name) => this.classList.contains(name));
+        return found ? { top: 0, bottom: 36, height: 36, ...rects[found] } : original.call(this);
+    };
+    try {
+        await opened(Page, async (view) => {
+            await click(button(view.container, 'annotator'));
+            await view.settle();
+            const popup = selector(view.container, 'annotator').querySelector('.cvat-team-analytics-filter-popup');
+            // the class sets `right: -1px; left: auto` (projects-filters.scss)
+            assert.ok(popup.classList.contains('cvat-team-analytics-filter-popup-right'), popup.className);
+            // the project selector at the left keeps the default placement
+            await click(button(view.container, 'project'));
+            await view.settle();
+            const left = selector(view.container, 'project').querySelector('.cvat-team-analytics-filter-popup');
+            assert.ok(left.classList.contains('cvat-team-analytics-filter-popup-left'), left.className);
+            assert.equal(left.getAttribute('style'), null);
+            // a narrow page: shifted to the container's left edge, no wider than the container
+            Object.assign(rects, {
+                'cvat-team-analytics-page': { left: 0, right: 400, width: 400 },
+                'cvat-team-analytics-filter-annotator': { left: 150, right: 300, width: 150 },
+            });
+            // still open from before: closed, then opened again
+            await click(button(view.container, 'annotator'));
+            await click(button(view.container, 'annotator'));
+            await view.settle();
+            const shifted = selector(view.container, 'annotator').querySelector('.cvat-team-analytics-filter-popup');
+            assert.ok(shifted.classList.contains('cvat-team-analytics-filter-popup-shifted'), shifted.className);
+            assert.equal(shifted.style.left, '-150px');
+            assert.equal(shifted.style.maxWidth, '400px');
+        });
+    } finally {
+        window.HTMLElement.prototype.getBoundingClientRect = original;
+    }
+});

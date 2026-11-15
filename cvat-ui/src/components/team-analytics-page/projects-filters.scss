@@ -183,6 +183,12 @@ button.cvat-team-analytics-breakdown-row {
     border-radius: $border-radius-base;
     background: $background-color-1;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 12%);
+
+    // near the right edge of the page the popup opens from the box's right edge (filter-select.tsx, placePopup)
+    &.cvat-team-analytics-filter-popup-right {
+        right: -1px;
+        left: auto;
+    }
 }
 
 .cvat-team-analytics-filter-search {

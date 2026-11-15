@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 import React, {
-    useEffect, useId, useRef, useState,
+    useEffect, useId, useLayoutEffect, useRef, useState,
 } from 'react';
 import { DownOutlined } from '@ant-design/icons';
 
@@ -21,6 +21,8 @@ export interface FilterSelectProps {
     selected: number | null;
     // the options of the period shown; asked each time the dropdown opens (the page keeps them in memory)
     load?: () => Promise<FilterOptions>;
+    // what the options belong to (organization, period, month, data reload): an open dropdown closes when it changes
+    optionsKey?: string;
     // the name an option is shown and searched by
     nameOf: (option: FilterOption) => string;
     // null: all
@@ -40,22 +42,47 @@ const STATUS: Record<Exclude<Answer['kind'], 'ready'>, string> = {
     failed: 'Could not load the list',
 };
 
+// Where the popup sits: under the box from its left edge (the default), from its right edge, or shifted to the
+// page container's left edge and as wide as the container at most, so that it never passes the container's edges
+// (the page container scrolls, and a popup past its right edge would make it scroll sideways)
+type Placement = { side: 'left' } | { side: 'right' } | { side: 'shifted'; left: number; maxWidth: number };
+
+// The popup's placement for the box, the popup's width and the container's left and right edges (viewport px)
+export function placePopup(
+    box: { left: number; right: number }, width: number, container: { left: number; right: number },
+): Placement {
+    // the popup's 1px border lines up with the box's (`left: -1px` / `right: -1px` in the styles)
+    if (box.left - 1 + width <= container.right) return { side: 'left' };
+    if (box.right + 1 - width >= container.left) return { side: 'right' };
+    return { side: 'shifted', left: container.left - box.left, maxWidth: container.right - container.left };
+}
+
+// left and right are the styles' classes; a shifted popup is placed inline
+function placementStyle(placement: Placement): React.CSSProperties | undefined {
+    return placement.side === 'shifted' ? { left: placement.left, maxWidth: placement.maxWidth } : undefined;
+}
+
 // One filter of the filter row as a searchable single-select dropdown: a button naming the filter and its value
 // opens a popup with a search field (the combobox) and the list of options (the listbox); the clear button
-// beside it removes an active filter. Keyboard: Enter, Space or ArrowDown opens; arrows move; Enter picks;
-// Escape closes and returns focus to the button. Clicking outside closes it.
+// beside it removes an active filter and gives the focus to the button. Keyboard: Enter, Space or ArrowDown
+// opens; arrows move; Enter picks the active option (after typing, the first match; with no match, nothing);
+// Escape closes and returns focus to the button. Clicking outside closes it, and so does a change of what the
+// options belong to (another period or organization).
 export default function FilterSelect({
-    kind, label, allLabel, value, selected, load, nameOf, onPick,
+    kind, label, allLabel, value, selected, load, optionsKey = '', nameOf, onPick,
 }: FilterSelectProps): JSX.Element {
     const id = useId();
     const listId = `${id}-options`;
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [answer, setAnswer] = useState<Answer>({ kind: 'loading' });
+    // the index of the active option in `items`; -1: none (a search without a match)
     const [active, setActive] = useState(0);
+    const [placement, setPlacement] = useState<Placement>({ side: 'left' });
     const wrapper = useRef<HTMLDivElement>(null);
     const button = useRef<HTMLButtonElement>(null);
     const search = useRef<HTMLInputElement>(null);
+    const popup = useRef<HTMLDivElement>(null);
     // the latest opening: an answer that arrives after another opening, or after closing, is dropped
     const opening = useRef(0);
 
@@ -64,8 +91,11 @@ export default function FilterSelect({
     })) : [];
     // a selected value that is not among the options (a shared link, a period without figures) stays offered
     if (selected !== null && !rows.some((row) => row.id === selected)) rows = [{ id: selected, name: value }, ...rows];
-    const items: Item[] = [{ id: null, name: allLabel }, ...arrange(rows, query, 'value')];
+    const matching = (typed: string): Item[] => arrange(rows, typed, 'value');
+    const items: Item[] = [{ id: null, name: allLabel }, ...matching(query)];
     const activeIndex = Math.min(active, items.length - 1);
+    // after typing, the first match is active, not All; with no match nothing is
+    const firstMatch = (typed: string): number => (matching(typed).length ? 1 : -1);
 
     let status: string | null = null;
     if (answer.kind !== 'ready') status = STATUS[answer.kind];
@@ -83,6 +113,7 @@ export default function FilterSelect({
         setOpen(true);
         setQuery('');
         setActive(0);
+        setPlacement({ side: 'left' });
         if (!load) {
             setAnswer({ kind: 'ready', options: [] });
             return;
@@ -112,12 +143,39 @@ export default function FilterSelect({
         return () => document.removeEventListener('mousedown', onPointer);
     }, [open]);
 
-    // on a new answer, the selected option becomes the active one
+    // on opening, the popup is placed so that it stays inside the page container (measured before it is painted)
+    useLayoutEffect(() => {
+        const box = wrapper.current;
+        const shown = popup.current;
+        if (!open || !box || !shown) return;
+        const container = box.closest('.cvat-team-analytics-page') ?? document.documentElement;
+        const edges = container.getBoundingClientRect();
+        // the right edge without a vertical scroll bar
+        const right = edges.left + (container.clientWidth || edges.width);
+        setPlacement(placePopup(box.getBoundingClientRect(), shown.getBoundingClientRect().width, {
+            left: edges.left, right,
+        }));
+    }, [open]);
+
+    // on a new answer, the selected option becomes the active one, or the first match of what was typed meanwhile
     useEffect(() => {
         if (!open) return;
+        if (query.trim()) {
+            setActive(firstMatch(query));
+            return;
+        }
         const index = items.findIndex((item) => item.id === selected);
         setActive(index < 0 ? 0 : index);
     }, [answer]);
+
+    // the options shown belong to one period and organization: when those change, an open dropdown closes (its
+    // focus goes back to the button if it was in the dropdown)
+    const shownKey = useRef(optionsKey);
+    useEffect(() => {
+        if (shownKey.current === optionsKey) return;
+        shownKey.current = optionsKey;
+        if (open) close(!!wrapper.current?.contains(document.activeElement));
+    }, [optionsKey]);
 
     useEffect(() => {
         if (!open) return;
@@ -142,7 +200,7 @@ export default function FilterSelect({
             setActive(Math.max(activeIndex - 1, 0));
         } else if (event.key === 'Enter') {
             event.preventDefault();
-            pick(items[activeIndex]);
+            if (activeIndex >= 0) pick(items[activeIndex]);
         } else if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
@@ -180,13 +238,21 @@ export default function FilterSelect({
                     className='cvat-team-analytics-filter-clear'
                     aria-label={`Show all ${plural}`}
                     title={`Show all ${plural}`}
-                    onClick={() => onPick(null)}
+                    onClick={() => {
+                        onPick(null);
+                        // this button goes away with the filter: the focus stays in the selector
+                        button.current?.focus();
+                    }}
                 >
                     ×
                 </button>
             ) : null}
             {open ? (
-                <div className='cvat-team-analytics-filter-popup'>
+                <div
+                    ref={popup}
+                    className={`cvat-team-analytics-filter-popup cvat-team-analytics-filter-popup-${placement.side}`}
+                    style={placementStyle(placement)}
+                >
                     <input
                         ref={search}
                         className='cvat-team-analytics-filter-search'
@@ -196,14 +262,14 @@ export default function FilterSelect({
                         aria-autocomplete='list'
                         aria-expanded
                         aria-controls={listId}
-                        aria-activedescendant={`${id}-option-${activeIndex}`}
+                        aria-activedescendant={activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
                         placeholder={`Search ${plural}`}
                         autoComplete='off'
                         spellCheck={false}
                         value={query}
                         onChange={(event) => {
                             setQuery(event.target.value);
-                            setActive(0);
+                            setActive(event.target.value.trim() ? firstMatch(event.target.value) : 0);
                         }}
                         onKeyDown={onSearchKey}
                     />

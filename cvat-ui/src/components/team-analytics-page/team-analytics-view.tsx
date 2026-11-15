@@ -323,6 +323,9 @@ export default function TeamAnalyticsView({
                         annotatorLabel={annotatorLabel(filters.annotator, shownOverview)}
                         onChange={onAddressChange as (change: Partial<Filters>) => void}
                         loadOptions={loadFilterOptions}
+                        optionsKey={[
+                            organization ?? '', (address as Address).period, (address as Address).month ?? '', reloadKey,
+                        ].join('|')}
                         projectNameOf={(id) => projectName(id, projectNames)}
                     />
                     {refresh ? <FreshnessStamp refresh={refresh} timeZone={timeZone} /> : null}
