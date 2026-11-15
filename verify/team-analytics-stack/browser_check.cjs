@@ -123,8 +123,17 @@ async function signIn(browser, username, org = ORG) {
     await page.evaluate(`localStorage.setItem("currentOrganization", ${JSON.stringify(org)})`);
     await page.type('#credential', username);
     await page.type('#password', PASSWORD);
-    await page.evaluate('document.querySelector(".cvat-credentials-action-button").click()');
-    await page.waitFor('location.pathname !== "/auth/login" && !!document.querySelector(".cvat-header")', `${username} signed in`);
+    // CVAT throttles sign-ins (429), as after the volume's hundred: the form is sent again after a pause,
+    // for up to five minutes in all
+    const signedIn = 'location.pathname !== "/auth/login" && !!document.querySelector(".cvat-header")';
+    for (let attempt = 1; ; attempt++) {
+        await page.evaluate('document.querySelector(".cvat-credentials-action-button").click()');
+        const done = await page.waitFor(signedIn, `${username} signed in`, 20000).catch(() => false);
+        if (done) break;
+        if (attempt >= 10) throw new Error(`${username} could not sign in after ${attempt} attempts`);
+        log(`${username}: not signed in yet (attempt ${attempt}); sending the form again in 25 s`);
+        await sleep(25000);
+    }
     await page.waitFor(
         `document.querySelector(".cvat-header-menu-user-dropdown-organization")?.textContent.trim() === ${JSON.stringify(org)}`,
         `${username} in ${org}`,
