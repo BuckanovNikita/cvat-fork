@@ -247,6 +247,22 @@ class ProcessedTest(FullViewCase):
         self.assertEqual((body["hotkey_actions"], body["rows"]), (None, None))
         self.assertLessEqual({key for key, value in body.items() if value is not None}, envelope)
 
+    def test_a_bad_filter_or_shape_switch_is_refused_whether_or_not_the_period_is_processed(self):
+        self.stack.add_events([working_time(at("2026-10-01 10:00:00"), HOUR, user=ALICE, org=ORG)])
+        self.stack.refresh()
+        self.assertFalse(self.overview(period="year")["processed"])
+        self.refused_with_bad_values("year")
+        self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))
+        self.assertTrue(self.overview(period="week")["processed"])
+        self.refused_with_bad_values("week")
+
+    def refused_with_bad_values(self, period: str) -> None:
+        for by in ("hotkeys", "annotators", "projects"):
+            for bad in ({"annotator": "x"}, {"project": "-1"}, {"shapes": "boxes"}):
+                with self.subTest(period=period, by=by, bad=bad):
+                    status, body = self.stack.get(LIST, "lead", org="org7", by=by, period=period, **bad)
+                    self.assertEqual((status, body.get("error")), (400, "bad_request"), body)
+
     def test_a_wholly_processed_period_keeps_its_figures(self):
         self.stack.add_events([working_time(at("2026-11-12 10:00:00"), HOUR, user=ALICE, org=ORG)])
         self.stack.refresh()  # every event inside the trailing hours: all of history is processed
