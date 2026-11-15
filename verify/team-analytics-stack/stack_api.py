@@ -11,6 +11,7 @@ Environment: TA_BASE_URL, TA_SEED_PASSWORD. Standard library only.
 import http.cookiejar
 import json
 import os
+import re
 import struct
 import sys
 import time
@@ -31,6 +32,18 @@ ACCOUNTS = json.loads((Path(__file__).parent / "accounts.json").read_text())
 EXTRA_PAYLOAD = {"shape_type": "rectangle"}
 
 
+THROTTLE_WAIT_S = 300
+
+
+def _retry_after(error: urllib.error.HTTPError, detail: str) -> int | None:
+    """The seconds a 429 asks for: its Retry-After header, else the number in DRF's detail text."""
+    header = error.headers.get("Retry-After") if error.headers else None
+    if header and header.strip().isdigit():
+        return int(header.strip()) + 1
+    found = re.search(r"available in (\d+) second", detail)
+    return int(found.group(1)) + 1 if found else None
+
+
 class Session:
     def __init__(self, username: str) -> None:
         self.jar = http.cookiejar.CookieJar()
@@ -49,11 +62,22 @@ class Session:
         if method != "GET":
             req.add_header("Origin", BASE_URL)
             req.add_header("X-CSRFTOKEN", self._csrf())
-        try:
-            with self.opener.open(req, timeout=60) as resp:
-                text = resp.read().decode()
-        except urllib.error.HTTPError as e:
-            raise SystemExit(f"{self.username}: {method} {path} -> {e.code} {e.read().decode()[:300]}") from None
+        # CVAT throttles requests (the login above all, after the volume's hundred sign-ins) with a 429 that
+        # names the wait; the request is sent again after it, within THROTTLE_WAIT_S in all
+        waited = 0
+        while True:
+            try:
+                with self.opener.open(req, timeout=60) as resp:
+                    text = resp.read().decode()
+                break
+            except urllib.error.HTTPError as e:
+                detail = e.read().decode()[:300]
+                wait = _retry_after(e, detail) if e.code == 429 else None
+                if wait is None or waited + wait > THROTTLE_WAIT_S:
+                    raise SystemExit(f"{self.username}: {method} {path} -> {e.code} {detail}") from None
+                print(f"  {self.username}: {method} {path} throttled, again in {wait} s", file=sys.stderr, flush=True)
+                time.sleep(wait)
+                waited += wait
         return json.loads(text) if text.strip() else None
 
     def call(self, path: str) -> tuple[int, object]:
