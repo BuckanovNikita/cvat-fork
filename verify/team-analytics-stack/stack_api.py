@@ -110,11 +110,20 @@ def seed_check() -> None:
         print(f"  {username}: groups={groups}")
     for slug, spec in ACCOUNTS["organizations"].items():
         owner = next(u for u, r in spec["members"].items() if r == "owner")
-        page = Session(owner).request("GET", f"/api/memberships?org={slug}&page_size=100")
-        found = {m["user"]["username"]: (m["role"], m["is_active"]) for m in page["results"]}
+        session, found, n = Session(owner), {}, 1
+        while True:  # every page: the volume's organization holds more than one
+            page = session.request("GET", f"/api/memberships?org={slug}&page_size=100&page={n}")
+            found.update({m["user"]["username"]: (m["role"], m["is_active"]) for m in page["results"]})
+            if not page.get("next"):
+                break
+            n += 1
         expected = {u: (r, True) for u, r in spec["members"].items()}
-        check(found == expected, f"{slug} memberships {found}")
-        print(f"  {slug}: {found}")
+        # on a rerun the final run's volume annotators are members too (final_run.py, VOLUME_MARK); nothing else
+        others = {u: m for u, m in found.items() if u not in expected}
+        volume = {u for u, m in others.items() if u.startswith("ta-volume-annotator-") and m == ("worker", True)}
+        check({u: found.get(u) for u in expected} == expected and set(others) == volume,
+              f"{slug} memberships {found}")
+        print(f"  {slug}: {expected}" + (f" and {len(volume)} volume annotators" if volume else ""))
     for username in ACCOUNTS["users"]:
         if any(username in o["members"] for o in ACCOUNTS["organizations"].values()):
             continue
