@@ -82,6 +82,15 @@
     width: 100%;
 }
 
+// in the picker's list: a user already on the list (a disabled option) and a search that failed
+.cvat-team-analytics-settings-listed {
+    font-style: italic;
+}
+
+.cvat-team-analytics-settings-search-failed {
+    color: #a8071a;
+}
+
 .cvat-team-analytics-settings-error {
     padding: $grid-unit-size $grid-unit-size * 1.5;
     border: 1px solid #ffccc7;

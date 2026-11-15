@@ -41,6 +41,9 @@ function userLabel(user: SettingsUser): string {
     return name ? `${user.username} (${name})` : user.username;
 }
 
+// The server refuses a longer search (400)
+export const SEARCH_MAX_LENGTH = 150;
+
 // "Team Analytics settings": the Technical accounts list of the instance, edited here by an administrator and
 // saved as a whole. A change applies to every past period the next time the page is loaded.
 export default function SettingsModal({
@@ -50,13 +53,22 @@ export default function SettingsModal({
     const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
     const [accounts, setAccounts] = useState<TechnicalAccount[]>([]);
     const [users, setUsers] = useState<SettingsUser[]>([]);
+    const [query, setQuery] = useState('');
     const [searching, setSearching] = useState(false);
+    const [searchFailed, setSearchFailed] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     // the latest load and search: an answer to an older one is dropped
     const loads = useRef(0);
     const searches = useRef(0);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // the current opening of the modal: a save's result that belongs to an earlier opening is dropped
+    const openings = useRef(0);
+    // a save is on its way: no second save, and the modal does not close until it is answered
+    const inFlight = useRef(false);
+    // the text typed so far, for the search that opening the list starts (typing into the closed picker opens it
+    // too, and that search must not replace the typed one with an empty one)
+    const typedText = useRef('');
 
     const load = (): void => {
         loads.current += 1;
@@ -75,18 +87,27 @@ export default function SettingsModal({
 
     useEffect(() => {
         if (!open) return undefined;
+        openings.current += 1;
+        inFlight.current = false;
         setError(null);
         setSaving(false);
         setUsers([]);
+        typedText.current = '';
+        setQuery('');
+        setSearchFailed(false);
         load();
         return () => {
+            openings.current += 1;
             loads.current += 1;
             searches.current += 1;
             if (timer.current) clearTimeout(timer.current);
         };
     }, [open]);
 
-    const search = (text: string): void => {
+    const search = (typed: string): void => {
+        const text = typed.slice(0, SEARCH_MAX_LENGTH);
+        typedText.current = text;
+        setQuery(text);
         if (timer.current) clearTimeout(timer.current);
         searches.current += 1;
         const { current } = searches;
@@ -95,14 +116,15 @@ export default function SettingsModal({
             searchUsers(text.trim(), requestService).then((found) => {
                 if (searches.current !== current) return;
                 setUsers(found ?? []);
+                setSearchFailed(found === null);
                 setSearching(false);
             });
         }, searchDelayMs);
     };
 
+    // the search answers at most 20 users, accounts already on the list among them: those are shown, marked and
+    // not offered, so that the answer does not look shorter than it is
     const listed = new Set(accounts.map((account) => account.user_id));
-    // accounts already on the list are not offered
-    const offered = users.filter((user) => !listed.has(user.id));
 
     const add = (userId: number): void => {
         const user = users.find((candidate) => candidate.id === userId);
@@ -111,14 +133,30 @@ export default function SettingsModal({
     };
 
     const save = (): void => {
+        // the modal's own guard: a second Save (a double click, Enter) does not send a second list
+        if (inFlight.current) return;
+        inFlight.current = true;
+        const opening = openings.current;
         setSaving(true);
         setError(null);
         saveSettings(accounts.map((account) => account.user_id), requestSettings).then((result) => {
+            // an answer for an earlier opening (the modal was closed by a refusal meanwhile) changes nothing here
+            if (openings.current !== opening) return;
+            inFlight.current = false;
             setSaving(false);
             if (result.kind === 'saved') onSaved();
             else setError(result.error);
         });
     };
+
+    // Cancel, the close button, Escape and the mask do nothing while a save is on its way
+    const cancel = (): void => {
+        if (!inFlight.current) onClose();
+    };
+
+    let notFound = 'No users found';
+    if (searching) notFound = 'Searching…';
+    else if (searchFailed) notFound = 'The search could not be completed.';
 
     let body: JSX.Element;
     if (loaded.kind === 'loading') {
@@ -181,11 +219,33 @@ export default function SettingsModal({
                     placeholder='Search users by name'
                     value={null}
                     loading={searching}
-                    notFoundContent={searching ? 'Searching…' : 'No users found'}
-                    options={offered.map((user) => ({ value: user.id, label: userLabel(user) }))}
+                    searchValue={query}
+                    notFoundContent={(
+                        <span
+                            className={`cvat-team-analytics-settings-search-status${
+                                searchFailed && !searching ? ' cvat-team-analytics-settings-search-failed' : ''}`}
+                        >
+                            {notFound}
+                        </span>
+                    )}
+                    options={(searchFailed ? [] : users).map((user) => ({
+                        value: user.id,
+                        disabled: listed.has(user.id),
+                        label: listed.has(user.id) ? (
+                            <>
+                                {userLabel(user)}
+                                {' '}
+                                <span className='cvat-team-analytics-settings-listed'>already on the list</span>
+                            </>
+                        ) : userLabel(user),
+                    }))}
                     onSearch={search}
-                    onDropdownVisibleChange={(visible: boolean) => { if (visible) search(''); }}
-                    onChange={(value: number | null) => { if (value !== null) add(value); }}
+                    onDropdownVisibleChange={(visible: boolean) => { if (visible) search(typedText.current); }}
+                    onChange={(value: number | null) => {
+                        if (value !== null) add(value);
+                        typedText.current = '';
+                        setQuery('');
+                    }}
                 />
             </>
         );
@@ -198,10 +258,12 @@ export default function SettingsModal({
             open={open}
             okText='Save'
             onOk={save}
-            onCancel={onClose}
+            onCancel={cancel}
             confirmLoading={saving}
+            maskClosable={!saving}
+            keyboard={!saving}
             okButtonProps={{ disabled: loaded.kind !== 'ready', className: 'cvat-team-analytics-settings-save' }}
-            cancelButtonProps={{ className: 'cvat-team-analytics-settings-cancel' }}
+            cancelButtonProps={{ disabled: saving, className: 'cvat-team-analytics-settings-cancel' }}
             destroyOnClose
         >
             <section className='cvat-team-analytics-settings-section' aria-labelledby={`${id}-title`}>

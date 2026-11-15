@@ -170,15 +170,122 @@ test('while the list loads the modal says so, and a failed load can be tried aga
     });
 });
 
-test('the search asks the fork\'s user search and offers only accounts not on the list', async () => {
+test('the search asks the fork\'s user search; accounts on the list are shown disabled, marked, not offered', async () => {
     const { figures, Page } = openPage();
     await opened(Page, async (view) => {
         await openSettings(view);
         await searchFor(view, 'ta');
         const searches = figures.filter((sent) => sent.endpoint === 'settings/users');
         assert.deepEqual(searches.at(-1).params, { search: 'ta' });
-        assert.deepEqual(offered(), ['ta-loader (Upload Script)', 'tamara'], 'ta-bot is already listed');
+        // the server's 20 are all shown: one already listed is there, marked
+        assert.deepEqual(offered(), ['ta-bot already on the list', 'ta-loader (Upload Script)', 'tamara']);
+        const listed = document.body.querySelector('.cvat-team-analytics-settings-picker-dropdown .ant-select-item-option');
+        assert.ok(listed.classList.contains('ant-select-item-option-disabled'), listed.className);
+        assert.equal(listed.querySelector('.cvat-team-analytics-settings-listed').textContent, 'already on the list');
+        await click(listed);
+        await view.settle();
+        assert.deepEqual(rows(), ['ta-bot', 'deleted account, id 40'], 'choosing it adds nothing');
+        // removed from the list, it is offered again
+        await click(modal().querySelector('[aria-label="Remove ta-bot"]'));
+        await searchFor(view, 'ta');
+        assert.deepEqual(offered(), ['ta-bot', 'ta-loader (Upload Script)', 'tamara']);
     });
+});
+
+test('a failed user search says so, apart from a search without results; the text is limited to 150', async () => {
+    let answer = () => ({ status: 503, body: { error: 'unavailable' } });
+    const { figures, Page } = openPage({ users: () => answer() });
+    const statusOf = () => document.body.querySelector('.cvat-team-analytics-settings-search-status')?.textContent;
+    await opened(Page, async (view) => {
+        await openSettings(view);
+        await searchFor(view, 'ta');
+        assert.equal(statusOf(), 'The search could not be completed.', 'a 503');
+        assert.deepEqual(offered(), []);
+        answer = () => new Error('Network Error');
+        await searchFor(view, 'tam');
+        assert.equal(statusOf(), 'The search could not be completed.', 'no answer at all');
+        answer = () => ({ status: 400, body: { error: 'bad_request', detail: 'too long' } });
+        await searchFor(view, 'tama');
+        assert.equal(statusOf(), 'The search could not be completed.', 'a 400');
+        answer = () => ({ body: { users: [] } });
+        await searchFor(view, 'nobody');
+        assert.equal(statusOf(), 'No users found');
+
+        await searchFor(view, 'x'.repeat(160));
+        assert.equal(figures.filter((sent) => sent.endpoint === 'settings/users').at(-1).params.search, 'x'.repeat(150));
+        assert.equal(modal().querySelector('.cvat-team-analytics-settings-picker input').value.length, 150);
+    });
+});
+
+test('while a save is on its way the modal stays open and a second Save sends nothing', async () => {
+    let finish;
+    const { figures, settings, Page } = openPage({
+        settings: (sent) => (sent.method === 'PUT' ?
+            new Promise((resolve) => { finish = () => resolve({ body: SETTINGS }); }) : { body: SETTINGS }),
+    });
+    await opened(Page, async (view) => {
+        await openSettings(view);
+        const save = () => document.body.querySelector('.cvat-team-analytics-settings-save');
+        await click(save());
+        await click(save());
+        await view.settle();
+        await click(document.body.querySelector('.cvat-team-analytics-settings-cancel'));
+        await click(document.body.querySelector('.ant-modal-close'));
+        await act(async () => {
+            document.body.querySelector('.ant-modal-wrap').dispatchEvent(
+                new window.KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }),
+            );
+        });
+        await view.settle();
+        assert.ok(modal(), 'Cancel, the close button and Escape do nothing during the save');
+        assert.equal(settings.filter((sent) => sent.method === 'PUT').length, 1, 'one save');
+        const before = figures.length;
+        await act(async () => { finish(); });
+        await view.settle();
+        assert.equal(modal(), null, 'closed once the save is answered');
+        assert.ok(endpoints(figures.slice(before)).includes('overview'), 'and the figures reload');
+    });
+});
+
+test('a save answered after its modal was closed and opened again changes nothing in the new one', async () => {
+    const finish = [];
+    const saved = suppliedSettings((sent) => (sent.method === 'PUT' ?
+        new Promise((resolve) => { finish.push(resolve); }) : { body: SETTINGS }));
+    const SettingsModal = loadPage('settings-modal.tsx', {
+        './service': { ...loadPage('service.ts'), requestSettings: saved.request },
+    }).default;
+    let setOpen;
+    let savedCount = 0;
+    function Host() {
+        const [open, change] = React.useState(true);
+        setOpen = change;
+        return React.createElement(SettingsModal, { open, onClose() {}, onSaved() { savedCount += 1; } });
+    }
+    const view = await mount(React.createElement(Host));
+    try {
+        await view.settle();
+        await click(document.body.querySelector('.cvat-team-analytics-settings-save'));
+        await click(document.body.querySelector('.cvat-team-analytics-settings-save'));
+        // closed from outside (a refusal of another request) and opened again
+        await act(async () => { setOpen(false); });
+        await act(async () => { setOpen(true); });
+        await view.settle();
+        await act(async () => { finish[0]({ status: 400, body: null, message: 'An old failure.' }); });
+        await view.settle();
+        assert.equal(document.body.querySelector('.cvat-team-analytics-settings-error'), null, 'no old error');
+        assert.equal(document.body.querySelector('.cvat-team-analytics-settings-save').classList.contains('ant-btn-loading'),
+            false, 'not saving');
+        // the new opening saves on its own
+        await click(document.body.querySelector('.cvat-team-analytics-settings-save'));
+        await view.settle();
+        assert.equal(finish.length, 2, 'one save per opening');
+        await act(async () => { finish[1]({ body: SETTINGS }); });
+        await view.settle();
+        assert.equal(savedCount, 1);
+    } finally {
+        await view.unmount();
+        document.body.querySelectorAll('.ant-modal-root').forEach((element) => element.remove());
+    }
 });
 
 test('removing and adding, then Save, sends the whole list of ids; the modal closes and the figures reload', async () => {
