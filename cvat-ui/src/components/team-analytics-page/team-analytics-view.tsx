@@ -7,6 +7,8 @@ import Result from 'antd/lib/result';
 import Spin from 'antd/lib/spin';
 import Title from 'antd/lib/typography/Title';
 import Text from 'antd/lib/typography/Text';
+import Button from 'antd/lib/button';
+import { SettingOutlined } from '@ant-design/icons';
 
 import {
     FilterKind, FilterOptions, Overview, PageState, Period, ProjectNames, Status,
@@ -62,6 +64,10 @@ interface Props {
     renderDetails?: () => React.ReactNode;
     // the options of the Project and Annotator selectors for the period shown (loaded when one opens)
     loadFilterOptions?: (kind: FilterKind) => Promise<FilterOptions>;
+    // opens "Team Analytics settings"; without it the header has no Settings button
+    onOpenSettings?: () => void;
+    // changes when the page's data is loaded again (after a settings change): a full view loads its rows again
+    reloadKey?: number;
 }
 
 export interface TrendsOptions {
@@ -99,7 +105,7 @@ function scopeLabel(organization: string | null): string {
 export default function TeamAnalyticsView({
     organization, state, onBackToTasks, address, onAddressChange, pending = false, status = null,
     timeZone = 'UTC', currentMonth: latestMonth = currentMonth(), projectNames = {},
-    hotkeyLabels, renderTrends, renderDetails, loadFilterOptions,
+    hotkeyLabels, renderTrends, renderDetails, loadFilterOptions, onOpenSettings, reloadKey = 0,
 }: Props): JSX.Element {
     const filters: Filters = { project: address?.project ?? null, annotator: address?.annotator ?? null };
     // clicking a row sets it as the filter; clicking the selected row again removes it
@@ -163,6 +169,7 @@ export default function TeamAnalyticsView({
         const where = filters.project === null ? 'All projects' : projectName(filters.project, projectNames);
         const full = (
             <FullView
+                key={reloadKey}
                 view={address.view}
                 rows={address.rows ?? 'annotators'}
                 overview={overview}
@@ -267,17 +274,29 @@ export default function TeamAnalyticsView({
     }
 
     const showFilters = !!address && !!onAddressChange && ['ready', 'loading', 'error'].includes(state.kind);
+    const showSettings = !!onOpenSettings && ['ready', 'loading', 'error'].includes(state.kind);
     const refresh = state.kind === 'ready' ? status?.refresh : undefined;
     const history = state.kind === 'ready' ? status?.history : undefined;
     const shownOverview = state.kind === 'ready' ? state.overview : null;
     return (
         <div className='cvat-team-analytics-page'>
             <div className='cvat-team-analytics-header'>
-                <Title level={4}>Team analytics</Title>
-                <Text type='secondary'>
-                    {scopeLabel(organization)}
-                    {' · annotation work inside jobs'}
-                </Text>
+                <div className='cvat-team-analytics-heading'>
+                    <Title level={4}>Team analytics</Title>
+                    <Text type='secondary'>
+                        {scopeLabel(organization)}
+                        {' · annotation work inside jobs'}
+                    </Text>
+                </div>
+                {showSettings ? (
+                    <Button
+                        className='cvat-team-analytics-settings-button'
+                        icon={<SettingOutlined />}
+                        onClick={onOpenSettings}
+                    >
+                        Settings
+                    </Button>
+                ) : null}
             </div>
             {showFilters ? (
                 <div className='cvat-team-analytics-filters'>

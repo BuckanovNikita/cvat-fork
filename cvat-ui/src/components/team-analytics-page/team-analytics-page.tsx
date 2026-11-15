@@ -23,6 +23,7 @@ import { hotkeyLabels } from './hotkeys';
 import TeamAnalyticsView from './team-analytics-view';
 import TrendsSection, { useTrendsSelection } from './trends-section';
 import DetailsSection from './details-section';
+import SettingsModal from './settings-modal';
 
 // The status (last refresh) is read again this often while the page is open.
 const STATUS_INTERVAL_MS = 60000;
@@ -44,8 +45,10 @@ export default function TeamAnalyticsPage(): JSX.Element {
     const [pending, setPending] = useState(false);
     const [status, setStatus] = useState<Status | null>(null);
     const [projectNames, setProjectNames] = useState<ProjectNames>({});
-    // bumped to load the figures of the same selection again
+    // bumped to load the figures of the same selection again (every section: the overview, trends, details, a
+    // full view's rows and the selectors' options)
     const [reloads, setReloads] = useState(0);
+    const [settingsOpen, setSettingsOpen] = useState(false);
     const shownOrganization = useRef<string | null>(organization);
     // kept here so that a trend's full view and the overview show the same comparison
     const trendsSelection = useTrendsSelection();
@@ -166,52 +169,67 @@ export default function TeamAnalyticsPage(): JSX.Element {
     }, [wantedKey]);
 
     return (
-        <TeamAnalyticsView
-            organization={organization}
-            state={state}
-            onBackToTasks={() => history.push('/tasks')}
-            address={address}
-            onAddressChange={changeAddress}
-            currentMonth={currentMonth()}
-            pending={pending}
-            status={status}
-            timeZone={timeZone}
-            projectNames={projectNames}
-            hotkeyLabels={labels}
-            renderTrends={(scopeLabel, options) => (
-                <TrendsSection
-                    organization={organization}
-                    timeZone={timeZone}
-                    project={address.project}
-                    annotator={address.annotator}
-                    shapes={address.shapes}
-                    scopeLabel={scopeLabel}
-                    projectNames={projectNames}
-                    historyProgress={status?.history ?
-                        [
-                            status.history.complete, status.history.ready_from, status.history.percent,
-                            status.history.complete_weeks, status.history.earliest_month,
-                        ].join('|') : ''}
-                    selection={trendsSelection}
-                    full={options?.full}
-                    onOpenFull={options?.onOpenFull}
-                />
-            )}
-            loadFilterOptions={loadOptions}
-            renderDetails={() => (
-                <DetailsSection
-                    organization={organization}
-                    timeZone={timeZone}
-                    period={address.period}
-                    month={address.month}
-                    project={address.project}
-                    annotator={address.annotator}
-                    shapes={address.shapes}
-                    projectNames={projectNames}
-                    // clicking a row sets it as the filter; clicking the selected row again removes it
-                    onPick={(kind, id) => changeAddress({ [kind]: address[kind] === id ? null : id })}
-                />
-            )}
-        />
+        <>
+            <TeamAnalyticsView
+                organization={organization}
+                state={state}
+                onBackToTasks={() => history.push('/tasks')}
+                address={address}
+                onAddressChange={changeAddress}
+                currentMonth={currentMonth()}
+                pending={pending}
+                status={status}
+                timeZone={timeZone}
+                projectNames={projectNames}
+                hotkeyLabels={labels}
+                renderTrends={(scopeLabel, options) => (
+                    <TrendsSection
+                        key={reloads}
+                        organization={organization}
+                        timeZone={timeZone}
+                        project={address.project}
+                        annotator={address.annotator}
+                        shapes={address.shapes}
+                        scopeLabel={scopeLabel}
+                        projectNames={projectNames}
+                        historyProgress={status?.history ?
+                            [
+                                status.history.complete, status.history.ready_from, status.history.percent,
+                                status.history.complete_weeks, status.history.earliest_month,
+                            ].join('|') : ''}
+                        selection={trendsSelection}
+                        full={options?.full}
+                        onOpenFull={options?.onOpenFull}
+                    />
+                )}
+                loadFilterOptions={loadOptions}
+                onOpenSettings={() => setSettingsOpen(true)}
+                reloadKey={reloads}
+                renderDetails={() => (
+                    <DetailsSection
+                        key={reloads}
+                        organization={organization}
+                        timeZone={timeZone}
+                        period={address.period}
+                        month={address.month}
+                        project={address.project}
+                        annotator={address.annotator}
+                        shapes={address.shapes}
+                        projectNames={projectNames}
+                        // clicking a row sets it as the filter; clicking the selected row again removes it
+                        onPick={(kind, id) => changeAddress({ [kind]: address[kind] === id ? null : id })}
+                    />
+                )}
+            />
+            <SettingsModal
+                open={settingsOpen}
+                onClose={() => setSettingsOpen(false)}
+                onSaved={() => {
+                    setSettingsOpen(false);
+                    // a change applies to every past period: everything shown is loaded again
+                    setReloads((count) => count + 1);
+                }}
+            />
+        </>
     );
 }

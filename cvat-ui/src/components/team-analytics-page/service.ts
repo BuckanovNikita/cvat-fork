@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: MIT
 
-// The page's only boundary to the analytics figures: CVAT's own API at `<backendAPI>/team-analytics/`, asked
-// through cvat-core. Tests replace `requestService`.
+// The page's only boundary to Team Analytics: CVAT's own API at `<backendAPI>/team-analytics/` (the figures, the
+// project names and the settings), asked through cvat-core. Tests replace `requestService` and `requestSettings`.
 
 import { getCore, ServerError } from 'cvat-core-wrapper';
 
@@ -227,6 +227,8 @@ export type Endpoint =
 export interface ServiceAnswer {
     status: number;
     body: any;
+    // for a refusal or failure: the text cvat-core made of the error body (a 400's `detail` sentence)
+    message?: string;
 }
 
 // Asks one endpoint with the given query parameters. Answers every HTTP answer, a refusal or failure too;
@@ -633,6 +635,105 @@ export async function loadDetails(
         const readable = succeeded(answer) && !!data &&
             ((Array.isArray(data.rows) && typeof data.total === 'number') || data.processed === false);
         return readable ? data as Details : null;
+    } catch {
+        return null;
+    }
+}
+
+// --- Team Analytics settings (GET and PUT settings, GET settings/users): the Technical accounts list -----------
+
+// One technical account: its user, by id, with the live user's name, or the last known name of a user that no
+// longer exists (`deleted`).
+export interface TechnicalAccount {
+    user_id: number;
+    user_name: string;
+    deleted: boolean;
+}
+
+export interface TeamAnalyticsSettings {
+    technical_accounts: TechnicalAccount[];
+}
+
+// A user the settings screen offers to add: any user of the instance.
+export interface SettingsUser {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+}
+
+// Reads (GET) or replaces (PUT, with `body`) the settings. Answers every HTTP answer, a refusal or failure
+// too, with the text cvat-core made of an error body; throws only when there is no answer at all. Tests
+// replace it.
+export type RequestSettings = (method: 'GET' | 'PUT', body?: object) => Promise<ServiceAnswer>;
+
+export const requestSettings: RequestSettings = async (method, body) => {
+    const core = getCore();
+    try {
+        const response = await core.server.request(`${core.config.backendAPI}/${SERVICE_PATH}/settings`, {
+            method,
+            ...(body === undefined ? {} : { data: body }),
+        }) as { status: number; data: unknown };
+        return { status: response.status, body: response.data ?? null };
+    } catch (error) {
+        if (error instanceof ServerError && error.code >= 100) {
+            return { status: error.code, body: null, message: error.message };
+        }
+        throw error;
+    }
+};
+
+function readableSettings(body: any): body is TeamAnalyticsSettings {
+    return !!body && Array.isArray(body.technical_accounts) && body.technical_accounts.every(
+        (account: TechnicalAccount) => typeof account?.user_id === 'number' && typeof account.user_name === 'string',
+    );
+}
+
+// The settings, or null when they cannot be read (the settings screen says so). A refusal takes the page to it.
+export async function loadSettings(request: RequestSettings = requestSettings): Promise<TeamAnalyticsSettings | null> {
+    try {
+        const answer = await request('GET');
+        reportRefusal(answer);
+        return succeeded(answer) && readableSettings(answer.body) ? answer.body : null;
+    } catch {
+        return null;
+    }
+}
+
+export type SaveResult = { kind: 'saved'; settings: TeamAnalyticsSettings } | { kind: 'failed'; error: string };
+
+// Replaces the Technical accounts list with `ids` (the whole list). A failure is said in a sentence the screen
+// shows: a refused list (400) in the server's words.
+export async function saveSettings(
+    ids: number[], request: RequestSettings = requestSettings,
+): Promise<SaveResult> {
+    let answer: ServiceAnswer;
+    try {
+        answer = await request('PUT', { technical_accounts: ids });
+    } catch {
+        return { kind: 'failed', error: 'CVAT could not be reached. Nothing was saved.' };
+    }
+    if (succeeded(answer) && readableSettings(answer.body)) return { kind: 'saved', settings: answer.body };
+    if (answer.status === 400) {
+        return { kind: 'failed', error: answer.message || answer.body?.detail || 'The list was refused.' };
+    }
+    if (answer.status === 401) return { kind: 'failed', error: 'Your session has ended. Sign in again to save.' };
+    if (answer.status === 403) {
+        return { kind: 'failed', error: 'Only administrators can change Team Analytics settings.' };
+    }
+    return { kind: 'failed', error: 'The settings could not be saved. Try again.' };
+}
+
+// Users of the whole instance whose user name, first or last name contains `search` (at most 20, by user name),
+// or null when the search failed.
+export async function searchUsers(
+    search: string, request: RequestService = requestService,
+): Promise<SettingsUser[] | null> {
+    try {
+        const answer = await request('settings/users', { search });
+        reportRefusal(answer);
+        const users = answer.body?.users;
+        return succeeded(answer) && Array.isArray(users) ? users as SettingsUser[] : null;
     } catch {
         return null;
     }

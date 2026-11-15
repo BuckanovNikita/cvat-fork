@@ -17,12 +17,22 @@
     left: 0;
 }
 
+// the title and scope at the left, the Settings button at the right
 .cvat-team-analytics-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: $grid-unit-size $grid-unit-size * 2;
     margin-bottom: $grid-unit-size * 2;
 
     h4 {
         margin: 0;
     }
+}
+
+.cvat-team-analytics-heading {
+    min-width: 0;
 }
 
 .cvat-team-analytics-cards {

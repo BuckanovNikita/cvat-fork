@@ -32,6 +32,15 @@ for (const key of ['window', 'document', 'navigator']) {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+// antd 5.17's CommonJS build has one stray ES-module import, `rc-util/es/ref` in lib/_util/wave/WaveEffect.js (used by
+// Button, hence Modal), which the UI's bundler resolves and Node cannot load. Here it gets rc-util's CommonJS twin.
+const Module = require('node:module');
+
+const resolveFilename = Module._resolveFilename;
+Module._resolveFilename = function resolveCommonJsTwin(request, ...rest) {
+    return resolveFilename.call(this, request.replace(/^rc-util\/es\//, 'rc-util/lib/'), ...rest);
+};
+
 const React = dependency('react');
 const { renderToStaticMarkup } = dependency('react-dom/server');
 const { createRoot } = dependency('react-dom/client');
@@ -158,6 +167,24 @@ function suppliedService(answer) {
     return { request, requests };
 }
 
+/**
+ * A replacement of the settings boundary (`requestSettings(method, body)` in service.ts) answering with supplied
+ * API answers; records each request's method and a copy of its body. `answer(request)` returns
+ * `{ status, body, message }` (message: the text cvat-core made of an error body) or an Error (no answer at all).
+ */
+function suppliedSettings(answer) {
+    const requests = [];
+    const request = async (method, body) => {
+        const record = { method, body: body === undefined ? undefined : JSON.parse(JSON.stringify(body)) };
+        requests.push(record);
+        const response = await answer(record);
+        if (response instanceof Error) throw response;
+        const { status = 200, body: answered = {}, message } = response;
+        return { status, body: answered, message };
+    };
+    return { request, requests };
+}
+
 /** cvat-core's own exception classes (cvat-core/src/exceptions.ts), transpiled like the page sources. */
 function loadCoreExceptions() {
     const filename = path.join(cvatRoot, 'cvat-core/src/exceptions.ts');
@@ -172,5 +199,5 @@ function loadCoreExceptions() {
 }
 
 module.exports = {
-    React, act, dependency, loadCoreExceptions, loadPage, mount, render, suppliedService, text,
+    React, act, dependency, loadCoreExceptions, loadPage, mount, render, suppliedService, suppliedSettings, text,
 };
