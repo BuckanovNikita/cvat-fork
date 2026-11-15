@@ -133,6 +133,7 @@ def revoked_admin() -> None:
             fail(case, f"{REVOKED} {what} as an administrator: {status} {str(body)[:200]}, expected 200")
     log(f"{REVOKED} in the admin group: 200 on {', '.join(w for w, _ in REVOKED_PATHS)}")
     admin = admin_session()
+    failure: BaseException | None = None
     try:
         set_groups(case, admin, me["id"], ["user"])
         revoked_at = time.monotonic()
@@ -149,9 +150,20 @@ def revoked_admin() -> None:
                                f"admin group: {status} {str(body)[:200]}, expected 403 forbidden")
         elapsed = time.monotonic() - revoked_at
         log(f"after: {seen}")
+    except BaseException as error:
+        failure = error
+        raise
     finally:
-        set_groups(case, admin, me["id"], ["admin"])
-        log(f"{REVOKED} back in the admin group")
+        try:
+            set_groups(case, admin, me["id"], ["admin"])
+            log(f"{REVOKED} back in the admin group")
+        except BaseException as restore:
+            # the restore's own failure must not hide the case's: both are printed, the case's first
+            if failure is not None:
+                print(f"[access] FAIL {case}: {failure}", flush=True)
+            print(f"[access] FAIL {case}: putting {REVOKED} back in the admin group failed: {restore}", flush=True)
+            raise SystemExit(f"[access] FAIL {case}: {failure or 'the case passed'}; then putting {REVOKED} back "
+                             f"in the admin group failed: {restore} (run.sh seed-access puts it back)") from None
     status, _ = old.call(REVOKED_PATHS[0][1])
     if status != 200:
         fail(case, f"{REVOKED} back in the admin group: status {status}, expected 200")

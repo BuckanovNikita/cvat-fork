@@ -12,11 +12,12 @@ Parts:
                   changed list (the seeded one plus ta-outsider), and the list read back is still the seeded one
   writes          no-store on every settings answer; a PUT with the session cookie and its CSRF token saves, one
                   without the token and one with a read-only access token are refused (both sending a changed
-                  list, the list unchanged); the server's log, read whole and not empty, never names the removed
-                  variable
+                  list, the list unchanged); status, settings, settings/users and project-names with .json
+                  are 404 for the administrator, the plain paths 200; HEAD on status and settings answers 200
+                  with no body; the server's log, read whole and not empty, never names the removed variable
   bad-bodies      PUT settings refuses (400 bad_request) a non-list, a missing list, a negative id, zero, a
-                  duplicate and an id of no user that is not on the list; neither the list nor the answer
-                  generation changes
+                  duplicate, an id of no user that is not on the list, and a body sent as text/plain or as
+                  application/x-www-form-urlencoded (not 415); neither the list nor the answer generation changes
   generation      every save advances the answer generation by exactly one, a save of the same list too (it
                   answers 200 and keeps the list)
   user-search     with an organization selected, the search finds a user of another organization and a user of
@@ -40,8 +41,10 @@ Environment: TA_BASE_URL, TA_SEED_PASSWORD, TA_KUBE_CONTEXT, TA_NAMESPACE, TA_RE
 
 from __future__ import annotations
 
+import json
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
@@ -119,10 +122,50 @@ def save(admin: Session, ids: list[int]) -> list[dict]:
     return body["technical_accounts"]
 
 
+def raw_request(session: Session, method: str, path: str, data: bytes | None = None,
+                content_type: str | None = None) -> tuple[int, str, dict]:
+    """One request of the session as it is sent, body bytes and Content-Type included (send_full always sends JSON):
+    (status, body text, response headers with lower-case names). A write carries the session's Origin and CSRF
+    token, so its answer is the view's and not CSRF's."""
+    request = urllib.request.Request(BASE_URL + path, data=data, method=method)
+    if content_type:
+        request.add_header("Content-Type", content_type)
+    if method not in ("GET", "HEAD"):
+        request.add_header("Origin", BASE_URL)
+        request.add_header("X-CSRFTOKEN", session._csrf())
+    try:
+        with session.opener.open(request, timeout=60) as response:
+            status, text, got = response.status, response.read().decode(), response.headers
+    except urllib.error.HTTPError as error:
+        status, text, got = error.code, error.read().decode(), error.headers or {}
+    return status, text, {name.lower(): value for name, value in got.items()}
+
+
+def body_refusal(status: int, text: str) -> str | None:
+    """refusal() of a raw answer's text."""
+    try:
+        return refusal(status, json.loads(text) if text.strip() else None)
+    except ValueError:
+        return f"unexpected {text[:200]}"
+
+
 def user_id(session: Session, username: str) -> int:
     found = find_user(session, username)
     need(found is not None, f"no user {username} (run.sh seed)")
     return found
+
+
+def restore_worker(failure: BaseException | None) -> None:
+    """The analytics worker back at one replica. When that fails as well, the failure that led here is printed
+    first, then the restore's, and both stop the check, so the restore never hides the original failure."""
+    try:
+        scale(WORKER, 1, WORKER_SELECTOR)
+    except BaseException as restore:
+        if failure is not None:
+            print(f"[settings] FAIL: {failure}", flush=True)
+        print(f"[settings] FAIL: scaling the analytics worker back to 1 failed: {restore}", flush=True)
+        raise SystemExit(f"[settings] FAIL: {failure or 'no failure before'}; then scaling the analytics worker back "
+                         f"to 1 failed: {restore} (kubectl scale {WORKER} --replicas=1)") from None
 
 
 class WorkerStopped:
@@ -134,15 +177,15 @@ class WorkerStopped:
     def __enter__(self) -> WorkerStopped:
         try:
             scale(WORKER, 0, WORKER_SELECTOR)
-        except BaseException:
+        except BaseException as failure:
             # __exit__ does not run when __enter__ fails: the worker is brought back here
-            scale(WORKER, 1, WORKER_SELECTOR)
+            restore_worker(failure)
             raise
         log("analytics worker at 0 while the generation is measured")
         return self
 
-    def __exit__(self, *exc: object) -> None:
-        scale(WORKER, 1, WORKER_SELECTOR)
+    def __exit__(self, kind: object, failure: BaseException | None, trace: object) -> None:
+        restore_worker(failure)
         started = time.monotonic()
         while True:
             status, body = reader("").call(API + "status?tz=UTC")
@@ -215,11 +258,24 @@ def bad_bodies(admin: Session, base: list[int]) -> str:
             if what == "a negative id":
                 need(answer.get("detail") == NEGATIVE_DETAIL,
                      f"a negative id: detail {answer.get('detail')!r}, expected {NEGATIVE_DETAIL!r}")
+        # a body that is not JSON: the view's own 400, not DRF's 415; each would save a changed list if accepted
+        changed = changed_list(admin, base)
+        not_json = {
+            "text/plain": json.dumps({"technical_accounts": changed}).encode(),
+            "application/x-www-form-urlencoded": urllib.parse.urlencode(
+                [("technical_accounts", i) for i in changed]).encode(),
+        }
+        for content_type, data in not_json.items():
+            status, text, _ = raw_request(admin, "PUT", SETTINGS, data, content_type)
+            need(status == 400 and body_refusal(status, text) == "bad_request",
+                 f"PUT settings as {content_type}: {status} {text[:200]}, expected 400 bad_request (not 415)")
+            log(f"{content_type}: 400 {text[:120]}")
         after = generation()
     listed = ids_of(technical_accounts(admin))
     need(listed == sorted(base), f"the list after the refused saves is {listed}, expected {sorted(base)}")
     need(after == before, f"the answer generation moved from {before} to {after} over refused saves")
-    return f"{len(bodies)} bad bodies refused 400 bad_request; the list {listed} and the generation {before} unchanged"
+    return (f"{len(bodies)} bad bodies and {len(not_json)} bodies that are not JSON refused 400 bad_request; the list "
+            f"{listed} and the generation {before} unchanged")
 
 
 def writes(admin: Session, base: list[int]) -> str:
@@ -275,14 +331,46 @@ def writes(admin: Session, base: list[int]) -> str:
                             "expected 403")
     need(ids_of(technical_accounts(admin)) == sorted(base), "a refused PUT changed the list")
 
+    # no format-suffix routes: each path with .json is 404 for the administrator (once routed, it answered 500),
+    # while the plain path answers 200
+    plain = {"status": API + "status?tz=UTC", "settings": SETTINGS, "settings/users": USER_SEARCH + "?search=ta-",
+             "project-names": PROJECT_NAMES + "?ids=1"}
+    suffixed = {"status": API + "status.json?tz=UTC", "settings": SETTINGS + ".json",
+                "settings/users": USER_SEARCH + ".json?search=ta-", "project-names": PROJECT_NAMES + ".json?ids=1"}
+    routes = {}
+    for name in plain:
+        status_plain, _ = admin.call(plain[name])
+        status_json, text, _ = raw_request(admin, "GET", suffixed[name])
+        routes[name] = (status_plain, status_json)
+        need(status_plain == 200 and status_json == 404,
+             f"{name}: GET {plain[name]} {status_plain}, GET {suffixed[name]} {status_json} {text[:150]}; expected 200 "
+             "and 404")
+    log(f"(plain path, .json path) by endpoint: {routes}")
+
+    # HEAD answers as GET does: 200 and no body (status may be "not ready yet" for a moment: asked again then)
+    heads = {}
+    for name in ("status", "settings"):
+        status_get, _ = admin.call(plain[name])
+        started = time.monotonic()
+        while True:
+            status_head, text, _ = raw_request(admin, "HEAD", plain[name])
+            if status_head != 429 or time.monotonic() - started > 30:
+                break
+            time.sleep(1)
+        heads[name] = (status_get, status_head, len(text))
+        need(status_get == 200 and status_head == 200 and text == "",
+             f"{name}: GET {status_get}, HEAD {status_head} with {len(text)} bytes of body; expected 200 and 200 with none")
+    log(f"(GET, HEAD, HEAD body bytes): {heads}")
+
     server_log = kubectl("logs", "-l", SERVER_SELECTOR, "-c", "cvat-backend", "--tail=-1", "--max-log-requests=10")
     need(server_log.strip() != "", "the server's log came back empty: the warning cannot be looked for")
     warned = [line for line in server_log.splitlines() if "TEAM_ANALYTICS_TECHNICAL_ACCOUNTS" in line]
     need(not warned, f"the server's log names TEAM_ANALYTICS_TECHNICAL_ACCOUNTS although the stack no longer sets it: "
                      f"{warned[:3]}")
     return ("no-store on 200, 400 and 403 of the settings; PUT with the cookie and X-CSRFToken 200, without the token "
-            f"403 CSRF; the read-only token reads (200) and is refused on PUT ({put_status}); no warning about the "
-            "removed variable in the server's log")
+            f"403 CSRF; the read-only token reads (200) and is refused on PUT ({put_status}); .json paths 404 and plain "
+            "paths 200; HEAD on status and settings 200 with no body; no warning about the removed variable in the "
+            "server's log")
 
 
 def generation_steps(admin: Session, base: list[int]) -> str:
