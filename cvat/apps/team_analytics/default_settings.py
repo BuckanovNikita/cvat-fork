@@ -31,7 +31,9 @@ def _number(name: str, default, kind=int, minimum=1):
 TEAM_ANALYTICS_DB = os.getenv("TEAM_ANALYTICS_DB", "team_analytics")
 
 # The Technical accounts list is not a setting: administrators edit it in the Team Analytics settings
-# (models.TechnicalAccount). The environment variable that held it before is reported, not read.
+# (models.TechnicalAccount). The environment variable that held it before is looked at only to warn:
+# an instance upgraded with it still set is told once at start that its value has no effect and
+# where the list is now kept, instead of losing the list without a word.
 if os.getenv("TEAM_ANALYTICS_TECHNICAL_ACCOUNTS", "").strip():
     log.warning(
         "TEAM_ANALYTICS_TECHNICAL_ACCOUNTS is ignored: the Technical accounts list is edited by an "
