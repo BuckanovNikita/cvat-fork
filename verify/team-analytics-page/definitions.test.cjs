@@ -288,6 +288,30 @@ async function hoverThenEscape() {
     });
 }
 
+test('with the focus in an open selector, one Escape closes the selector and a hover-opened definition', async () => {
+    await opened('?period=week', async (container) => {
+        const annotator = container.querySelector('.cvat-team-analytics-filter-annotator');
+        await act(async () => {
+            annotator.querySelector('.cvat-team-analytics-filter-button')
+                .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+        });
+        await wait(50);
+        const search = annotator.querySelector('input[role="combobox"]');
+        assert.equal(document.activeElement === search, true, 'the focus is in the selector');
+        const term = container.querySelector('.cvat-team-analytics-sessions .cvat-team-analytics-term');
+        await act(async () => { term.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
+        await wait(200);
+        assert.equal(isShown(tooltipOf(term)), true);
+        // the selector stops the key from bubbling
+        await act(async () => {
+            search.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        });
+        await wait(300);
+        assert.equal(annotator.querySelector('[role="listbox"]') === null, true, 'the selector closes');
+        assert.equal(isShown(tooltipOf(term)), false, 'and the definition is dismissed');
+    });
+});
+
 test('a full view shows no definitions, for a chart and for a trend', async () => {
     for (const search of ['?period=week&view=time', '?period=week&view=annotators', '?period=week&view=trend-working_time']) {
         // eslint-disable-next-line no-await-in-loop

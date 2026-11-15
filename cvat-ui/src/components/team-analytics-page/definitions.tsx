@@ -41,15 +41,16 @@ export function Term({ name, children }: Props): JSX.Element {
     // the hidden tooltip is rendered once the page is in the document (a portal cannot be rendered before)
     const [mounted, setMounted] = useState(false);
     useEffect(() => setMounted(true), []);
-    // while the tooltip is open (by hover too, with the focus elsewhere), Escape anywhere hides it; the key is
-    // left to whatever else handles it (an open selector or modal closes on the same press)
+    // while the tooltip is open (by hover too, with the focus elsewhere), Escape anywhere hides it. The listener
+    // runs in the capture phase, before a selector or modal that stops the key, and leaves the key to them (an
+    // open selector or modal closes on the same press).
     useEffect(() => {
         if (!open) return undefined;
         const onKey = (event: KeyboardEvent): void => {
             if (event.key === 'Escape') setOpen(false);
         };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
+        document.addEventListener('keydown', onKey, true);
+        return () => document.removeEventListener('keydown', onKey, true);
     }, [open]);
     return (
         <Tooltip

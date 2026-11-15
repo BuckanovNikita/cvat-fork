@@ -377,7 +377,13 @@ test('an open dropdown closes when the period or the organization changes under 
     });
 });
 
-const { placePopup } = loadPage('filter-select.tsx');
+const { placePopup, widestPopup } = loadPage('filter-select.tsx');
+
+test('the popup is placed by the widest it becomes: 360px, or 90% of a narrow window, or its own width', () => {
+    assert.equal(widestPopup(260, 1280), 360);
+    assert.equal(widestPopup(260, 300), 270);
+    assert.equal(widestPopup(420, 1280), 420, 'a box wider than 360px makes the popup as wide');
+});
 
 test('the popup is placed inside the page container', () => {
     const container = { left: 0, right: 1000 };
@@ -428,6 +434,19 @@ test('opening near the right edge of the page anchors the popup to the box\'s ri
             assert.ok(shifted.classList.contains('cvat-team-analytics-filter-popup-shifted'), shifted.className);
             assert.equal(shifted.style.left, '-150px');
             assert.equal(shifted.style.maxWidth, '400px');
+
+            // opened while its list loads, the popup is at its narrowest (260px); it is placed by the widest it
+            // becomes (360px): a box that fits 260 but not 360 opens from its right edge
+            Object.assign(rects, {
+                'cvat-team-analytics-page': { left: 0, right: 1000, width: 1000 },
+                'cvat-team-analytics-filter-annotator': { left: 700, right: 900, width: 200 },
+                'cvat-team-analytics-filter-popup': { left: 699, right: 959, width: 260 },
+            });
+            await click(button(view.container, 'annotator'));
+            await click(button(view.container, 'annotator'));
+            await view.settle();
+            const narrow = selector(view.container, 'annotator').querySelector('.cvat-team-analytics-filter-popup');
+            assert.ok(narrow.classList.contains('cvat-team-analytics-filter-popup-right'), narrow.className);
         });
     } finally {
         window.HTMLElement.prototype.getBoundingClientRect = original;

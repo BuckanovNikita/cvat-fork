@@ -47,6 +47,13 @@ const STATUS: Record<Exclude<Answer['kind'], 'ready'>, string> = {
 // (the page container scrolls, and a popup past its right edge would make it scroll sideways)
 type Placement = { side: 'left' } | { side: 'right' } | { side: 'shifted'; left: number; maxWidth: number };
 
+// The widest the popup becomes once its options arrive: `max-width: min(360px, 90vw)` (projects-filters.scss)
+const POPUP_MAX_WIDTH = 360;
+
+export function widestPopup(measured: number, viewportWidth: number): number {
+    return Math.max(measured, Math.min(POPUP_MAX_WIDTH, viewportWidth * 0.9));
+}
+
 // The popup's placement for the box, the popup's width and the container's left and right edges (viewport px)
 export function placePopup(
     box: { left: number; right: number }, width: number, container: { left: number; right: number },
@@ -143,7 +150,8 @@ export default function FilterSelect({
         return () => document.removeEventListener('mousedown', onPointer);
     }, [open]);
 
-    // on opening, the popup is placed so that it stays inside the page container (measured before it is painted)
+    // on opening, the popup is placed so that it stays inside the page container (measured before it is painted).
+    // It opens while its list loads, narrower than it may become, so it is placed by the widest it can be.
     useLayoutEffect(() => {
         const box = wrapper.current;
         const shown = popup.current;
@@ -152,9 +160,8 @@ export default function FilterSelect({
         const edges = container.getBoundingClientRect();
         // the right edge without a vertical scroll bar
         const right = edges.left + (container.clientWidth || edges.width);
-        setPlacement(placePopup(box.getBoundingClientRect(), shown.getBoundingClientRect().width, {
-            left: edges.left, right,
-        }));
+        const width = widestPopup(shown.getBoundingClientRect().width, window.innerWidth);
+        setPlacement(placePopup(box.getBoundingClientRect(), width, { left: edges.left, right }));
     }, [open]);
 
     // on a new answer, the selected option becomes the active one, or the first match of what was typed meanwhile
