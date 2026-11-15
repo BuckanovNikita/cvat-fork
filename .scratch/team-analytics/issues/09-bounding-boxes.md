@@ -12,7 +12,8 @@
 - [x] A failure inside the added logging never reaches the code that called it, and annotation behaves exactly as before.
 - [x] A bounding box is a single-frame rectangle; a rectangle track counts only under all shapes.
 - [x] The page has a switch between Bounding boxes and All shapes that applies to every operation figure.
-- [x] For a period with shape-tagged events the page opens on Bounding boxes; for a legacy period it shows all shapes with the notice.
+- [x] For a period with shape-tagged events the page opened on Bounding boxes on the stack, with no shape choice in the address.
+- [ ] For a legacy period the page shows all shapes with the notice: shown by the page suite only; not seen on the stack.
 - [x] Consecutive drags and resizes of the same object by the same person are one alignment; an operation on another object or a change of frame ends it; returning to the object later is a new alignment.
 - [x] The time of an alignment runs from the action before its first drag to the end of its last.
 - [x] Legacy drags and resizes, which carry no object reference, each count as one alignment.
@@ -21,3 +22,5 @@
 ## Comments
 
 2026-11-14: Resolved on `feat/team-analytics-page` by merge `0643537`. Review fixes that followed are in merge `401576e`. Live results, review outcomes and what remains unverified: `docs/evidence/2026-11-14-team-analytics-final-run.md`.
+
+2026-11-15: Ticket 27 of the defect fixes restated this criterion, ticked on a reading (decisions ledger, V11), and split it: the stack part is ticked, the legacy part is not. Original wording: "For a period with shape-tagged events the page opens on Bounding boxes; for a legacy period it shows all shapes with the notice." Evidence: `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`.

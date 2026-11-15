@@ -3,10 +3,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 const View = loadPage('team-analytics-view.tsx').default;
 const READY = { kind: 'ready', overview: { by_annotator: { rows: [] } } };
@@ -63,7 +61,7 @@ test('without a status answer no time is claimed', () => {
     assert.doesNotMatch(page(null), /Data as of|refreshed/);
 });
 
-domTest('the page reads the status of the selected organization once the figures are shown', async () => {
+test('the page reads the status of the selected organization once the figures are shown', async () => {
     const { fetch, requests } = suppliedFetch((url) => (url.includes('/status') ?
         { body: { refresh: refresh({ stale: true, now: '2026-11-13T16:00:00+00:00' }) } } :
         { body: { by_annotator: { rows: [] } } }));
@@ -117,7 +115,7 @@ async function openWithClock(t, answers) {
     };
 }
 
-domTest('an open page starts warning when the status read every minute says the figures are stale', async (t) => {
+test('an open page starts warning when the status read every minute says the figures are stale', async (t) => {
     const page = await openWithClock(t, [
         refresh(),
         refresh({ now: '2026-11-13T15:51:00+00:00', stale: true }),
@@ -133,7 +131,7 @@ domTest('an open page starts warning when the status read every minute says the 
     }
 });
 
-domTest('when the status cannot be read the last time stays and the warning comes once it is too old', async (t) => {
+test('when the status cannot be read the last time stays and the warning comes once it is too old', async (t) => {
     // fresh at 15:30 (last refresh 15:20); afterwards every read fails
     const page = await openWithClock(t, [refresh(), new Error('network down')]);
     try {
@@ -148,7 +146,7 @@ domTest('when the status cannot be read the last time stays and the warning come
     }
 });
 
-domTest('a refused caller is not asked about freshness', async () => {
+test('a refused caller is not asked about freshness', async () => {
     const { fetch, requests } = suppliedFetch(() => ({ status: 403, body: { error: 'forbidden' } }));
     const Page = loadPage('team-analytics-page.tsx', {
         'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },

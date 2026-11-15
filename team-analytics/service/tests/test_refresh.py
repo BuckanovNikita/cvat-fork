@@ -23,7 +23,10 @@ class RefreshTest(StackTestCase):
 
     def test_figures_appear_only_after_a_refresh(self):
         self.stack.add_events([working_time(at("2026-11-13 14:00:00"), 100_000, user=ALICE, org=ORG)])
-        self.assertIsNone(self.alice_ms())
+        status, body = self.stack.overview("lead", org="org7")
+        self.assertEqual(status, 200, body)
+        # nothing is processed before the first refresh: no figures at all
+        self.assertEqual((body["processed"], body["by_annotator"]), (False, None))
         self.stack.refresh()
         self.assertEqual(self.alice_ms(), 100_000)
 
@@ -42,10 +45,11 @@ class RefreshTest(StackTestCase):
         self.assertEqual(self.alice_ms(), 150_000)
 
     def test_a_refresh_recomputes_the_trailing_48_hours_only(self):
-        self.stack.add_events([
-            working_time(at("2026-11-11 16:00:00"), 10_000, user=ALICE, org=ORG),  # inside 48 h of 15:20
-            working_time(at("2026-11-11 14:59:59"), 20_000, user=ALICE, org=ORG),  # before the window
-        ])
+        self.stack.add_events([working_time(at("2026-11-11 16:00:00"), 10_000, user=ALICE, org=ORG)])  # inside
+        self.stack.refresh()
+        self.stack.settle()  # history computes the 11th and 12th: the week is processed
+        # arrives late, before the window of 15:20 (which starts at 16:00 on the 11th)
+        self.stack.add_events([working_time(at("2026-11-11 14:59:59"), 20_000, user=ALICE, org=ORG)])
         self.stack.refresh()
         self.assertEqual(self.alice_ms(), 10_000)
 

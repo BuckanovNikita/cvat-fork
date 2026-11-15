@@ -19,11 +19,11 @@ from typing import Any
 from team_analytics import endpoints
 from team_analytics.access import Access, Refused, Scope
 from team_analytics.config import Config
-from team_analytics.cutover import Legacy, load_cutover
-from team_analytics.history import History
+from team_analytics.cutover import Legacy, load_cutover, look_for_cutover
+from team_analytics.history import History, HistoryState, load_state
 from team_analytics.periods import BadRequest, Span, decimal, period_span
-from team_analytics.refresh import Refresher, RefreshResult
-from team_analytics.sql import Sql
+from team_analytics.refresh import LeaseClock, Refresher, RefreshResult
+from team_analytics.sql import Limit, Sql
 from team_analytics.worker import Worker
 
 log = logging.getLogger(__name__)
@@ -66,6 +66,17 @@ class Request:
         if "cutover" not in self.cache:
             self.cache["cutover"] = load_cutover(self.sql)
         return self.cache["cutover"]
+
+    def history(self) -> HistoryState:
+        """How far history is processed (history.py), read once per request.
+
+        An endpoint that answers with figures calls this before its first figure read. A history step that
+        finishes after this reading can then only have made the figures more complete than the state says,
+        never the reverse: the answer may say `processed: false` where it could have said true, but never
+        sends figures read before the step as processed."""
+        if "history" not in self.cache:
+            self.cache["history"] = load_state(self.sql, self.now)
+        return self.cache["history"]
 
     def legacy(self, start: datetime, end: datetime) -> Legacy:
         """What the cutover makes of [start, end): pass `.params()` to read files, `.describe()` to responses."""
@@ -110,20 +121,31 @@ class Request:
 
 
 class Service:
-    def __init__(self, config: Config, clock: Callable[[], datetime] = utc_now) -> None:
+    def __init__(self, config: Config, clock: Callable[[], datetime] = utc_now,
+                 lease_clock: LeaseClock | None = None) -> None:
         self.config = config
         self.sql = Sql(config)
         self._clock = clock
         self.access = Access(config, lambda: self._clock().astimezone(UTC))
-        self.refresher = Refresher(config, self.sql, lambda: self._clock().astimezone(UTC))
-        self.history = History(self.sql, self.refresher, lambda: self._clock().astimezone(UTC))
+        self.refresher = Refresher(config, self.sql, lambda: self._clock().astimezone(UTC), lease_clock)
+        self.history = History(self.sql, self.refresher, lambda: self._clock().astimezone(UTC),
+                               Limit(config.cutover_search_in_check_s, config.cutover_search_memory_bytes))
         self.worker = Worker(config, self.sql, self.refresher, self.history, lambda: self._clock().astimezone(UTC))
         self.endpoints = {module.PATH: module for module in discover(endpoints)}
 
     def setup(self) -> None:
-        """Creates the totals database and tables (idempotent)."""
+        """The start of the service, before it answers: creates the totals database and tables (idempotent),
+        then looks for the cutover in the recorded events, so that the first answer already has it. The search
+        is bounded (Config.cutover_search_at_start_s): it runs before the port opens."""
         for name in self.sql.files("schema"):
             self.sql.statements(name)
+        try:
+            look_for_cutover(self.sql, self._clock(),
+                             Limit(self.config.cutover_search_at_start_s, self.config.cutover_search_memory_bytes))
+        except Exception:
+            # e.g. CVAT has not created its events table yet, or the search reached its limit: the service
+            # starts all the same, and the cutover is looked for again by the daily check
+            log.exception("could not look for the cutover at start")
 
     def refresh(self) -> RefreshResult:
         return self.refresher.run()

@@ -3,10 +3,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 const HOUR = 3600000;
 
@@ -81,6 +79,45 @@ test('projects: named as CVAT names them, with the annotators who worked in each
     assert.deepEqual(rows.map((r) => r.slice(0, 2)), [['Cats', '4'], ['No project', '1'], ['Project #8', '2']]);
 });
 
+test('a project with only technical-account boxes shows zeros, its boxes and a dash where nothing can be averaged', () => {
+    // the row as the service sends it: nobody worked in the project, so both ratios are null
+    const automated = {
+        id: 3,
+        user_name: null,
+        annotators: 0,
+        sessions: 0,
+        working_time_ms: 0,
+        drawn: 0,
+        pasted: 0,
+        propagated: 0,
+        model: 9,
+        saved_boxes: 7,
+        alignments: 0,
+        class_changes: 0,
+        deletions: 0,
+        average_create_ms: null,
+        hotkey_share: null,
+    };
+    const shown = details({
+        by: 'projects', rows: [row(1, { user_name: null, annotators: 2 }), automated], project_ids: [1, 3], total: 2,
+    });
+    for (const [answer, expected] of [
+        [shown, ['Project #3', '0', '0', '0.0 h', '0', '0', '0', '9', '0', '0', '0', '—', '—']],
+        // a legacy period: its saved boxes in place of Model
+        [{ ...shown, legacy: true, shapes: 'all' },
+            ['Project #3', '0', '0', '0.0 h', '0', '0', '0', '7', '0', 'Not recorded', '0', '—', 'Not recorded']],
+    ]) {
+        const html = card({ details: answer, by: 'projects' });
+        const rows = cells(html);
+        assert.equal(rows.length, 3);
+        assert.deepEqual(rows[2], expected);
+        // no cell is left empty and no figure is the result of a division by zero, hover text included
+        assert.ok(rows.every((cellsOfRow) => cellsOfRow.every((cell) => cell !== '')));
+        assert.doesNotMatch(html, /NaN|Infinity|undefined|null/);
+        assert.match(text(html), /1–2 of 2/);
+    }
+});
+
 test('a legacy period shows saved boxes in place of Model and says what was not recorded', () => {
     const [header, alice] = cells(card({ details: details({ legacy: true, shapes: 'all' }) }));
     assert.equal(header[7], 'Boxes saved');
@@ -126,10 +163,30 @@ test('the selected row is marked', () => {
     assert.match(html, /aria-pressed="false"[^>]*title="alice"/);
 });
 
+// A table of a period not wholly processed, as the service sends it: the envelope, and every figure null.
+function noFigures(by = 'annotators') {
+    return {
+        by,
+        page: null,
+        page_size: 10,
+        total: null,
+        legacy: false,
+        partly_legacy: false,
+        cutover: null,
+        shapes: 'bounding_boxes',
+        processed: false,
+        technical_accounts: 1,
+        rows: null,
+        ...(by === 'projects' ? { project_ids: null } : {}),
+    };
+}
+
 test('a period that is not processed yet shows no figures', () => {
-    const html = card({ details: details({ processed: false }) });
-    assert.doesNotMatch(text(html), /alice/);
-    assert.match(text(html), /not processed yet/i);
+    for (const by of ['annotators', 'projects']) {
+        const html = card({ details: noFigures(by), by });
+        assert.match(text(html), /not processed yet/i);
+        assert.doesNotMatch(text(html), /NaN|of 0|Previous/);
+    }
 });
 
 // --- the section: its own requests, search, paging and picking ----------------------------------------------
@@ -183,7 +240,22 @@ function button(container, label) {
     return [...container.querySelectorAll('button')].find((b) => b.textContent === label);
 }
 
-domTest('the table asks for the period, filters and shapes, pages with next and narrows by name', async () => {
+test('an answer without figures shows the not processed state, by annotator and by project', async () => {
+    const { fetch } = suppliedFetch((url) => ({ body: noFigures(new URL(url, 'http://localhost').searchParams.get('by')) }));
+    const page = await mount(section(fetch));
+    try {
+        await page.settle();
+        assert.match(page.container.textContent, /This period is not processed yet/);
+        await click(button(page.container, 'Projects'));
+        await page.settle();
+        assert.match(page.container.textContent, /This period is not processed yet/);
+        assert.doesNotMatch(page.container.textContent, /could not be/);
+    } finally {
+        await page.unmount();
+    }
+});
+
+test('the table asks for the period, filters and shapes, pages with next and narrows by name', async () => {
     const { fetch, requests } = suppliedFetch(detailsAnswer);
     const page = await mount(section(fetch));
     try {
@@ -210,7 +282,7 @@ domTest('the table asks for the period, filters and shapes, pages with next and 
     }
 });
 
-domTest('projects are found by the name the page shows, No project included', async () => {
+test('projects are found by the name the page shows, No project included', async () => {
     const { fetch, requests } = suppliedFetch(detailsAnswer);
     const page = await mount(section(fetch));
     try {
@@ -238,7 +310,7 @@ domTest('projects are found by the name the page shows, No project included', as
     }
 });
 
-domTest('a project search over thousands of projects asks for one page of ids at a time', async () => {
+test('a project search over thousands of projects asks for one page of ids at a time', async () => {
     // project_ids come in the table's order (most working time first); the page pages the matches itself
     const many = Array.from({ length: 2000 }, (_, index) => 9_000_001 + index);
     const names = Object.fromEntries(many.map((id) => [id, `Shelf ${id}`]));
@@ -277,7 +349,7 @@ domTest('a project search over thousands of projects asks for one page of ids at
     }
 });
 
-domTest('an unreadable answer leaves a short notice', async () => {
+test('an unreadable answer leaves a short notice', async () => {
     const { fetch } = suppliedFetch(() => ({ body: { by_annotator: { rows: [] } } }));
     const page = await mount(section(fetch));
     try {
@@ -288,7 +360,7 @@ domTest('an unreadable answer leaves a short notice', async () => {
     }
 });
 
-domTest('clicking a row sets it as the page filter, kept in the address', async () => {
+test('clicking a row sets it as the page filter, kept in the address', async () => {
     const { createMemoryHistory } = dependency('history');
     const history = createMemoryHistory({ initialEntries: ['/team-analytics?period=year'] });
     const { fetch, requests } = suppliedFetch((url) => {
@@ -328,7 +400,7 @@ domTest('clicking a row sets it as the page filter, kept in the address', async 
     }
 });
 
-domTest('picking a row on a later page keeps that page shown', async () => {
+test('picking a row on a later page keeps that page shown', async () => {
     const { fetch } = suppliedFetch(detailsAnswer);
     const { type: Section, props } = section(fetch);
     let picked = null;

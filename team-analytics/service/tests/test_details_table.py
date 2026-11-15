@@ -14,6 +14,7 @@ MINUTE = 60_000
 HOUR = 60 * MINUTE
 T = "2026-11-13 10:00:00"
 P2 = {"project": 2, "task": 2, "job": 2}
+P3 = {"project": 3, "task": 3, "job": 3}
 
 
 class DetailsCase(OperationsCase):
@@ -110,6 +111,93 @@ class ProjectRowsTest(FiguresCase):
             "drawn": 1, "pasted": 3, "propagated": 2, "model": 4, "saved_boxes": 0, "alignments": 1,
             "class_changes": 2, "deletions": 1, "average_create_ms": 5000, "hotkey_share": 0.75,
         })
+
+
+class TechnicalAccountOnlyProjectTest(FiguresCase):
+    """Beside the figures above, a technical account saves boxes and polygons into project 3, where no person worked."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.stack.add_events([
+            saved("create", seconds(T, 100), 7, **P3),
+            saved("create", seconds(T, 100), 2, "polygon", **P3),
+        ])
+
+    def test_the_project_has_a_row_with_no_working_time_its_saved_boxes_and_its_model_boxes(self):
+        body = self.details(by="projects", shapes="bounding_boxes")
+
+        self.assertEqual(body["total"], 3)
+        self.assertEqual(body["rows"][2], {
+            "id": 3, "user_name": None, "annotators": 0, "sessions": 0, "working_time_ms": 0,
+            "drawn": 0, "pasted": 0, "propagated": 0, "model": 7, "saved_boxes": 7, "alignments": 0,
+            "class_changes": 0, "deletions": 0, "average_create_ms": None, "hotkey_share": None,
+        })
+        # under All shapes Model is every object the technical account saved; saved boxes stay boxes
+        every_shape = self.details(by="projects", shapes="all")["rows"][2]
+        self.assertEqual((every_shape["id"], every_shape["model"], every_shape["saved_boxes"]), (3, 9, 7))
+
+    def test_the_project_is_among_the_ids_the_page_searches_by_name_in_the_tables_order(self):
+        body = self.details(by="projects")
+
+        self.assertEqual(body["project_ids"], [2, 1, 3])
+        self.assertEqual(body["project_ids"], self.column(body, "id"))
+
+    def test_a_technical_account_is_no_annotator_so_an_annotator_filter_on_it_lists_no_project(self):
+        body = self.details(by="projects", annotator=IMPORTER[0])
+
+        self.assertEqual((body["total"], body["rows"], body["project_ids"]), (0, [], []))
+
+    def test_the_technical_account_is_still_no_row_of_the_table_by_annotator(self):
+        annotators = self.details()
+
+        self.assertEqual((annotators["total"], self.column(annotators, "user_name")), (2, ["bob", "alice"]))
+        self.assertEqual(self.details(search="importer")["total"], 0)
+        # nobody worked in the project, so the table by annotator narrowed to it is empty
+        self.assertEqual(self.details(project=3)["rows"], [])
+
+    def test_search_and_the_project_filter_treat_the_row_like_any_other(self):
+        # the page matches project names itself and sends the ids; they come back in the table's order
+        self.assertEqual(self.column(self.details(by="projects", ids="3"), "id"), [3])
+        self.assertEqual(self.column(self.details(by="projects", ids="3,1"), "id"), [1, 3])
+        # the table's own filter is not applied: every project stays listed for picking, this one selected or not
+        self.assertEqual(self.column(self.details(by="projects", project=3), "id"), [2, 1, 3])
+        # an annotator filter narrows the table to that annotator's projects, so not to this one
+        self.assertEqual(self.column(self.details(by="projects", annotator=ALICE[0]), "id"), [1, 2])
+
+    def test_such_a_project_of_another_organization_does_not_appear(self):
+        self.stack.cvat.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
+        self.stack.add_events([saved("create", seconds(T, 110), 5, org=8, project=9, task=9, job=9)])
+
+        body = self.details(by="projects")
+
+        self.assertEqual((self.column(body, "id"), body["project_ids"]), ([2, 1, 3], [2, 1, 3]))
+        self.assertEqual(self.details(by="projects", ids="9")["rows"], [])
+        # the save is stored: instance scope, which holds every organization, lists its project
+        status, everything = self.stack.get("/team-analytics-api/v1/details", "admin", by="projects")
+        self.assertEqual((status, self.column(everything, "id")), (200, [2, 1, 3, 9]))
+
+
+class TechnicalAccountOnlyProjectPagingTest(DetailsCase):
+    """Ten projects with working time and an eleventh where only a technical account saved boxes."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.stack.add_events([
+            *(working_time(seconds(T, n), n * MINUTE, user=ALICE, org=ORG, project=100 + n, task=n, job=n)
+              for n in range(1, 11)),
+            saved("create", seconds(T, 60), 4, project=200, task=200, job=200),
+        ])
+
+    def test_it_is_the_last_row_and_pages_like_any_other(self):
+        first = self.details(by="projects")
+        second = self.details(by="projects", page=2)
+        past_the_end = self.details(by="projects", page=9)
+
+        self.assertEqual((first["total"], first["page"]), (11, 1))
+        self.assertEqual(self.column(first, "id"), list(range(110, 100, -1)))
+        self.assertEqual(first["project_ids"], [*range(110, 100, -1), 200])
+        self.assertEqual((second["page"], self.column(second, "id")), (2, [200]))
+        self.assertEqual((past_the_end["page"], self.column(past_the_end, "id")), (2, [200]))
 
 
 class FiltersTest(FiguresCase):
@@ -211,15 +299,34 @@ class ProcessedTest(DetailsCase):
         ])
         self.stack.refresh()  # the trailing 48 h only
 
-        def processed() -> bool:
-            status, body = self.stack.get("/team-analytics-api/v1/details", "lead", org="org7", period="month")
+        def answer(**query) -> dict:
+            status, body = self.stack.get("/team-analytics-api/v1/details", "lead", org="org7", period="month",
+                                          **query)
             self.assertEqual(status, 200, body)
-            return body["processed"]
+            return body
 
-        self.assertFalse(processed())
+        for kind in ("annotators", "projects"):
+            body = answer(by=kind)
+            self.assertFalse(body["processed"])
+            # no figures, only the envelope: the kind of table, its page size and the legacy flags
+            self.assertEqual({key: body[key] for key in ("by", "page_size", "legacy", "partly_legacy", "cutover",
+                                                         "shapes")},
+                             {"by": kind, "page_size": 10, "legacy": True, "partly_legacy": False, "cutover": None,
+                              "shapes": "all"})
+            self.assertEqual((body["page"], body["total"], body["rows"]), (None, None, None))
+            # every key outside the envelope is null, so a field added later is withheld too
+            self.assertLessEqual({key for key, value in body.items() if value is not None},
+                                 {"by", "page_size", "processed", "technical_accounts", "legacy", "partly_legacy",
+                                  "cutover", "shapes"})
+        self.assertIsNone(answer(by="projects")["project_ids"])
+
         for _ in range(20):  # history: one day per step
             self.stack.service.step()
-        self.assertTrue(processed())
+        body = answer()
+        self.assertTrue(body["processed"])
+        self.assertEqual((body["page"], body["total"]), (1, 1))
+        self.assertEqual(self.column(body, "working_time_ms"), [2 * HOUR])
+        self.assertEqual(answer(by="projects")["project_ids"], [1])
 
 
 class LegacyTest(DetailsCase):

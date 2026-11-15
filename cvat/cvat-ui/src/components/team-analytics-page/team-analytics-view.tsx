@@ -34,6 +34,7 @@ import { LegacyNotices } from './legacy-notice';
 import ShapeSwitch from './shape-switch';
 import { DEFAULT_SHAPES } from './shapes';
 import FullView from './full-view';
+import Definitions from './definitions';
 import { FullView as FullViewKey, viewOfTrend } from './full-views';
 
 interface Props {
@@ -80,7 +81,8 @@ function shownAddress(period: Period | undefined, address: Address | undefined):
 
 function annotatorLabel(id: number | null, overview: Overview | null): string {
     if (id === null) return '';
-    const shown = overview?.by_annotator.rows.find((row) => row.user_id === id)?.user_name;
+    // an overview without figures (a period not wholly processed) has no rows; the filter echo still names them
+    const shown = overview?.by_annotator?.rows.find((row) => row.user_id === id)?.user_name;
     const echoed = overview?.filters?.annotator?.user_id === id ? overview.filters.annotator.user_name : null;
     return shown ?? echoed ?? `Annotator #${id}`;
 }
@@ -100,11 +102,13 @@ export default function TeamAnalyticsView({
 }: Props): JSX.Element {
     const filters: Filters = { project: address?.project ?? null, annotator: address?.annotator ?? null };
     // clicking a row sets it as the filter; clicking the selected row again removes it
-    const pick = (key: keyof Filters) => (onAddressChange ? (id: number): void => {
+    const pick = (key: keyof Filters): ((id: number) => void) | undefined => (onAddressChange ? (id: number): void => {
         onAddressChange({ [key]: filters[key] === id ? null : id });
     } : undefined);
     // a chart's Full view button and show all control open its full view (a new history entry)
-    const open = (view: FullViewKey) => (onAddressChange ? (): void => onAddressChange({ view }) : undefined);
+    const open = (view: FullViewKey): (() => void) | undefined => (
+        onAddressChange ? (): void => onAddressChange({ view }) : undefined
+    );
 
     if (state.kind === 'denied') {
         return (
@@ -232,6 +236,7 @@ export default function TeamAnalyticsView({
                     <WorkingTimeByProjectCard
                         rows={overview.by_project.rows}
                         rest={overview.by_project.rest}
+                        legacy={!!overview.by_project.legacy}
                         names={projectNames}
                         selected={filters.project}
                         onPick={pick('project')}
@@ -242,6 +247,7 @@ export default function TeamAnalyticsView({
                 <WorkingTimeByAnnotatorCard
                     rows={overview.by_annotator.rows}
                     rest={overview.by_annotator.rest}
+                    legacy={!!overview.by_annotator.legacy}
                     selected={filters.annotator}
                     onPick={pick('annotator')}
                     periodLabel={shownPeriod}
@@ -265,6 +271,7 @@ export default function TeamAnalyticsView({
                     })}
                 </TrendsGate>
                 {renderDetails?.()}
+                <Definitions />
             </div>
         );
     }
@@ -291,7 +298,10 @@ export default function TeamAnalyticsView({
                         history={history}
                         onChange={onAddressChange as (change: Partial<Address>) => void}
                     />
-                    {/* a legacy period has all shapes only: no switch */}
+                    {/* a legacy period has all shapes only: no switch. While the period is not fully processed,
+                        `legacy` describes only its processed part and can turn to the opposite once processing
+                        completes, so the switch may appear or vanish then (a recorded limit, see
+                        docs/fork-specification.md, "Known limit of unprocessed periods") */}
                     {shownOverview?.operations?.legacy ? null : (
                         <ShapeSwitch
                             shapes={(address as Address).shapes ?? DEFAULT_SHAPES}

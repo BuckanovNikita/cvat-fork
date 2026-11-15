@@ -6,7 +6,7 @@
 
 @import 'base';
 
-.cvat-team-analytics-legend {
+.cvat-team-analytics-breakdown-legend {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -16,20 +16,25 @@
     font-size: 12px;
 }
 
-.cvat-team-analytics-legend-item {
+// the split's colours, wrapping inside the card on a narrow window
+.cvat-team-analytics-breakdown-legend-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $grid-unit-size * 0.75 $grid-unit-size * 1.75;
+    min-width: 0;
+}
+
+.cvat-team-analytics-breakdown-legend-item {
     display: inline-flex;
     align-items: center;
     gap: $grid-unit-size * 0.75;
 }
 
-.cvat-team-analytics-legend-swatch {
+.cvat-team-analytics-breakdown-legend-swatch {
+    flex: none;
     width: 12px;
     height: 12px;
     border-radius: 3px;
-}
-
-.cvat-team-analytics-working-time-swatch {
-    background: $validation-progress-color;
 }
 
 button.cvat-team-analytics-breakdown-row {
@@ -58,12 +63,24 @@ button.cvat-team-analytics-breakdown-row {
         font-weight: 600;
     }
 
+    // a bar split by operation, as in the full view: parts side by side with a gap, no track
     > .cvat-team-analytics-bar {
         display: block;
+        height: 16px;
+        border-radius: 0;
+        background: transparent;
 
         > .cvat-team-analytics-bar-fill {
-            display: block;
+            display: flex;
+            gap: 2px;
+            overflow: hidden;
+            border-radius: 0 4px 4px 0;
+            background: transparent;
         }
+    }
+
+    .cvat-team-analytics-bar-part {
+        min-width: 0;
     }
 }
 

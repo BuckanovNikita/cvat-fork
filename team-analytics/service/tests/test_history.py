@@ -1,7 +1,8 @@
 """Processed history: the fill of older days, the daily recount and late events, as status and figures show them.
 
 The service works in steps (`Service.step()`), as its loop runs them: the ten-minute refresh of recent hours
-when it is due, else the daily check when it is due, else one day of history.
+when it is due, else one day of history (today's hours before a refresh window shorter than a day first), else
+the daily check when it is due.
 """
 
 import json
@@ -14,6 +15,8 @@ import traceback
 from datetime import UTC, datetime, timedelta
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+from team_analytics.http_server import make_server
 
 from tests.support import NOW, FakeUser, StackTestCase, at, working_time
 from tests.test_entry_point import SERVICE_DIR, free_port
@@ -29,13 +32,16 @@ class HistoryCase(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.stack.cvat.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "owner", True)}))
+        self.stack.cvat.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
 
     def step(self, times: int = 1) -> None:
         for _ in range(times):
             self.stack.service.step()
 
     def history(self, **query) -> dict:
-        status, body = self.stack.get("/team-analytics-api/v1/status", "lead", org="org7", **query)
+        """The history block as an administrator who selected the organization sees it: the full block
+        (a maintainer's is in test_isolation.HistoryStatusTest)."""
+        status, body = self.stack.get("/team-analytics-api/v1/status", "admin", org="org7", **query)
         self.assertEqual(status, 200, body)
         return body["history"]
 
@@ -131,6 +137,30 @@ class FillTest(HistoryCase):
         self.assertTrue(self.overview(period="month", month="2026-10")["processed"])
         self.assertTrue(self.overview(period="year")["processed"])
 
+    def test_a_period_not_wholly_processed_carries_no_figures_only_its_envelope(self):
+        self.step()  # the last 48 hours only: this week is not wholly processed
+        body = self.overview(annotator=str(ALICE[0]))
+        self.assertFalse(body["processed"])
+        self.assertEqual(body["period"]["first_day"], "2026-11-07")
+        self.assertEqual(body["filters"], {"project": None, "annotator": {"user_id": ALICE[0], "user_name": "alice"}})
+        for section in ("headline", "sessions", "by_annotator", "by_project", "time_series", "input",
+                        "creation_methods", "saved_boxes"):
+            self.assertIsNone(body[section], section)
+        # the legacy flags stay (no cutover yet: a legacy period); every figure beside them is null
+        self.assertEqual(body["operations"], {"legacy": True, "partly_legacy": False, "cutover": None,
+                                              "shapes": "all", "working_time_ms": None,
+                                              "active_time_ms": None, "rows": None})
+        # every key outside the envelope is null, so a section or field added later is withheld too
+        self.assertLessEqual({key for key, value in body.items() if value is not None},
+                             {"period", "filters", "processed", "operations"})
+        self.assertLessEqual({key for key, value in body["operations"].items() if value is not None},
+                             {"legacy", "partly_legacy", "cutover", "shapes"})
+
+        self.step(6)  # processed from 2026-11-06: this week (from the 7th) now is, with its figures
+        body = self.overview()
+        self.assertTrue(body["processed"])
+        self.assertEqual(self.alice_ms(), 30 * MINUTE)  # the 8th, 10th, 11th and 13th
+
 
     def test_a_new_day_does_not_take_any_period_away(self):
         self.fill()
@@ -140,6 +170,179 @@ class FillTest(HistoryCase):
         history = self.history()
         self.assertTrue(history["complete"], history)
         self.assertEqual(history["periods"], {"week": True, "two_weeks": True, "month": True, "year": True})
+
+    def test_with_the_default_window_today_takes_no_step_of_its_own(self):
+        worked = 0
+        for _ in range(40):
+            if self.stack.service.step() >= 1:  # nothing left to do: waiting for the next refresh
+                break
+            worked += 1
+        # the ten-minute refresh, the seven steps of the days before today (see the first test), the daily check
+        self.assertEqual(worked, 9)
+        self.assertEqual(self.alice_ms(period="two_weeks"), 31 * MINUTE)
+
+
+class ShortWindowTest(HistoryCase):
+    """A refresh window shorter than a day leaves hours of today before it. They are processed once the
+    history step has computed them, not before."""
+
+    stack_options = {"refresh_window_hours": 1}  # at 15:20 the ten-minute refresh covers 15:00 onwards
+
+    def week_processed(self, alice_ms: int) -> bool:
+        """Whether the week reads as processed. When it does, Alice's working time in it must be `alice_ms`."""
+        overview = self.overview()
+        if overview["processed"]:
+            rows = overview["by_annotator"]["rows"]
+            self.assertEqual(sum(row["working_time_ms"] for row in rows if row["user_id"] == ALICE[0]), alice_ms)
+        return overview["processed"]
+
+    def test_an_event_from_earlier_today_is_counted_or_its_period_reads_as_not_processed(self):
+        self.stack.add_events([working_time(at("2026-11-13 10:00:00"), 16 * MINUTE, user=ALICE, org=ORG)])
+        processed = []
+        for _ in range(3):
+            self.step()
+            processed.append(self.week_processed(16 * MINUTE))
+        # the ten-minute refresh leaves 10:00 out; the history step computes it; then the daily check
+        self.assertEqual(processed, [False, True, True])
+
+    def test_status_offers_no_period_until_todays_earlier_hours_are_computed(self):
+        self.stack.add_events([working_time(at("2026-11-13 10:00:00"), 16 * MINUTE, user=ALICE, org=ORG)])
+        self.step()  # the ten-minute refresh only
+        history = self.history()
+        self.assertFalse(history["complete"])
+        self.assertEqual(history["ready_from"], "2026-11-13T15:00:00+00:00")
+        self.assertEqual(history["periods"], {"week": False, "two_weeks": False, "month": False, "year": False})
+
+        self.step()
+        history = self.history()
+        self.assertTrue(history["complete"])
+        self.assertEqual(history["periods"], {"week": True, "two_weeks": True, "month": True, "year": True})
+
+    def test_todays_earlier_hours_come_first_then_the_days_before_most_recent_first(self):
+        self.stack.add_events([
+            working_time(at("2026-11-10 10:00:00"), 1 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-12 10:00:00"), 2 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-13 10:00:00"), 4 * MINUTE, user=ALICE, org=ORG),
+        ])
+        ready = []
+        for _ in range(5):
+            self.step()
+            history = self.history()
+            ready.append(None if history["complete"] else history["ready_from"])
+        self.assertEqual(ready, [
+            "2026-11-13T15:00:00+00:00",  # the ten-minute refresh: the current hour
+            "2026-11-13T00:00:00+00:00",  # today's hours before it
+            "2026-11-12T00:00:00+00:00",
+            "2026-11-11T00:00:00+00:00",  # an empty day
+            None,  # the 10th, the first day with events: complete
+        ])
+        self.assertEqual(self.alice_ms(period="two_weeks"), 7 * MINUTE)
+
+    def test_an_hour_that_left_the_window_is_computed_again_before_it_reads_as_processed(self):
+        self.stack.add_events([working_time(at("2026-11-13 15:05:00"), 1 * MINUTE, user=ALICE, org=ORG)])
+        self.settle()
+        self.assertTrue(self.week_processed(1 * MINUTE))
+
+        # in the last minutes of the hour, after its last ten-minute refresh
+        self.stack.add_events([working_time(at("2026-11-13 15:55:00"), 2 * MINUTE, user=ALICE, org=ORG)])
+        self.stack.now = at("2026-11-13 16:05:00")
+        self.step()  # the ten-minute refresh, now from 16:00
+        self.assertFalse(self.week_processed(3 * MINUTE))
+        self.step()  # the history step: the hour from 15:00
+        self.assertTrue(self.week_processed(3 * MINUTE))
+        self.settle()
+        self.assertTrue(self.week_processed(3 * MINUTE))
+
+    def test_an_hour_waiting_for_the_history_step_leaves_the_days_before_today_processed(self):
+        self.stack.add_events([
+            working_time(at("2026-10-20 10:00:00"), 2 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-05 10:00:00"), 4 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-13 15:05:00"), 1 * MINUTE, user=ALICE, org=ORG),
+        ])
+        self.settle()
+        self.assertTrue(self.history()["complete"])
+
+        self.stack.now = at("2026-11-13 16:05:00")
+        self.step()  # the ten-minute refresh, now from 16:00: the hour from 15:00 waits for the history step
+        history = self.history()
+        self.assertFalse(history["complete"])
+        self.assertEqual(history["ready_from"], "2026-11-13T16:00:00+00:00")
+        # every day before today is still processed (20 October to 12 November), today is not
+        self.assertEqual((history["days_ready"], history["days_total"], history["percent"]), (24, 25, 96))
+        # every period offered by status holds today
+        self.assertEqual(history["periods"], {"week": False, "two_weeks": False, "month": False, "year": False})
+        self.assertFalse(self.week_processed(1 * MINUTE))
+        # a period wholly before today keeps its figures
+        october = self.overview(period="month", month="2026-10")
+        self.assertTrue(october["processed"])
+        self.assertEqual(self.alice_ms(period="month", month="2026-10"), 2 * MINUTE)
+        # so do the trend buckets before this week; this week's holds the hour that waits
+        status, trends = self.stack.get("/team-analytics-api/v1/trends", "lead", org="org7")
+        self.assertEqual(status, 200, trends)
+        self.assertEqual([bucket["processed"] for bucket in trends["buckets"]], [True] * 11 + [False])
+        self.assertEqual(trends["lines"][0]["points"][-2]["working_time_ms"], 4 * MINUTE)  # the week of the 5th
+        # a candidate's working time never takes in the bucket that is not processed; it stays null meanwhile
+        self.assertEqual([(row["id"], row["working_time_ms"]) for row in trends["candidates"]], [(ALICE[0], None)])
+
+        self.step()  # the history step: the hour from 15:00
+        self.assertTrue(self.history()["complete"])
+        self.assertTrue(self.week_processed(1 * MINUTE))
+
+    def test_across_midnight_yesterday_reads_as_processed_only_once_it_is_computed_as_a_whole(self):
+        self.stack.now = at("2026-11-13 23:45:00")
+        self.stack.add_events([
+            working_time(at("2026-11-13 10:00:00"), 16 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-13 23:30:00"), 2 * MINUTE, user=ALICE, org=ORG),
+        ])
+        self.settle()
+        self.assertTrue(self.week_processed(18 * MINUTE))
+
+        # a record of the day's last minutes; then midnight passes
+        self.stack.add_events([working_time(at("2026-11-13 23:58:00"), 1 * MINUTE, user=ALICE, org=ORG)])
+        self.stack.now = at("2026-11-14 00:05:00")
+        self.step()  # the ten-minute refresh, now from 00:00
+        self.assertFalse(self.week_processed(19 * MINUTE))
+        self.step()  # the 13th, computed as a whole
+        self.assertTrue(self.week_processed(19 * MINUTE))
+        self.assertGreaterEqual(self.stack.service.step(), 1, "the service kept working after midnight")
+        self.assertTrue(self.history()["complete"])
+
+    def test_two_replicas_whose_clocks_straddle_midnight_differ_only_in_caution(self):
+        """The replica that reads a period as processed is right; the other one only waits, and both agree once the
+        day before midnight has been computed as a whole."""
+        self.stack.now = at("2026-11-13 23:50:00")
+        self.stack.add_events([
+            working_time(at("2026-11-13 10:00:00"), 16 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-13 23:20:00"), 2 * MINUTE, user=ALICE, org=ORG),
+        ])
+        self.settle()
+        ahead = self.stack.new_service(clock=lambda: at("2026-11-14 00:05:00"))
+        behind = self.stack.new_service(clock=lambda: at("2026-11-13 23:59:00"))
+        addresses = {"ahead": self.serve(ahead), "behind": self.serve(behind)}
+
+        def processed() -> dict[str, bool]:
+            """Whether each replica reads the week as processed; where it does, with all 18 minutes."""
+            seen = {}
+            for name, address in addresses.items():
+                self.stack.url = address
+                seen[name] = self.week_processed(18 * MINUTE)
+            return seen
+
+        self.assertEqual(processed(), {"ahead": False, "behind": True})
+        self.assertTrue(ahead.refresh().ran)  # the window from 00:00
+        self.assertEqual(processed(), {"ahead": False, "behind": False})
+        self.assertEqual(behind.step(), 0)  # still the 13th for it: the hours before the window
+        self.assertEqual(processed(), {"ahead": False, "behind": True})
+        self.assertEqual(ahead.step(), 0)  # the 13th, computed as a whole
+        self.assertEqual(processed(), {"ahead": True, "behind": True})
+
+    def serve(self, service) -> str:
+        """Serves another replica over HTTP; returns its address."""
+        http = make_server(service, "127.0.0.1", 0)
+        threading.Thread(target=http.serve_forever, daemon=True).start()
+        self.addCleanup(http.server_close)
+        self.addCleanup(http.shutdown)
+        return f"http://127.0.0.1:{http.server_address[1]}"
 
 
 class NothingToProcessTest(HistoryCase):
@@ -266,6 +469,12 @@ class RefreshPriorityTest(HistoryCase):
 
     def test_a_due_refresh_comes_before_the_next_day_of_history(self):
         self.step()
+        for _ in range(20):  # history back to this week, so its figures are read; older days still to do
+            if self.overview()["processed"]:
+                break
+            self.step()
+        else:
+            self.fail("this week was never processed")
         ready = [self.history()["ready_from"]]
         bob = []
         for n in range(1, 13):  # a step every four minutes, from 15:24
@@ -341,7 +550,8 @@ class RunningServiceTest(HistoryCase):
                 time.sleep(0.5)
             self.assertTrue(history and history["complete"], history)
             rows = self.read(port, "overview", "&period=two_weeks")["by_annotator"]["rows"]
-            self.assertEqual(rows, [{"user_id": ALICE[0], "user_name": "alice", "working_time_ms": 101_000}])
+            self.assertEqual([(row["user_id"], row["user_name"], row["working_time_ms"]) for row in rows],
+                             [(ALICE[0], "alice", 101_000)])
         finally:
             process.terminate()
             try:

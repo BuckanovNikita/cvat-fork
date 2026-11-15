@@ -1,0 +1,35 @@
+image: cvat/clickhouse:23.12.2-debian-11-r0
+server: 23.12.2.59
+limits of the container: --cpus 2 --memory 10g; max_threads = 'auto(2)'
+base_n: 325
+events: 36326651 2025-11-14 06:00:08.859 2026-11-13 18:27:02.794
+host CPUs: 32
+state early, until 2026-11-14 00:00:00.000:
+  rows before until: 36326651
+  tagged rows before until: 11566490
+  first tagged record before until: 2025-11-14 06:00:22.860
+  stored cutover: ['2025-11-14 06:00:00']
+  parts (active), on disk, uncompressed: 13 2.44 GiB 10.07 GiB
+  host load average: 7.72 5.55 4.46
+state late, until 2026-11-14 00:00:00.000:
+  rows before until: 36326651
+  tagged rows before until: 43398
+  first tagged record before until: 2026-11-13 06:00:11.190
+  stored cutover: ['2025-11-14 06:00:00']
+  parts (active), on disk, uncompressed: 13 2.44 GiB 10.07 GiB
+  host load average: 7.76 6.24 4.87
+state steady, until 2026-11-13 06:00:00.000:
+  rows before until: 36191234
+  tagged rows before until: 0
+  first tagged record before until: 1970-01-01 00:00:00.000
+  stored cutover: ['2026-11-13 06:00:00']
+  parts (active), on disk, uncompressed: 13 2.44 GiB 10.07 GiB
+  host load average: 6.94 6.34 5.15
+state none, until 2026-11-14 00:00:00.000:
+  rows before until: 36326651
+  tagged rows before until: 0
+  first tagged record before until: 1970-01-01 00:00:00.000
+  stored cutover: []
+  parts (active), on disk, uncompressed: 13 2.44 GiB 10.07 GiB
+  host load average: 5.05 5.81 5.16
+host load average after the runs: 5.72 5.61 5.18

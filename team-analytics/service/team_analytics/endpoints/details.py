@@ -7,21 +7,24 @@ annotator's name contains (annotators only); `ids` = comma-separated project ids
 so every row stays listed for picking; the other filter is.
 
 Figures come from read/details.sql, the scope's legacy flag, applied shapes and project ids (for the page's
-name search, since only the page knows project names) from read/details_scope.sql. Like the overview, an
-unprocessed period says `processed: false` and the page withholds it.
+name search, since only the page knows project names) from read/details_scope.sql. Like the overview, a
+period not fully processed says `processed: false` and carries no figures: it keeps `by`, `page_size`,
+`processed`, `technical_accounts` and the legacy flags, and `page`, `total`, `rows` and `project_ids` are null
+(withheld.py). Its rows are then not read; the summary is, since the legacy flags come from it.
 """
 
 from __future__ import annotations
 
-from team_analytics.history import load_state
 from team_analytics.periods import BadRequest, decimal
 from team_analytics.service import Request
+from team_analytics.withheld import LEGACY_FLAGS, withhold
 
 PATH = "details"
 
 PAGE_SIZE = 10
 KINDS = ("annotators", "projects")
 MAX_IDS = 5000
+ENVELOPE = frozenset({"by", "page_size", "processed", "technical_accounts"}) | LEGACY_FLAGS
 
 
 def _page(text: str) -> int:
@@ -54,6 +57,8 @@ def handle(request: Request) -> dict:
     ids = _ids(request.query.get("ids", "")) if has_ids else []
 
     span = request.span()
+    # read before any figure (service.Request.history)
+    processed = request.history().covers(span.start, span.end)
     scope = request.scope_params()
     # the table's own dimension is listed whole; the selected row is only marked by the page
     if kind == "annotators":
@@ -64,10 +69,11 @@ def handle(request: Request) -> dict:
     params = {**span.params(), **scope, **legacy.params()}
 
     summary = request.sql.rows("read/details_scope.sql", params)[0]
+    # the table's rows are not read for a period not fully processed (the legacy flags come from the summary)
     rows = request.sql.rows("read/details.sql", {
         **params, "by": kind, "search": search, "has_ids": 1 if has_ids else 0, "ids": ids,
         "offset": (page - 1) * PAGE_SIZE, "page_size": PAGE_SIZE,
-    })
+    }) if processed else []
     total = int(rows[0]["total"]) if rows else 0
     other = "projects" if kind == "annotators" else "annotators"
 
@@ -79,7 +85,7 @@ def handle(request: Request) -> dict:
         "legacy": bool(summary["legacy"]),
         **legacy.describe(job_work=bool(summary["job_work"])),
         "shapes": "all" if summary["all_shapes"] else "bounding_boxes",
-        "processed": load_state(request.sql, request.now).covers(span.start),
+        "processed": processed,
         "technical_accounts": len(request.config.technical_accounts),
         "rows": [{
             "id": int(row["id"]),
@@ -101,4 +107,5 @@ def handle(request: Request) -> dict:
     }
     if kind == "projects":
         body["project_ids"] = [int(value) for value in summary["project_ids"]]
-    return body
+    # no figures for a period not fully processed
+    return body if body["processed"] else withhold(body, ENVELOPE)

@@ -25,6 +25,12 @@ spec:
         - name: team-analytics
           image: cvat/team-analytics:v2.82.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: http
               containerPort: 8000

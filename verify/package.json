@@ -1,0 +1,8 @@
+{
+  "name": "cvat-fork-verify",
+  "private": true,
+  "description": "Dependencies of the fork's frontend test harness that the imported CVAT manifest does not declare",
+  "dependencies": {
+    "jsdom": "19.0.0"
+  }
+}

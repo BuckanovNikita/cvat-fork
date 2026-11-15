@@ -8,6 +8,7 @@
     height: 100%;
     overflow: auto;
     padding: $grid-unit-size * 2 $grid-unit-size * 4;
+
     // CVAT keeps the app at least 1024 px wide (#root, header); in a narrower window the page
     // itself fits the window and stays in view, so its cards stack instead of scrolling with it
     box-sizing: border-box;
@@ -128,7 +129,7 @@
     &[aria-pressed='true'] {
         background: $background-color-1;
         font-weight: 600;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 15%);
     }
 
     &:disabled {
@@ -284,13 +285,13 @@
     overflow: hidden;
 }
 
-.cvat-team-analytics-legend {
+.cvat-team-analytics-split-legend {
     list-style: none;
     margin: 0;
     padding: 0;
 }
 
-.cvat-team-analytics-legend-item {
+.cvat-team-analytics-split-legend-item {
     display: flex;
     align-items: center;
     gap: $grid-unit-size * 1.25;
@@ -298,11 +299,11 @@
     border-top: 1px solid #ececec;
 }
 
-.cvat-team-analytics-legend-name {
+.cvat-team-analytics-split-legend-name {
     flex: 1 1 auto;
 }
 
-.cvat-team-analytics-legend-share {
+.cvat-team-analytics-split-legend-share {
     width: 44px;
     text-align: right;
     font-weight: 600;
@@ -318,7 +319,7 @@
     vertical-align: middle;
 }
 
-.cvat-team-analytics-legend-item .cvat-team-analytics-swatch {
+.cvat-team-analytics-split-legend-item .cvat-team-analytics-swatch {
     margin-right: 0;
 }
 

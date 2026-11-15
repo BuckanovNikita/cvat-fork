@@ -11,6 +11,8 @@ export interface AnnotatorWorkingTime {
     user_id: number;
     user_name: string;
     working_time_ms: number;
+    // the row's operation parts, equal to its row in the full view
+    operations?: RowOperations;
 }
 
 // The period a response covers, as the service echoes it (days are the viewer's calendar days).
@@ -79,11 +81,12 @@ export interface OperationsFigures {
     cutover?: string | null;
     // the shapes the figures cover: the switch asked for, or all shapes in a legacy period
     shapes?: 'bounding_boxes' | 'all';
-    working_time_ms: number;
+    // the figures below are null in a period not wholly processed (the flags above stay)
+    working_time_ms: number | null;
     // operations + Other, the denominator of every share
-    active_time_ms: number;
+    active_time_ms: number | null;
     // creation, alignment, class change, deletion and other, in that order
-    rows: OperationRow[];
+    rows: OperationRow[] | null;
 }
 
 export type CreationMethodName = 'drawn' | 'pasted' | 'propagated';
@@ -124,12 +127,23 @@ export interface SavedBoxes {
 export interface ProjectWorkingTime {
     project_id: number; // 0 = No project
     working_time_ms: number;
+    // the row's operation parts, equal to its row in the full view
+    operations?: RowOperations;
 }
 
-// the rows a chart does not show: how many and their working time
+// the rows a chart does not show: how many, their working time and their operation parts added up
 export interface Rest {
     count: number;
     working_time_ms: number;
+    operations?: RowOperations;
+}
+
+// The rows of working time by annotator or by project: the largest and the rest. `legacy` is the full view's flag
+// for these rows (the overview's own `operations.legacy` applies both filters, these rows only the other one).
+export interface WorkingTimeRows<Row> {
+    legacy?: boolean;
+    rows: Row[];
+    rest?: Rest;
 }
 
 // the project and annotator filters the figures were read with (project 0 = No project)
@@ -141,34 +155,39 @@ export interface AppliedFilters {
 // project id -> name as CVAT returns it to the viewer; a project missing here is shown by its id
 export type ProjectNames = Record<number, string>;
 
+// In a period not wholly processed (`processed: false`) the service sends no figures: every section but
+// `period`, `filters` and the legacy flags of `operations` is null. The page shows why instead of any card.
 export interface Overview {
     period?: Period;
     // the eight largest rows (project filter applied) and the rest
-    by_annotator: { rows: AnnotatorWorkingTime[]; rest?: Rest };
-    time_series?: TimeSeries;
+    by_annotator: WorkingTimeRows<AnnotatorWorkingTime> | null;
+    time_series?: TimeSeries | null;
     // the eight largest rows (annotator filter applied) and the rest
-    by_project?: { rows: ProjectWorkingTime[]; rest: Rest };
+    by_project?: WorkingTimeRows<ProjectWorkingTime> | null;
     // active annotators within the scope and both filters, and the projects they worked in
-    headline?: { annotators: number; projects: number };
+    headline?: { annotators: number; projects: number } | null;
     filters?: AppliedFilters;
     // the scope's figures plus the same per annotator (most sessions first)
-    sessions?: SessionFigures & { by_annotator: AnnotatorSessions[] };
+    sessions?: (SessionFigures & { by_annotator: AnnotatorSessions[] }) | null;
     operations?: OperationsFigures;
-    input?: InputFigures;
-    creation_methods?: CreationMethods;
-    saved_boxes?: SavedBoxes;
-    // false: the period is not wholly processed, so the figures are partial and are not shown
+    input?: InputFigures | null;
+    creation_methods?: CreationMethods | null;
+    saved_boxes?: SavedBoxes | null;
+    // false: the period is not wholly processed, so it carries no figures
     processed?: boolean;
 }
 
-// How far history is processed (status section `history`), in the viewer's time zone.
+// How far history is processed (status section `history`), in the viewer's time zone. The fields marked
+// "administrators only" describe the whole instance and are absent from everyone else's status.
 export interface HistoryStatus {
     complete: boolean;
-    ready_from: string | null; // ISO time from which everything is processed; null when complete or nothing is
-    ready_from_day: string | null; // YYYY-MM-DD: the viewer's first whole processed day
-    first_day: string | null; // YYYY-MM-DD: the first day with events
-    days_ready: number;
-    days_total: number;
+    percent?: number; // whole percent of the days with events that are processed; 100 only when complete
+    // administrators only. ISO time from which everything is processed; null when complete or nothing is
+    ready_from?: string | null;
+    ready_from_day?: string | null; // administrators only. YYYY-MM-DD: the viewer's first whole processed day
+    first_day?: string | null; // administrators only. YYYY-MM-DD: the first day with events
+    days_ready?: number; // administrators only
+    days_total?: number; // administrators only
     periods: Record<string, boolean>; // period key -> wholly processed
     earliest_month: string | null; // YYYY-MM: the earliest wholly processed month (null: none, or all when complete)
     complete_weeks: number;
@@ -304,7 +323,8 @@ export async function loadOverview(query: OverviewQuery, fetch: FetchService = f
         return { kind: 'error' };
     }
     const data = await body(response);
-    if (response.ok && data && data.by_annotator) {
+    // an answer without figures (a period not wholly processed) is a ready one too: the page says why
+    if (response.ok && data && (data.by_annotator || data.processed === false)) {
         return { kind: 'ready', overview: data as Overview };
     }
     return refusalOf(response, data) ?? { kind: 'error' };
@@ -317,8 +337,9 @@ export type CompareKind = 'annotators' | 'projects';
 
 // One week or month of one line. Creation figures are null where the shapes cannot be told apart (a bucket
 // before the new logging under Bounding boxes); hotkey share is null when there were no actions to share.
+// In a bucket not wholly processed every value is null and only `legacy` and `hotkey_recorded` are sent.
 export interface TrendPoint {
-    working_time_ms: number;
+    working_time_ms: number | null;
     // the line had job work in the bucket and the bucket ends before the cutover to the new logging
     legacy: boolean;
     boxes: number | null;
@@ -327,8 +348,8 @@ export interface TrendPoint {
     average_ms: number | null;
     // false: before the new logging, hotkey use was not recorded
     hotkey_recorded: boolean;
-    hotkey_actions: number;
-    mouse_actions: number;
+    hotkey_actions: number | null;
+    mouse_actions: number | null;
     hotkey_share: number | null;
 }
 
@@ -343,11 +364,12 @@ export interface Trends {
     step: TrendStep;
     shapes: 'bounding_boxes' | 'all';
     compare: CompareKind;
-    // first day of each week (Monday) or month; an unprocessed bucket's figures are partial and not shown
+    // first day of each week (Monday) or month; a bucket not wholly processed has no figures
     buckets: { start: string; processed: boolean }[];
     lines: TrendLine[];
-    // everyone of the compared kind with work in the twelve buckets (most working time first)
-    candidates: { id: number; user_name: string | null; working_time_ms: number }[];
+    // everyone of the compared kind with work in the twelve buckets, most working time first; the working time
+    // counts only processed buckets and is null while none is (then the order is by id)
+    candidates: { id: number; user_name: string | null; working_time_ms: number | null }[];
 }
 
 export interface TrendsQuery {
@@ -382,8 +404,8 @@ export async function loadTrends(query: TrendsQuery, fetch: FetchService = fetch
         reportRefusal(response, data);
         const readable = response.ok && !!data && Array.isArray(data.buckets) && Array.isArray(data.lines) &&
             Array.isArray(data.candidates) && data.lines.every(
-                (line: TrendLine) => Array.isArray(line?.points) && line.points.length === data.buckets.length,
-            );
+            (line: TrendLine) => Array.isArray(line?.points) && line.points.length === data.buckets.length,
+        );
         return readable ? data as Trends : null;
     } catch {
         return null;
@@ -402,6 +424,12 @@ export interface ListFigures {
     average_ms: number | null;
 }
 
+// A row's working time split by operation: each operation's figures and Other (working time less them, never
+// below zero)
+export type RowOperations = Record<'creation' | 'alignment' | 'class_change' | 'deletion', ListFigures> & {
+    other: { time_ms: number };
+};
+
 // One annotator or project of a full view
 export interface ListRow {
     id: number; // project 0 = No project
@@ -409,9 +437,7 @@ export interface ListRow {
     working_time_ms: number;
     // of all rows' working time; null when there is none
     share: number | null;
-    operations: Record<'creation' | 'alignment' | 'class_change' | 'deletion', ListFigures> & {
-        other: { time_ms: number };
-    };
+    operations: RowOperations;
     methods: Record<CreationMethodName, ListFigures>;
     // objects no person drew: detector boxes, and for a project also what technical accounts saved
     model: number;
@@ -423,26 +449,28 @@ export interface HotkeyListRow {
     share: number; // of all hotkey actions
 }
 
+// In a period not wholly processed (`processed: false`) a list keeps its envelope (period, kind, legacy flags)
+// and its figures (`total`, `rows`, `hotkey_actions`) are null.
 export interface RowsList {
     by: 'annotators' | 'projects';
     period?: Period;
-    // false: the period is not wholly processed, so the figures are partial and are not shown
+    // false: the period is not wholly processed, so it carries no figures
     processed?: boolean;
     legacy: boolean;
     // as OperationsFigures: the cutover falls inside the period, and when it is
     partly_legacy?: boolean;
     cutover?: string | null;
     shapes: 'bounding_boxes' | 'all';
-    total: { count: number; working_time_ms: number };
-    rows: ListRow[];
+    total: { count: number; working_time_ms: number } | null;
+    rows: ListRow[] | null;
 }
 
 export interface HotkeysList {
     by: 'hotkeys';
     period?: Period;
     processed?: boolean;
-    hotkey_actions: number;
-    rows: HotkeyListRow[];
+    hotkey_actions: number | null;
+    rows: HotkeyListRow[] | null;
 }
 
 export type FullList = RowsList | HotkeysList;
@@ -460,7 +488,8 @@ export async function loadList(
         });
         const data = await body(response);
         reportRefusal(response, data);
-        const readable = response.ok && !!data && data.by === query.by && Array.isArray(data.rows);
+        const readable = response.ok && !!data && data.by === query.by &&
+            (Array.isArray(data.rows) || data.processed === false);
         return readable ? data as FullList : null;
     } catch {
         return null;
@@ -493,20 +522,22 @@ export interface DetailsRow {
     hotkey_share: number | null;
 }
 
+// In a period not wholly processed (`processed: false`) the table keeps its envelope (kind, page size, legacy
+// flags) and `page`, `total`, `rows` and `project_ids` are null.
 export interface Details {
     by: DetailsKind;
-    page: number; // 1-based, the page actually shown
+    page: number | null; // 1-based, the page actually shown
     page_size: number;
-    total: number; // rows matching the search
+    total: number | null; // rows matching the search
     legacy: boolean;
     partly_legacy?: boolean; // as OperationsFigures
     cutover?: string | null;
     shapes: 'bounding_boxes' | 'all';
     processed?: boolean;
     technical_accounts?: number;
-    rows: DetailsRow[];
+    rows: DetailsRow[] | null;
     // projects only: every project in the table before the search, for finding projects by name
-    project_ids?: number[];
+    project_ids?: number[] | null;
 }
 
 export interface DetailsQuery extends OverviewQuery {
@@ -532,7 +563,8 @@ export async function loadDetails(query: DetailsQuery, fetch: FetchService = fet
         });
         const data = await body(response);
         reportRefusal(response, data);
-        const readable = response.ok && !!data && Array.isArray(data.rows) && typeof data.total === 'number';
+        const readable = response.ok && !!data &&
+            ((Array.isArray(data.rows) && typeof data.total === 'number') || data.processed === false);
         return readable ? data as Details : null;
     } catch {
         return null;

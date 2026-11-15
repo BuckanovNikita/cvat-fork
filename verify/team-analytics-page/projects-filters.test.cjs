@@ -3,10 +3,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, domAvailable, loadPage, mount, render, suppliedFetch, text,
+    React, act, dependency, loadPage, mount, render, suppliedFetch, text,
 } = require('./helper.cjs');
-
-const domTest = (name, fn) => test(name, { skip: !domAvailable && 'jsdom is not installed in cvat/node_modules' }, fn);
 
 const View = loadPage('team-analytics-view.tsx').default;
 const HOUR = 3600000;
@@ -79,7 +77,8 @@ test('each chart shows its rows and one line with the count and total of the res
 test('each chart carries its legend inside the card', () => {
     const html = render(View, ready());
     for (const name of ['working-time-by-project', 'working-time-by-annotator']) {
-        assert.match(card(html, name), /cvat-team-analytics-legend[^>]*>.*Working time/);
+        // the split's colours (split-bars.test.cjs)
+        assert.match(card(html, name), /cvat-team-analytics-breakdown-legend[^>]*>.*Creation.*Other/);
     }
 });
 
@@ -222,7 +221,7 @@ async function opened(Page, check) {
     }
 }
 
-domTest('clicking a row filters the whole page; clicking it again or the clear control removes it', async () => {
+test('clicking a row filters the whole page; clicking it again or the clear control removes it', async () => {
     const { history, requests, Page } = mountPage({ names: async () => ({ 1: 'Street scenes', 2: 'Retail shelves' }) });
     await opened(Page, async (view) => {
         assert.deepEqual(filterParams(requests.at(-1)), [null, null]);
@@ -254,7 +253,7 @@ domTest('clicking a row filters the whole page; clicking it again or the clear c
     });
 });
 
-domTest('a shared address opens with its filters; a filter change keeps the period and other keys', async () => {
+test('a shared address opens with its filters; a filter change keeps the period and other keys', async () => {
     const overview = { ...OVERVIEW, filters: { project: 0, annotator: { user_id: 40, user_name: 'zoe' } } };
     const { history, requests, Page } = mountPage({
         search: '?period=month&month=2026-10&project=0&annotator=40&org=team-org&tab=x', answer: () => ({ body: overview }),
@@ -272,7 +271,7 @@ domTest('a shared address opens with its filters; a filter change keeps the peri
     });
 });
 
-domTest('project names are asked of CVAT for the shown and selected projects; a failed lookup shows identifiers', async () => {
+test('project names are asked of CVAT for the shown and selected projects; a failed lookup shows identifiers', async () => {
     const { lookups, Page } = mountPage({ search: '?project=7&org=team-org', names: async () => { throw new Error('403'); } });
     await opened(Page, async (view) => {
         assert.deepEqual([...lookups.at(-1)].sort(), [1, 2, 7]);
@@ -287,7 +286,7 @@ const lastOverview = (requests) => requests.filter((request) => request.url.incl
 
 // Filters belong to the organization they were picked in: the address names it (`org`), and filters of
 // another organization, or of an address that names none, are never applied to the current one.
-domTest('filters picked in one organization are not applied in another', async () => {
+test('filters picked in one organization are not applied in another', async () => {
     const { history, requests, Page } = mountPage({ search: '?period=week&project=5&annotator=12&org=org-a' });
     await opened(Page, async (view) => {
         assert.deepEqual(filterParams(lastOverview(requests)), [null, null]);
@@ -305,7 +304,7 @@ domTest('filters picked in one organization are not applied in another', async (
     });
 });
 
-domTest('an address with filters but no organization applies them only without an organization', async () => {
+test('an address with filters but no organization applies them only without an organization', async () => {
     const underOrganization = mountPage({ search: '?project=5&annotator=12' });
     await opened(underOrganization.Page, async () => {
         assert.deepEqual(filterParams(lastOverview(underOrganization.requests)), [null, null]);

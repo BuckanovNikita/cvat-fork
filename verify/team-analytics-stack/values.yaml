@@ -1,10 +1,12 @@
-# Values for the upstream CVAT chart v2.82.0 in the Team Analytics test stack.
+# Values for the CVAT chart v2.82.0 of the import (cvat/helm-chart) in the Team Analytics test stack.
 # Based on docs/evidence/2026-11-13-team-analytics-helm-check/values.local.yaml.
 # Do NOT also pass the chart's cvat.values.yaml: it enables ingress and Traefik, which add
-# cluster-wide objects. run.sh sets the frontend image and Grafana's root URL with --set.
+# cluster-wide objects. run.sh sets the backend image (TA_SERVER_IMAGE), the frontend image
+# and Grafana's root URL with --set.
 cvat:
   backend:
-    imagePullPolicy: IfNotPresent
+    # the fork server image is built locally, never pulled
+    imagePullPolicy: Never
     defaultStorage:
       # upstream default is ReadWriteMany / 20Gi (templates/cvat_backend/storage.yml)
       accessModes:

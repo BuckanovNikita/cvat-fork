@@ -2,17 +2,20 @@
 -- operations; every client event (inside a job or not) is a previous action that a gap is measured from.
 --
 -- Operations (events the stock UI already writes):
---   creation:  draw:object (drawn), paste:object (pasted), propagate:object (propagated), and
---              action:redo of 'Created objects' (a person redid a creation they had undone).
---              Objects = the event's count (1 when empty). A redo is stored under the method of the
---              person's last drawn/pasted/propagated creation in the same job, when that creation is at
---              most 300 s (the look-back) before the redo, and as drawn otherwise; so the three methods
---              add up to Creation and every window attributes a redo alike.
+--   creation:  draw:object (drawn), paste:object (pasted), propagate:object (propagated).
+--              Objects = the event's count (1 when empty). An action:redo is no operation: redoing a
+--              creation is not a second one, so it has no method, and the gap before it is no
+--              operation's time (it stays in Other).
 --   alignment: drag:object, resize:object. Consecutive drags and resizes of the same object (same job,
 --              browser `client_id`, `object_ref` and `frame`) by the same person are one alignment. Any
---              other operation, a change:frame, or a pause longer than the session gap (300 s, also the
---              look-back) between two of them ends it. Events without `object_ref` (legacy) are one
---              alignment each.
+--              other operation, a change:frame, an action:redo of 'Created objects', or a pause longer
+--              than the session gap (300 s, also the look-back) between two of them ends it. Events
+--              without `object_ref` (legacy) are one alignment each.
+--              A group move (payload `group` = 'move': selected objects dragged together, or the
+--              selection box moved) is one alignment per object moved: objects = the event's count, and
+--              the gesture's time is shared between them like any operation's. It ends the runs before
+--              it and is continued by none. CVAT's own drag of the grabbed object of that gesture
+--              (`group` = 'grabbed') is no operation: only a previous action, like a zoom.
 --   class_change: the UI's debug:info record named 'team_analytics:class_change'; objects = the
 --              record's count (only objects whose label changed; a change back is another record).
 --   deletion:  delete:object; objects = the event's count. action:undo is no operation, so an undone
@@ -29,7 +32,7 @@
 -- operation is untimed if any of those gaps is an idle pause. An alignment runs from the action before
 -- its first drag or resize to the end of its last: every gap in between is its time.
 -- Input method: hotkey_objects / mouse_objects count the objects of operations whose payload
--- `input_method` is 'hotkey' / 'mouse'; operations without it (legacy, redone) are in neither.
+-- `input_method` is 'hotkey' / 'mouse'; operations without it (legacy) are in neither.
 -- The UI's input summary records (team_analytics:input_summary) are no action: they are written at the
 -- moment of one, so they are left out of the stream and never take an operation's gap.
 -- Events are read from `read_from` (look-back before the window) to 300 s after the window (look-ahead),
@@ -62,10 +65,7 @@ FROM
         anyIf(task, rn = credited) AS op_task,
         anyIf(user_name, rn = credited) AS op_user_name,
         anyIf(op, rn = credited) AS op_name,
-        -- a redo takes the method of the creation it restores (within the 300 s look-back), else drawn
-        anyIf(if(method != 'redone', method,
-                 if(prior_method != '' AND ts - prior_ts <= 300000, prior_method, 'drawn')),
-              rn = credited) AS op_method,
+        anyIf(method, rn = credited) AS op_method,
         anyIf(shape, rn = credited) AS op_shape,
         anyIf(objects, rn = credited) AS op_objects,
         anyIf(box_objects, rn = credited) AS op_box_objects,
@@ -76,7 +76,6 @@ FROM
     (
         SELECT
             user_id, rn, ts, dt, org, project, task, user_name, op, method, shape, objects, box_objects, input,
-            prior_method, prior_ts,
             multiIf(
                 op != '', target,
                 -- between the first and last adjustment of one alignment
@@ -126,20 +125,13 @@ FROM
                                     row_number() OVER oldest_first AS rn,
                                     -- no previous event in the read range: an unknown gap, treated as an idle pause
                                     ts - lagInFrame(ts, 1, toInt64(0)) OVER (oldest_first ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS dt,
-                                    -- the previous event that ends an alignment (an operation or a frame change)
+                                    -- the previous event that ends an alignment (see `ends_alignment`)
                                     anyLastIf(align_key, ends_alignment) OVER (
                                         oldest_first ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
                                     ) AS previous_key,
                                     anyLastIf(ts, ends_alignment) OVER (
                                         oldest_first ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-                                    ) AS previous_ts,
-                                    -- the person's previous drawn/pasted/propagated creation in this job (for a redo)
-                                    anyLastIf(method, op = 'creation' AND method != 'redone') OVER (
-                                        same_job ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-                                    ) AS prior_method,
-                                    anyLastIf(ts, op = 'creation' AND method != 'redone') OVER (
-                                        same_job ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-                                    ) AS prior_ts
+                                    ) AS previous_ts
                                 FROM
                                 (
                                     SELECT
@@ -148,41 +140,46 @@ FROM
                                         ifNull(org_id, 0) AS org,
                                         ifNull(project_id, 0) AS project,
                                         ifNull(task_id, 0) AS task,
-                                        ifNull(job_id, 0) AS job,
                                         ifNull(user_name, '') AS user_name,
                                         ifNull(payload, '') AS body,
                                         multiIf(
                                             -- outside a job an event is only a previous action, never an operation
                                             job_id IS NULL, '',
+                                            -- the grabbed object's drag of a group move: counted in the group event
+                                            scope = 'drag:object' AND JSONExtractString(body, 'group') = 'grabbed', '',
                                             scope IN ('draw:object', 'paste:object', 'propagate:object'), 'creation',
                                             scope IN ('drag:object', 'resize:object'), 'alignment',
                                             scope = 'delete:object', 'deletion',
                                             scope = 'debug:info'
                                                 AND obj_name = 'team_analytics:class_change', 'class_change',
-                                            scope = 'action:redo'
-                                                AND JSONExtractString(body, 'name') = 'Created objects', 'creation',
                                             '') AS op,
                                         multiIf(
                                             scope = 'draw:object', 'drawn',
                                             scope = 'paste:object', 'pasted',
                                             scope = 'propagate:object', 'propagated',
-                                            op = 'creation', 'redone',
                                             '') AS method,
                                         if(op = '', '', if(JSONHas(body, 'shape_type'), 'tagged', 'untagged')) AS shape,
-                                        if(op = 'alignment', toUInt64(1), toUInt64(ifNull(count, 1))) AS objects,
+                                        -- a group move counts the objects moved; any other drag or resize one object
+                                        JSONExtractString(body, 'group') = 'move' AS group_move,
+                                        if(op = 'alignment' AND NOT group_move, toUInt64(1), toUInt64(ifNull(count, 1))) AS objects,
                                         if(shape != 'tagged', toUInt64(0), least(objects, if(
                                             JSONHas(body, 'rectangle_count'),
                                             JSONExtractUInt(body, 'rectangle_count'),
                                             if(JSONExtractString(body, 'shape_type') = 'rectangle'
                                                 AND JSONExtractString(body, 'object_type') = 'shape', objects, 0)))) AS box_objects,
-                                        -- one object of one browser in one job, on one frame; '' = no reference (legacy)
-                                        if(op = 'alignment' AND JSONHas(body, 'object_ref'),
+                                        -- one object of one browser in one job, on one frame; '' = no reference (legacy,
+                                        -- or a group move): an alignment of its own
+                                        if(op = 'alignment' AND NOT group_move AND JSONHas(body, 'object_ref'),
                                             concat(toString(assumeNotNull(job_id)), '/', JSONExtractRaw(body, 'client_id'), '/',
                                                    JSONExtractRaw(body, 'object_ref'), '/', JSONExtractRaw(body, 'frame')),
                                             '') AS align_key,
                                         -- what started the operation: 'hotkey' | 'mouse' | '' (not recorded)
                                         if(op = '', '', JSONExtractString(body, 'input_method')) AS input,
-                                        op != '' OR (scope = 'change:frame' AND job_id IS NOT NULL) AS ends_alignment,
+                                        -- an operation, a frame change, or a redo of created objects (no operation itself)
+                                        op != '' OR (job_id IS NOT NULL AND (
+                                            scope = 'change:frame'
+                                            OR (scope = 'action:redo'
+                                                AND JSONExtractString(body, 'name') = 'Created objects'))) AS ends_alignment,
                                         if(scope IN ('draw:object', 'paste:object', 'drag:object', 'resize:object'),
                                            ts - toInt64(duration), ts) AS start,
                                         -- a fixed order for events with the same timestamp: an operation after the rest
@@ -196,8 +193,7 @@ FROM
                                         AND NOT (scope = 'debug:info'
                                             AND ifNull(obj_name, '') = 'team_analytics:input_summary')
                                 )
-                                WINDOW oldest_first AS (PARTITION BY user_id ORDER BY ts ASC, op != '' ASC, tiebreak ASC),
-                                    same_job AS (PARTITION BY user_id, job ORDER BY ts ASC, op != '' ASC, tiebreak ASC)
+                                WINDOW oldest_first AS (PARTITION BY user_id ORDER BY ts ASC, op != '' ASC, tiebreak ASC)
                             )
                         )
                     )

@@ -187,10 +187,11 @@ function TrendChart({
                             {lines.map((shown, lineIndex) => cells[lineIndex].map((cell, index) => (
                                 cell.kind === 'value' ? (
                                     <span
-                                        // eslint-disable-next-line react/no-array-index-key
                                         key={`${shown.key}-${index}`}
                                         className={`cvat-team-analytics-trend-dot${index === count - 1 ? ' cvat-team-analytics-trend-dot-last' : ''}`}
-                                        style={{ left: `${x(index)}%`, bottom: `${y(cell.value)}%`, background: shown.color }}
+                                        style={{
+                                            left: `${x(index)}%`, bottom: `${y(cell.value)}%`, background: shown.color,
+                                        }}
                                         title={`${shown.name} · ${monthly ? '' : 'week of '}${bucketName(trends.buckets[index].start, monthly)}: ${metric.show(cell.value)}`}
                                     />
                                 ) : null
@@ -266,7 +267,11 @@ function TrendsCard({
     else if (offered.length > OFFERED) hint = `${offered.length - OFFERED} more match. Type to narrow the list.`;
 
     const lines: ShownLine[] = (trends?.lines ?? []).map((line, index) => {
-        if (line.id === null) return { key: 'scope', name: scopeLabel, color: LINE_COLORS[0], line };
+        if (line.id === null) {
+            return {
+                key: 'scope', name: scopeLabel, color: LINE_COLORS[0], line,
+            };
+        }
         const slot = compared.find((item) => item.id === line.id)?.slot ?? index;
         const name = projects || trends?.compare === 'projects' ?
             projectName(line.id, projectNames) : line.user_name ?? nameOf(line.id);

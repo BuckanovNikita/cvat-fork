@@ -224,13 +224,16 @@ class FakeCvat:
 
 class Stack:
     def __init__(self, *, now: datetime = NOW, technical_accounts: tuple[str, ...] = (),
-                 cvat_url: str | None = None, refresh_window_hours: int = 48, refresh_lease_s: int = 1800) -> None:
+                 cvat_url: str | None = None, refresh_window_hours: int = 48, lease_clock=None,
+                 config_options: dict | None = None) -> None:
         suffix = uuid.uuid4().hex[:12]
         self.events_db = f"ta_test_events_{suffix}"
         self.totals_db = f"ta_test_totals_{suffix}"
         _create_events_database(self.events_db)
         self.cvat = FakeCvat()
         self.now = now
+        # the clock the refresh lease runs on, for every service of this stack; None is the service's own
+        self.lease_clock = lease_clock
         self.config = Config(
             clickhouse_host=os.environ["CLICKHOUSE_HOST"],
             clickhouse_port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
@@ -241,7 +244,7 @@ class Stack:
             cvat_url=cvat_url or self.cvat.url,
             technical_accounts=technical_accounts,
             refresh_window_hours=refresh_window_hours,
-            refresh_lease_s=refresh_lease_s,
+            **(config_options or {}),  # any other setting of the service, e.g. a shorter limit
         )
         self.service = self.new_service()
         self.http = make_server(self.service, "127.0.0.1", 0)
@@ -250,7 +253,7 @@ class Stack:
 
     def new_service(self, clock=None) -> Service:
         """Another service instance (e.g. a second replica) on the same databases; same clock by default."""
-        service = Service(self.config, clock=clock or (lambda: self.now))
+        service = Service(self.config, clock=clock or (lambda: self.now), lease_clock=self.lease_clock)
         service.setup()
         return service
 
@@ -272,13 +275,22 @@ class Stack:
         return self.service.refresh()
 
     def keep_refreshing_since(self, since: datetime) -> None:
-        """Refresh as a service running since `since` would have, ending at the current clock."""
+        """Refresh as a service running since `since` would have, ending at the current clock, with its history
+        computed: every period then holds its figures (one not fully processed would carry none)."""
         end = self.now
         moment = since
         while moment < end:
             self.refresh(moment)
             moment += timedelta(hours=46)  # windows of 48 h overlap
         self.refresh(end)
+        self.settle()
+
+    def settle(self, steps: int = 100) -> None:
+        """Steps the service until it has nothing more to do (it would wait for the next refresh)."""
+        for _ in range(steps):
+            if self.service.step() >= 1:
+                return
+        raise AssertionError(f"the service kept working after {steps} steps")
 
     def get(self, path: str, session: str | None = None, headers: dict | None = None, **query) -> tuple[int, dict]:
         request = Request(f"{self.url}{path}?{urlencode(query)}", headers=dict(headers or {}))

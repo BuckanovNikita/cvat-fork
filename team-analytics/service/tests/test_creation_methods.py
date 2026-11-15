@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from tests.support import at
-from tests.test_operations import BOB, OperationsCase, client, draw, seconds
+from tests.support import at, working_time
+from tests.test_operations import ALICE, BOB, ORG, OperationsCase, client, draw, seconds
 
 BOX = {"shape_type": "rectangle", "rectangle_count": 1, "object_type": "shape"}
 POLYGON = {"shape_type": "polygon", "rectangle_count": 0, "object_type": "shape"}
@@ -93,38 +93,71 @@ class EmptyTest(MethodsCase):
             ("drawn", 0, None, None), ("pasted", 0, None, None), ("propagated", 0, None, None)])
 
 
-class RedoneCreationTest(MethodsCase):
-    """A redone creation counts in Creation under the method of the creation it restores, else as drawn."""
+class RedoTest(MethodsCase):
+    """A redo is no creation: it adds no object to any creation method, and its time is Other."""
 
-    def test_a_redo_counts_under_the_method_of_the_annotators_last_creation_in_the_job(self):
+    def test_draw_undo_redo_is_one_drawn_creation_and_the_redos_time_is_other(self):
         t = "2026-11-13 10:00:00"
         self.stack.add_events([
             client("load:job", seconds(t, 0)),
-            draw(seconds(t, 5)),
-            paste(seconds(t, 10), count=2),
+            draw(seconds(t, 10)),  # 10 s
+            undo(seconds(t, 15)),
+            redo(seconds(t, 20)),  # 5 s since the undo: no operation's time
+            working_time(at(t), 100_000, user=ALICE, org=ORG),
+        ])
+
+        body = self.overview(shapes="all")
+
+        self.assertEqual(self.figures(body), {
+            "drawn": (1, 1, 10_000, 10_000),
+            "pasted": (0, 0, 0, None),
+            "propagated": (0, 0, 0, None),
+        })
+        ops = self.by_name(body["operations"])
+        self.assertEqual((ops["creation"]["objects"], ops["creation"]["time_ms"]), (1, 10_000))
+        self.assertEqual(ops["other"]["time_ms"], 90_000)
+        self.assertEqual((ops["creation"]["share"], ops["other"]["share"]), (0.1, 0.9))
+        self.assertMethodsAddUpToCreation(body)
+
+    def test_a_redo_after_a_paste_or_a_propagation_adds_no_object_to_any_method(self):
+        t = "2026-11-13 10:00:00"
+        self.stack.add_events([
+            client("load:job", seconds(t, 0)),
+            draw(seconds(t, 5)),  # 5 s
+            paste(seconds(t, 10), count=2),  # 5 s for two objects
             undo(seconds(t, 15)),
             redo(seconds(t, 20)),
-            propagate(seconds(t, 30), count=3),
-            undo(seconds(t, 35)),
+            propagate(seconds(t, 32), count=3),  # 12 s since the redo, for three objects
+            undo(seconds(t, 36)),
             redo(seconds(t, 40)),
+            working_time(at(t), 100_000, user=ALICE, org=ORG),
+        ])
+
+        body = self.overview(shapes="all")
+
+        self.assertEqual(self.figures(body), {
+            "drawn": (1, 1, 5_000, 5_000),
+            "pasted": (2, 2, 5_000, 2_500),
+            "propagated": (3, 3, 12_000, 4_000),
+        })
+        # the two redos' 5 s and 4 s are in Other with the rest of the working time
+        self.assertEqual(self.by_name(body["operations"])["other"]["time_ms"], 78_000)
+        self.assertMethodsAddUpToCreation(body)
+
+    def test_a_redo_without_an_earlier_creation_is_no_creation(self):
+        t = "2026-11-13 10:00:00"
+        self.stack.add_events([
+            client("load:job", seconds(t, 0)),
+            redo(seconds(t, 20)),
         ])
 
         body = self.overview(shapes="all")
 
         self.assertEqual({method: figures[0] for method, figures in self.figures(body).items()},
-                         {"drawn": 1, "pasted": 3, "propagated": 4})
-        self.assertMethodsAddUpToCreation(body)
+                         {"drawn": 0, "pasted": 0, "propagated": 0})
+        self.assertEqual(self.by_name(body["operations"])["creation"]["objects"], 0)
 
-    def test_a_redo_without_an_earlier_creation_counts_as_drawn(self):
-        t = "2026-11-13 10:00:00"
-        self.stack.add_events([
-            client("load:job", seconds(t, 0)),
-            redo(seconds(t, 20)),
-        ])
-
-        self.assertEqual(self.methods(shapes="all")["drawn"][0], 1)
-
-    def test_a_creation_in_another_job_or_by_another_annotator_is_not_the_one_restored(self):
+    def test_a_redo_in_another_job_or_by_another_annotator_is_no_creation(self):
         t = "2026-11-13 10:00:00"
         self.stack.add_events([
             client("load:job", seconds(t, 0)),
@@ -136,10 +169,9 @@ class RedoneCreationTest(MethodsCase):
         ])
 
         figures = self.methods(shapes="all")
-        self.assertEqual((figures["drawn"][0], figures["pasted"][0]), (2, 1))
+        self.assertEqual((figures["drawn"][0], figures["pasted"][0], figures["propagated"][0]), (0, 1, 0))
 
-    def test_a_creation_more_than_five_minutes_before_the_redo_is_not_looked_up(self):
-        # the look-back of a refresh: beyond it a recount of one day could not see the creation
+    def test_a_redo_long_after_the_creation_is_no_creation(self):
         t = "2026-11-13 10:00:00"
         self.stack.add_events([
             client("load:job", seconds(t, 0)),
@@ -149,7 +181,7 @@ class RedoneCreationTest(MethodsCase):
         ])
 
         figures = self.methods(shapes="all")
-        self.assertEqual((figures["drawn"][0], figures["pasted"][0]), (1, 1))
+        self.assertEqual((figures["drawn"][0], figures["pasted"][0], figures["propagated"][0]), (0, 1, 0))
 
 
 class ShapeSwitchTest(MethodsCase):
@@ -164,7 +196,7 @@ class ShapeSwitchTest(MethodsCase):
             paste(seconds(t, 40), count=4, shape_type="mixed", rectangle_count=2, object_type="mixed"),
             propagate(seconds(t, 46), count=3, shape_type="rectangle", rectangle_count=3, object_type="shape"),
             undo(seconds(t, 50)),
-            # a redo carries no shape type: all shapes only
+            # a redo is no creation under either switch
             redo(seconds(t, 55)),
         ])
 
@@ -179,7 +211,7 @@ class ShapeSwitchTest(MethodsCase):
         self.assertEqual(self.methods(shapes="all"), {
             "drawn": (2, 2, 20_000, 10_000),
             "pasted": (4, 4, 20_000, 5_000),
-            "propagated": (4, 4, 11_000, 2_750),
+            "propagated": (3, 3, 6_000, 2_000),
         })
 
     def test_under_either_switch_the_methods_add_up_to_creation_and_say_which_shapes_they_cover(self):
@@ -247,7 +279,7 @@ class FiltersAndPeriodTest(MethodsCase):
 class RedoAcrossWindowEdgeTest(MethodsCase):
     stack_options = {"refresh_window_hours": 1}
 
-    def test_a_redo_just_after_a_window_edge_still_finds_the_creation_before_it(self):
+    def test_a_redo_just_after_a_window_edge_adds_nothing_to_the_creation_before_it(self):
         self.stack.add_events([
             client("load:job", at("2026-11-13 09:57:00")),
             propagate(at("2026-11-13 09:58:00"), count=2),
@@ -256,8 +288,10 @@ class RedoAcrossWindowEdgeTest(MethodsCase):
         ])
         self.stack.refresh(at("2026-11-13 09:20:00"))  # window 09:00 .. 10:00
         self.stack.refresh(at("2026-11-13 10:20:00"))  # window 10:00 .. 11:00
+        # the history step computes today's hours up to 10:00, so the period is processed (the edge stays)
+        self.stack.settle()
 
         status, body = self.stack.overview("lead", org="org7", shapes="all")
         self.assertEqual(status, 200, body)
         figures = self.figures(body)
-        self.assertEqual((figures["drawn"][0], figures["propagated"][0]), (0, 3))
+        self.assertEqual((figures["drawn"][0], figures["propagated"][0]), (0, 2))

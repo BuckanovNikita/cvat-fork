@@ -28,13 +28,16 @@ export function monthAvailable(history: HistoryStatus | null | undefined, month:
 
 export function HistoryProgress({ history }: { history?: HistoryStatus | null }): JSX.Element | null {
     if (!history || history.complete) return null;
-    const percent = history.days_total > 0 ? Math.floor((history.days_ready / history.days_total) * 100) : 0;
-    const ready = history.ready_from_day ? `Ready from ${dayLabel(history.ready_from_day, true)}` : 'Nothing ready yet';
+    const { days_ready: daysReady, days_total: daysTotal, ready_from_day: readyFromDay } = history;
+    // Only an administrator's status has the day counts; everyone else's has the percentage alone.
+    const counted = typeof daysReady === 'number' && typeof daysTotal === 'number';
+    const percent = history.percent ?? 0;
+    const ready = readyFromDay ? `Ready from ${dayLabel(readyFromDay, true)}` : 'Nothing ready yet';
     return (
         <div className='cvat-team-analytics-history'>
             <div className='cvat-team-analytics-history-head'>
                 <span className='cvat-team-analytics-history-title'>Processing history</span>
-                <span>{`${ready} · ${history.days_ready} of ${history.days_total} days`}</span>
+                {counted && <span>{`${ready} · ${daysReady} of ${daysTotal} days`}</span>}
                 <span className='cvat-team-analytics-history-percent'>{`${percent}%`}</span>
             </div>
             <div

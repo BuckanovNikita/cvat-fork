@@ -10,6 +10,7 @@ threads of one process. The lease (`Config.refresh_lease_s`) is renewed while a 
 released whatever fails; see `Refresher.leased`. A replica that can no longer prove it holds the lease
 (its renewals failed or came too late) stops its step before the next write (`Refresher.ensure_lease`), so
 nothing it computed becomes visible; the claim it lost is never extended again (control/lock_holder.sql).
+The lease's time comes from a `LeaseClock`.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from typing import TypeVar
 
 from team_analytics.config import Config
 from team_analytics.cutover import find_cutover
-from team_analytics.sql import Sql
+from team_analytics.sql import AtRun, Sql
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,27 @@ class LeaseLost(Exception):
     """The step's replica can no longer prove it holds the refresh lease; the step stops."""
 
 
+class LeaseClock:
+    """The time the refresh lease runs on. This one is the service's; a test supplies its own.
+
+    A replica measures its own claim in `monotonic` seconds and waits for its next renewal with `wait`.
+    Claims are stamped and judged in ClickHouse at `database_now`: None stands for ClickHouse's own clock,
+    the one clock every replica shares, so no replica's wall clock decides who holds the lease. The pauses
+    that wait for ClickHouse or for a thread (SETTLE_S, RELEASE_RETRY_S, RENEWAL_JOIN_S) are real time on
+    any clock."""
+
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+    def wait(self, stop: threading.Event, seconds: float) -> bool:
+        """Waits `seconds`, or until `stop` is set; True when it was set."""
+        return stop.wait(seconds)
+
+    def database_now(self) -> str | None:
+        """Bound as `now` when a lease statement runs (control/lock_*.sql)."""
+        return None
+
+
 class _Lease:
     """What this replica can prove about its claim: it holds the lease until `deadline` (monotonic seconds).
 
@@ -52,20 +74,21 @@ class _Lease:
     time + the lease) lives at least that long. A renewal extends it only when it returned before the
     deadline it extends; otherwise the lease is lost for good."""
 
-    def __init__(self, token: str, length_s: float, sent_at: float) -> None:
+    def __init__(self, token: str, length_s: float, sent_at: float, clock: LeaseClock) -> None:
         self.token = token
         self.length_s = length_s
+        self._clock = clock
         self._deadline = sent_at + length_s
         self._lost = threading.Event()
 
     def renewed(self, sent_at: float) -> None:
-        if not self._lost.is_set() and time.monotonic() < self._deadline:
+        if not self._lost.is_set() and self._clock.monotonic() < self._deadline:
             self._deadline = sent_at + self.length_s
         else:
             self._lost.set()
 
     def held(self) -> bool:
-        if not self._lost.is_set() and time.monotonic() >= self._deadline - self.length_s * LEASE_MARGIN:
+        if not self._lost.is_set() and self._clock.monotonic() >= self._deadline - self.length_s * LEASE_MARGIN:
             self._lost.set()
         return not self._lost.is_set()
 
@@ -83,10 +106,12 @@ def _text(moment: datetime) -> str:
 
 
 class Refresher:
-    def __init__(self, config: Config, sql: Sql, clock: Callable[[], datetime]) -> None:
+    def __init__(self, config: Config, sql: Sql, clock: Callable[[], datetime],
+                 lease_clock: LeaseClock | None = None) -> None:
         self._config = config
         self._sql = sql
         self._clock = clock
+        self._lease_clock = lease_clock or LeaseClock()
         self._local = threading.Lock()
         self._holder = f"{uuid.uuid4().hex[:8]}"
         # claims whose release failed: released before the next claim
@@ -142,30 +167,31 @@ class Refresher:
 
     def _claim(self, token: str) -> _Lease | None:
         try:
-            sent_at = time.monotonic()
+            sent_at = self._lease_clock.monotonic()
             self._write_claim(token)
             time.sleep(SETTLE_S)
-            holder = self._sql.rows("control/lock_holder.sql")
+            holder = self._sql.rows("control/lock_holder.sql", {"now": AtRun(self._lease_clock.database_now)})
         except BaseException:
             self._release(token)  # the claim may have been written
             raise
         if holder and holder[0]["token"] == token:
-            return _Lease(token, self._config.refresh_lease_s, sent_at)
+            return _Lease(token, self._config.refresh_lease_s, sent_at, self._lease_clock)
         self._release(token)
         return None
 
     def _write_claim(self, token: str) -> None:
         self._sql.statements("control/lock_claim.sql",
-                             {"token": token, "holder": self._holder, "ttl_s": self._config.refresh_lease_s})
+                             {"token": token, "holder": self._holder, "ttl_s": self._config.refresh_lease_s,
+                              "now": AtRun(self._lease_clock.database_now)})
 
     def _renew(self, lease: _Lease, stop: threading.Event) -> None:
         """Extends the claim every third of the lease until `stop` is set (the work is over), or until the lease
         can no longer be proven: then it is never renewed again."""
-        while not stop.wait(self._config.refresh_lease_s / 3):
+        while not self._lease_clock.wait(stop, self._config.refresh_lease_s / 3):
             if not lease.held():
                 log.warning("the refresh lease expired before it could be renewed")
                 return
-            sent_at = time.monotonic()
+            sent_at = self._lease_clock.monotonic()
             try:
                 self._write_claim(lease.token)
             except Exception:  # retried at the next third while the lease lasts
@@ -177,7 +203,9 @@ class Refresher:
         """Releases a claim, trying again on failure; a release that still fails is kept for the next step."""
         for attempt, pause in enumerate(RELEASE_RETRY_S + (None,)):
             try:
-                self._sql.statements("control/lock_release.sql", {"token": token, "holder": self._holder})
+                self._sql.statements("control/lock_release.sql",
+                                     {"token": token, "holder": self._holder,
+                                      "now": AtRun(self._lease_clock.database_now)})
                 return
             except Exception:
                 if pause is None:

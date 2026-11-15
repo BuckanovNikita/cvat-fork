@@ -7,7 +7,12 @@ trailing window. Once a day the raw counts are compared with the stored ones; a 
 days on either side of it (sessions and operations crossing midnight are stored in the day they end), are
 computed again, which replaces their totals.
 
-A period is offered only when all of it is processed: `HistoryState.covers(start)`.
+A refresh window shorter than a day leaves hours of today before it, which belong to neither. The history
+step computes those too, ahead of the older days, each time hours have left the window (`history_today`).
+Until then they are not processed: a period that holds them is not, a period that ends before them still is.
+A window of a day or longer leaves none.
+
+A period is offered only when all of it is processed: `HistoryState.covers(start, end)`.
 """
 
 from __future__ import annotations
@@ -18,8 +23,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from team_analytics.refresh import Refresher
-from team_analytics.sql import Sql
+from team_analytics.cutover import look_for_cutover
+from team_analytics.refresh import LeaseLost, Refresher
+from team_analytics.sql import Limit, Sql
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +56,10 @@ class HistoryState:
     today: date  # UTC
     first_day: date | None  # UTC day of the earliest event; None without events
     trailing_from: datetime | None  # start of the latest ten-minute refresh; None before the first one
-    missing: date | None  # newest day not yet computed that the trailing hours do not cover
+    missing: date | None  # newest day before today not yet computed that the trailing hours do not cover
+    # with a refresh window shorter than a day: where today's hours that left the window and wait for the
+    # history step begin (they end at `trailing_from`); None when no hour waits
+    waiting_from: datetime | None = None
 
     @property
     def started(self) -> bool:
@@ -58,19 +67,30 @@ class HistoryState:
 
     @property
     def complete(self) -> bool:
-        return self.started and self.missing is None
+        return self.started and self.missing is None and self.waiting_from is None
 
     @property
     def ready_from(self) -> datetime | None:
-        """The earliest moment from which every hour is processed; None when nothing is, or all is."""
+        """The earliest moment from which every hour up to now is processed; None when nothing is, or all is."""
         if not self.started or self.complete:
             return None
+        if self.waiting_from is not None:
+            return self.trailing_from
         return min(_day_start(self.missing + timedelta(days=1)), self.trailing_from)
 
-    def covers(self, start: datetime) -> bool:
-        """Whether everything from `start` (UTC) up to now is processed."""
+    def _earlier_from(self) -> datetime | None:
+        """While hours of today wait: the earliest moment from which every hour up to `waiting_from` is
+        processed (None when every hour before it is)."""
+        return None if self.missing is None else _day_start(self.missing + timedelta(days=1))
+
+    def covers(self, start: datetime, end: datetime | None = None) -> bool:
+        """Whether every hour from `start` up to `end` (UTC; up to now when None) is processed."""
         if self.complete:
             return True
+        if self.waiting_from is not None and end is not None and end <= self.waiting_from:
+            # wholly before today's hours that wait for the history step
+            earlier = self._earlier_from()
+            return earlier is None or start >= earlier
         ready = self.ready_from
         return ready is not None and start >= ready
 
@@ -81,6 +101,11 @@ class HistoryState:
         total = (self.today - self.first_day).days + 1
         if self.complete:
             return total, total
+        if self.waiting_from is not None:
+            # today is not processed as a whole; the days before it are from the one after `missing` on
+            earlier = self._earlier_from()
+            first_whole = self.first_day if earlier is None else earlier.date()
+            return max(0, min(total - 1, (self.today - first_whole).days)), total
         ready = self.ready_from
         if ready is None:
             return 0, total
@@ -90,27 +115,28 @@ class HistoryState:
 
 def load_state(sql: Sql, now: datetime) -> HistoryState:
     today = now.astimezone(UTC).date()
-    row = sql.rows("read/history_state.sql", {"last_day": (today - timedelta(days=1)).isoformat()})[0]
+    row = sql.rows("read/history_state.sql", {"today": today.isoformat()})[0]
     return HistoryState(today=today, first_day=row["first_event_day"], trailing_from=aware(row["trailing_from"]),
-                        missing=row["missing"])
+                        missing=row["missing"], waiting_from=aware(row["waiting_from"]))
 
 
 class History:
-    def __init__(self, sql: Sql, refresher: Refresher, clock: Callable[[], datetime]) -> None:
+    def __init__(self, sql: Sql, refresher: Refresher, clock: Callable[[], datetime], search_limit: Limit) -> None:
         self._sql = sql
+        self._search_limit = search_limit  # of the cutover search in the daily check
         self._refresher = refresher
         self._clock = clock
 
-    def _yesterday(self) -> date:
-        return self._clock().astimezone(UTC).date() - timedelta(days=1)
+    def _today(self) -> date:
+        return self._clock().astimezone(UTC).date()
 
     def check_due(self) -> bool:
         last = aware(self._sql.rows("read/history_last_check.sql")[0]["checked_at"])
         return last is None or self._clock() - last >= CHECK_EVERY
 
-    def next_day(self) -> date | None:
-        rows = self._sql.rows("control/history_next_day.sql", {"last_day": self._yesterday().isoformat()})
-        return rows[0]["day"] if rows else None
+    def _next(self, today: date) -> dict | None:
+        rows = self._sql.rows("control/history_next_day.sql", {"today": today.isoformat()})
+        return rows[0] if rows else None
 
     def _version(self, at_least: int = 0) -> int:
         latest = self._sql.rows("control/history_version.sql")[0]["version"] or 0
@@ -118,7 +144,8 @@ class History:
 
     def check(self) -> int:
         """The daily check (holding the lease): marks days whose raw count changed, and their neighbours,
-        for computing again. Returns the number of days marked."""
+        for computing again, then looks for an earlier cutover in the recorded events. Returns the number of
+        days marked."""
         now = self._clock()
         params = {"before": _text(_day_start(now.astimezone(UTC).date()))}
         days = [row["neighbour"] for row in self._sql.rows("control/history_changed_days.sql", params)]
@@ -129,13 +156,27 @@ class History:
             })
         self._sql.statements("control/history_record_check.sql", {"checked_at": _instant(now), "changed": len(days)})
         log.info("history check: %s day(s) to compute again", len(days))
+        # after the check is recorded: a search that fails, or reaches its limit, is tried again by the next
+        # daily check, not at once; the step ends without it
+        try:
+            look_for_cutover(self._sql, now, self._search_limit, self._refresher.ensure_lease)
+        except LeaseLost:
+            raise
+        except Exception:
+            log.exception("could not look for the cutover in the daily check")
         return len(days)
 
     def process_next(self) -> date | None:
-        """Computes the next day of history (holding the lease); None when there is nothing to do."""
-        day = self.next_day()
-        if day is None:
+        """Computes the next day of history, or today's hours before the refresh window (holding the lease);
+        None when there is nothing to do."""
+        today = self._today()
+        following = self._next(today)
+        if following is None:
             return None
+        day = following["day"]
+        if day == today:
+            self._process_today(today, aware(following["today_computed_to"]), aware(following["trailing_from"]))
+            return day
         day_from, day_to = _day_start(day), _day_start(day + timedelta(days=1))
         now = self._clock()
         # counted before computing: a row landing meanwhile makes the next check compute the day again
@@ -150,6 +191,19 @@ class History:
         self._record(day, 1, int(found["raw_rows"]), self._version(params["version"]), now)
         log.info("history: computed %s as version %s", day, params["version"])
         return day
+
+    def _process_today(self, today: date, computed_to: datetime, trailing_from: datetime) -> None:
+        """Computes today's hours before the refresh window that have not been computed since they left it:
+        from where the step got to (`computed_to`), or from today's midnight when that is later, up to
+        `trailing_from`."""
+        hours_from = max(_day_start(today), computed_to)
+        now = self._clock()
+        params = self._refresher.recompute(hours_from, trailing_from)
+        self._refresher.ensure_lease()
+        self._sql.statements("control/history_record_today.sql",
+                             {"computed_to": _text(trailing_from), "at": _instant(now)})
+        log.info("history: computed today's hours %s .. %s as version %s", hours_from, trailing_from,
+                 params["version"])
 
     def _record(self, first: date, days: int, raw_rows: int, version: int, now: datetime) -> None:
         self._refresher.ensure_lease()

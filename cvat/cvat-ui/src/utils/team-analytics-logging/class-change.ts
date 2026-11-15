@@ -14,7 +14,7 @@ import { InputMethod, PAYLOAD, RECORD } from './contract';
 import { guarded } from './guard';
 import {
     LoggedObject, LoggingJob, logRecord, objectShapeFields,
-} from './index';
+} from './record';
 
 export interface LabelledObject extends LoggedObject {
     label?: { id?: number | null } | null;
