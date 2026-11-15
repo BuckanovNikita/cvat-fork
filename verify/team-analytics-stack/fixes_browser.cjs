@@ -21,8 +21,11 @@
 //   node fixes_browser.cjs page ORG         the page after tickets 02-06, as ta-admin in ORG: the filter bar
 //                                           and the Settings button at one height (1024, 1400, 1920 px), the
 //                                           operations card without sideways scroll over a width sweep, the
-//                                           project and annotator selectors, the terms' tooltips, the settings
-//                                           modal saving the same list, and nothing left of what they replaced.
+//                                           project and annotator selectors (an open popup never makes the page
+//                                           scroll sideways and stays inside the page container), the terms'
+//                                           tooltips, the settings modal (an account already on the list is
+//                                           offered disabled, marked "already on the list") saving the same
+//                                           list, and nothing left of what they replaced.
 //
 // Environment: TA_BASE_URL, TA_SEED_PASSWORD, TA_BROWSER_BIN, TA_SCREENSHOT_DIR (required for look; keep it
 // outside the repository).
@@ -725,6 +728,63 @@ async function selectors(page, keys, api, org) {
     log('All and the clear button removed both filters; the figures are as before');
 }
 
+// 3b. an open selector never makes the page scroll sideways: with each popup open, the document and the page
+// container (.cvat-team-analytics-page, which scrolls) have scrollWidth <= clientWidth and the popup's box lies inside
+// the container (its left edge to its left edge plus its client width), at 1024 and 1400 px and at the width of the
+// sweep where the Annotator selector's right edge comes nearest the container's right edge
+const POPUP_FIT = `(() => {
+    const popup = document.querySelector(".cvat-team-analytics-filter-popup");
+    const page = document.querySelector(".cvat-team-analytics-page");
+    if (!popup || !page) return null;
+    const r = popup.getBoundingClientRect();
+    const p = page.getBoundingClientRect();
+    const right = p.left + (page.clientWidth || p.width);
+    const s = document.scrollingElement;
+    return { document: [s.scrollWidth, s.clientWidth], page: [page.scrollWidth, page.clientWidth],
+        popup: [Math.round(r.left * 10) / 10, Math.round(r.right * 10) / 10], container: [Math.round(p.left * 10) / 10, Math.round(right * 10) / 10],
+        inside: r.left >= p.left - 0.5 && r.right <= right + 0.5,
+        side: [...popup.classList].find((c) => c.startsWith("cvat-team-analytics-filter-popup-")) || "" };
+})()`;
+const ANNOTATOR_GAP = `(() => {
+    const box = document.querySelector(".cvat-team-analytics-filter-annotator")?.getBoundingClientRect();
+    const page = document.querySelector(".cvat-team-analytics-page");
+    if (!box || !page) return null;
+    return Math.round((page.getBoundingClientRect().left + page.clientWidth - box.right) * 10) / 10;
+})()`;
+
+async function popupFit(page, keys, org) {
+    await setWidth(page, 1400);
+    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await overviewReady(page, 'the week');
+    // the width at which the Annotator selector sits nearest the container's right edge
+    let edge = null;
+    for (let width = 1024; width <= 1920; width += 8) {
+        await setWidth(page, width);
+        await sleep(150);
+        const gap = await page.evaluate(ANNOTATOR_GAP);
+        if (gap !== null && (!edge || gap < edge.gap)) edge = { width, gap };
+    }
+    check(!!edge, 'no Annotator selector found on the filter bar between 1024 and 1920 px');
+    log(`the Annotator selector is nearest the page container's right edge at ${edge.width} px (${edge.gap} px from it)`);
+    const wrong = [];
+    for (const width of [1024, 1400, edge.width]) {
+        await setWidth(page, width);
+        await sleep(800);
+        for (const kind of ['project', 'annotator']) {
+            await openSelector(page, keys, kind);
+            const fit = await page.evaluate(POPUP_FIT);
+            log(`${width} px, ${kind} selector open: ${JSON.stringify(fit)}`);
+            if (!fit || fit.document[0] > fit.document[1] || fit.page[0] > fit.page[1] || !fit.inside) wrong.push([width, kind, fit]);
+            await keys.press('Escape');
+            await page.waitFor('!document.querySelector(".cvat-team-analytics-filter-popup")', 'the popup closed by Escape', 5000);
+        }
+    }
+    check(!wrong.length, `an open selector made the page scroll sideways or passed the page container: ${JSON.stringify(wrong)} `
+        + '(width, selector, {document and page [scrollWidth, clientWidth], popup [left, right], container [left, right]}); '
+        + 'expected scrollWidth <= clientWidth for both and the popup inside the container');
+    await setWidth(page, 1400);
+}
+
 // 4. every term's tooltip: shown on hover and on keyboard focus, inside the window, with the glossary's text.
 // Where the 13 terms of the overview sit, in document order: the section (class) around each, and its term
 const PLACES = [
@@ -849,6 +909,26 @@ async function settingsModal(page, keys, api, org, seeded, other) {
     await clickSelectorIn(page, keys, `${MODAL} .cvat-team-analytics-settings-remove[aria-label="Remove ${other}"]`);
     const afterRemove = await modalNames(page);
     check(!afterRemove.includes(other), `${other} still listed after its remove button: ${JSON.stringify(afterRemove)}`);
+
+    // an account already on the list is offered by the search, but disabled and marked "already on the list"; a
+    // click on it adds no row
+    check(seeded.length > 0, 'TA_TECHNICAL_ACCOUNTS names no account: nothing on the list to find in the picker');
+    const listed = seeded[0];
+    await clickSelectorIn(page, keys, `${MODAL} .cvat-team-analytics-settings-picker`);
+    await page.send('Input.insertText', { text: listed });
+    const listedOption = `[...document.querySelectorAll(".cvat-team-analytics-settings-picker-dropdown .ant-select-item-option")].findIndex((o) => o.textContent.trim().split(" ")[0] === ${JSON.stringify(listed)})`;
+    await page.waitFor(`${listedOption} >= 0`, `${listed} (on the list) offered by the picker`, 15000);
+    const shown = await page.evaluate(`(() => { const o = [...document.querySelectorAll(".cvat-team-analytics-settings-picker-dropdown .ant-select-item-option")][${listedOption}];
+        return { text: o.textContent.trim(), disabled: o.classList.contains("ant-select-item-option-disabled") && o.getAttribute("aria-disabled") !== "false",
+            marked: !!o.querySelector(".cvat-team-analytics-settings-listed") }; })()`);
+    check(shown.disabled && shown.marked && shown.text.endsWith('already on the list'),
+        `${listed}, on the list, in the picker: ${JSON.stringify(shown)}, expected a disabled option marked "already on the list"`);
+    await clickSelectorIn(page, keys, '.cvat-team-analytics-settings-picker-dropdown .ant-select-item-option', await page.evaluate(listedOption));
+    await sleep(500);
+    const afterListed = await modalNames(page);
+    check(JSON.stringify([...afterListed].sort()) === JSON.stringify([...seeded].sort()),
+        `a click on ${listed} (already on the list) changed the rows to ${JSON.stringify(afterListed)}, expected ${JSON.stringify(seeded)}`);
+    log(`picker: ${listed} offered disabled, "${shown.text}"; a click on it adds no row`);
     await clickSelectorIn(page, keys, `${MODAL} .cvat-team-analytics-settings-cancel`);
     await page.waitFor(MODAL_CLOSED, 'the modal closed by Cancel', 10000);
     const puts = api.slice(from).filter((r) => r.method === 'PUT');
@@ -934,6 +1014,7 @@ async function pageChecks(org) {
         await operationsTable(page);
         await gone(page, org);
         await selectors(page, keys, api, org);
+        await popupFit(page, keys, org);
         await terms(page, keys, org);
         // a user of another organization than ORG for the picker: ta-org-b's owner
         await settingsModal(page, keys, api, org, seeded, 'ta-owner-b');
