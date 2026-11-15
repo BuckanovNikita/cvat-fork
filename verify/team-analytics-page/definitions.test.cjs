@@ -239,6 +239,55 @@ test('focusing a term shows its definition; Escape hides it', async () => {
     });
 });
 
+test('a tooltip opened by hover is dismissed by Escape, which is left to other handlers too', async () => {
+    // the keydown listeners put on the document while the page is open, and those taken off again
+    const added = new Set();
+    const { addEventListener, removeEventListener } = document;
+    document.addEventListener = function counted(type, listener, ...rest) {
+        if (type === 'keydown') added.add(listener);
+        return addEventListener.call(this, type, listener, ...rest);
+    };
+    document.removeEventListener = function counted(type, listener, ...rest) {
+        if (type === 'keydown') added.delete(listener);
+        return removeEventListener.call(this, type, listener, ...rest);
+    };
+    try {
+        await hoverThenEscape();
+    } finally {
+        document.addEventListener = addEventListener;
+        document.removeEventListener = removeEventListener;
+    }
+    assert.equal(added.size, 0, 'no keydown listener of the page is left on the document');
+});
+
+async function hoverThenEscape() {
+    await opened('?period=week', async (container) => {
+        const term = container.querySelector('.cvat-team-analytics-sessions .cvat-team-analytics-term');
+        await act(async () => { term.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
+        await wait(200);
+        assert.equal(isShown(tooltipOf(term)), true);
+        assert.notEqual(document.activeElement === term, true, 'the focus is elsewhere');
+        // another handler of the same key, as an open selector or modal would have
+        let seen = 0;
+        const other = (event) => { if (event.key === 'Escape') seen += 1; };
+        window.addEventListener('keydown', other);
+        const escape = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+        try {
+            await act(async () => { document.body.dispatchEvent(escape); });
+        } finally {
+            window.removeEventListener('keydown', other);
+        }
+        await wait(300);
+        assert.equal(isShown(tooltipOf(term)), false, 'dismissed');
+        assert.equal(seen, 1, 'the press reaches the other handler');
+        assert.equal(escape.defaultPrevented, false);
+        // opened again and left open: the page goes away with it open
+        await act(async () => { term.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
+        await wait(200);
+        assert.equal(isShown(tooltipOf(term)), true);
+    });
+}
+
 test('a full view shows no definitions, for a chart and for a trend', async () => {
     for (const search of ['?period=week&view=time', '?period=week&view=annotators', '?period=week&view=trend-working_time']) {
         // eslint-disable-next-line no-await-in-loop

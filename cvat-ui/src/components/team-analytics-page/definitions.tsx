@@ -32,14 +32,25 @@ interface Props {
 }
 
 // Words of the overview that carry a definition: dotted underline, focusable, the definition in a tooltip on
-// hover, on keyboard focus and on a tap; Escape hides it. The tooltip is rendered (hidden) from the start, outside any
-// scrolling table, so that the words are described by it (aria-describedby) before it first opens.
+// hover, on keyboard focus and on a tap; Escape hides it, wherever the focus is. The tooltip is rendered (hidden)
+// from the start, outside any scrolling table, so that the words are described by it (aria-describedby) before it
+// first opens.
 export function Term({ name, children }: Props): JSX.Element {
     const id = `${useId()}-definition`;
     const [open, setOpen] = useState(false);
     // the hidden tooltip is rendered once the page is in the document (a portal cannot be rendered before)
     const [mounted, setMounted] = useState(false);
     useEffect(() => setMounted(true), []);
+    // while the tooltip is open (by hover too, with the focus elsewhere), Escape anywhere hides it; the key is
+    // left to whatever else handles it (an open selector or modal closes on the same press)
+    useEffect(() => {
+        if (!open) return undefined;
+        const onKey = (event: KeyboardEvent): void => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [open]);
     return (
         <Tooltip
             title={DEFINITIONS[name]}
