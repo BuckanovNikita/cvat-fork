@@ -28,7 +28,7 @@ const {
 
 const BASE = process.env.TA_BASE_URL;
 const SHOTS = process.env.TA_SCREENSHOT_DIR || '';
-const LATENCY_MS = 1500; // added to every request while F is held, so the next frame loads slowly
+const LATENCY_MS = 1500; // each request for frame data is held back this long while F is held
 const HOLD_MS = 4000;
 const REPEAT_MS = 50; // a held key's auto-repeat
 
@@ -209,33 +209,44 @@ async function gestures(stateFile) {
         await keys.drag(from.x, from.y, to.x - from.x, to.y - from.y, { shift: true });
         await page.waitFor('!!document.querySelector(".cvat_canvas_selected_objects_box")', 'the selection box');
 
-        // drag one of the selected boxes: the other follows (one group record, then CVAT's own drag of it)
-        let [first, second, third] = await shapes(page);
-        await keys.drag(second.cx, second.cy, 0, bg.h * 0.1);
-        let after = await shapes(page);
-        check(moved(after[1], second) && moved(after[2], third) && !moved(after[0], first),
-            `drag of a selected box: ${JSON.stringify({ before: [first, second, third], after })}`);
-        log('dragged one of the two selected boxes; both moved');
+        // Right after a region selection the canvas is in its selecting mode: the selection box lets presses
+        // through to the canvas, a press on a member clears the selection, and the selection moves by its
+        // header label (canvasView.ts). Move it by the label: both boxes follow (one group record).
+        const byId = async () => Object.fromEntries((await shapes(page)).map((s) => [s.id.replace('cvat_canvas_shape_', ''), s]));
+        let before = await byId();
+        const label = await rectOf(page, '.cvat_canvas_selected_objects_label');
+        check(!!label, 'the selection has no header label');
+        await keys.drag(label.x + 10, label.cy, 0, bg.h * 0.08);
+        let after = await byId();
+        check(moved(after[2], before[2]) && moved(after[3], before[3]) && !moved(after[1], before[1]),
+            `move of the selection by its label: ${JSON.stringify({ before, after })}`);
+        log('moved the selection of two boxes by its header label; both moved');
 
-        // move the selection box by a point between the two boxes, on no box
-        [first, second, third] = after;
-        const gap = { x: (second.x + second.w + third.x) / 2, y: (second.cy + third.cy) / 2 };
-        await keys.drag(gap.x, gap.y, 0, bg.h * 0.08);
-        after = await shapes(page);
-        check(moved(after[1], second) && moved(after[2], third) && !moved(after[0], first),
-            `move of the selection box: ${JSON.stringify({ before: [first, second, third], after })}`);
-        log('moved the selection box; both boxes moved');
+        // copy and paste the selection: the pasted pair stays selected with the canvas idle, so a press inside
+        // it drags the pair (the canvas decides whether as a member's drag or as the selection box's)
+        await keys.press('c', { ctrl: true });
+        await keys.press('v', { ctrl: true });
+        const place = at(0.55, 0.72);
+        await keys.click(place.x, place.y);
+        await page.waitFor('document.querySelectorAll(".cvat_canvas_shape_selected_object").length === 2 && document.querySelectorAll(".cvat_canvas_shape").length === 5', 'the pasted pair, selected');
+        did.pasted = 2;
+        before = await byId();
+        await keys.drag(before[4].cx, before[4].cy, 0, -bg.h * 0.1);
+        after = await byId();
+        check(moved(after[4], before[4]) && moved(after[5], before[5]) && !moved(after[2], before[2]),
+            `drag inside the pasted selection: ${JSON.stringify({ before, after })}`);
+        log('pasted the pair and dragged it by its first box; both moved');
 
-        // clear the selection with a click on the background, then drag one box alone
-        const empty = at(0.2, 0.85);
+        // clear the selection with a click on the background, then drag the first box alone
+        const empty = at(0.12, 0.55);
         await keys.click(empty.x, empty.y);
         await page.waitFor('!document.querySelector(".cvat_canvas_selected_objects_box")', 'the selection cleared', 10000);
-        [first, second, third] = after;
-        await keys.drag(second.cx, second.cy, -bg.w * 0.04, 0);
-        after = await shapes(page);
-        check(moved(after[1], second) && !moved(after[2], third), `single drag: ${JSON.stringify({ second, third, after })}`);
+        before = await byId();
+        await keys.drag(before[1].cx, before[1].cy, bg.w * 0.03, 0);
+        after = await byId();
+        check(moved(after[1], before[1]) && !moved(after[2], before[2]), `single drag: ${JSON.stringify({ before, after })}`);
         await save(page, keys, bg, job, did);
-        log('dragged one box alone and saved');
+        log('dragged the first box alone and saved');
         await page.screenshot('fixes-gestures');
 
         // F held on slow frames: one NEXT_FRAME for each frame shown, none for repeats while a frame loads
@@ -243,30 +254,40 @@ async function gestures(stateFile) {
         const start = await shownFrame(page);
         check(start === 0, `the job opened on frame ${start}`);
         await page.evaluate(`(() => {
-            window.__taFrames = [];
-            let last = null;
+            const shown = () => Number(document.querySelector(".cvat-player-slider .ant-slider-handle")?.getAttribute("aria-valuenow"));
+            window.__taFrames = [shown()];
+            let last = window.__taFrames[0];
             window.__taRecorder = setInterval(() => {
-                const v = Number(document.querySelector(".cvat-player-slider .ant-slider-handle")?.getAttribute("aria-valuenow"));
+                const v = shown();
                 if (v !== last) { window.__taFrames.push(v); last = v; }
             }, 10);
         })()`);
-        await page.send('Network.emulateNetworkConditions', {
-            offline: false, latency: LATENCY_MS, downloadThroughput: -1, uploadThroughput: -1,
-        });
+        // The frame data comes in chunks fetched by the UI's workers, which page-level network emulation does not
+        // reach; the browser's own interception holds each chunk request back by LATENCY_MS instead.
+        const delayed = [];
+        const holdBack = (message) => {
+            if (message.method !== 'Fetch.requestPaused') return;
+            const { requestId, request } = message.params;
+            delayed.push(new URL(request.url).searchParams.get('index'));
+            setTimeout(() => browser.send('Fetch.continueRequest', { requestId }).catch(() => {}), LATENCY_MS);
+        };
+        browser.listeners.add(holdBack);
+        await browser.send('Fetch.enable', { patterns: [{ urlPattern: '*type=chunk*', requestStage: 'Request' }] });
         const keydowns = await keys.hold('f', HOLD_MS, REPEAT_MS);
         await sleep(LATENCY_MS * 4 + 2000); // requests still on their way finish (and may show a frame)
-        await page.send('Network.emulateNetworkConditions', {
-            offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
-        });
+        await browser.send('Fetch.disable');
+        browser.listeners.delete(holdBack);
         await sleep(1000);
         const frames = await page.evaluate('(() => { clearInterval(window.__taRecorder); return window.__taFrames; })()');
         const changes = frames.length - 1;
         const back = frames.slice(1).filter((f, i) => f < frames[i]).length;
         did.hold = {
             keydowns, held_ms: HOLD_MS, latency_ms: LATENCY_MS, frames, moves: changes, back_jumps: back,
+            delayed_chunks: delayed,
         };
         if (changes > 0) did.hotkeys.NEXT_FRAME = changes;
-        log(`held F for ${HOLD_MS} ms (${keydowns} key-downs) with ${LATENCY_MS} ms latency: frames shown ${JSON.stringify(frames)}`);
+        log(`held F for ${HOLD_MS} ms (${keydowns} key-downs), each chunk request held back ${LATENCY_MS} ms `
+            + `(chunks ${delayed.join(', ')}): frames shown ${JSON.stringify(frames)}`);
 
         // at the last frame, typed into the frame field, F moves nothing
         const field = await rectOf(page, '.cvat-player-frame-selector input');

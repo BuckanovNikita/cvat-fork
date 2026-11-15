@@ -171,18 +171,21 @@ def owner_of(org: str) -> str:
     return next(u for u, r in ACCOUNTS["organizations"][org]["members"].items() if r == "owner")
 
 
-def tiny_png(shade: int) -> bytes:
+def tiny_png(shade: int, side: int = 8) -> bytes:
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
 
-    width = height = 8
+    width = height = side
     raw = b"".join(b"\x00" + bytes([shade, shade, shade]) * width for _ in range(height))
     header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
-def upload_images(session: Session, task_id: int, org: str, count: int, chunk_size: int | None = None) -> None:
-    """`count` generated images as the task's data; `chunk_size` frames per chunk (CVAT's default when None)."""
+def upload_images(
+    session: Session, task_id: int, org: str, count: int, chunk_size: int | None = None, side: int = 8
+) -> None:
+    """`count` generated square images of `side` pixels as the task's data; `chunk_size` frames per chunk
+    (CVAT's default when None)."""
     boundary = uuid.uuid4().hex
     fields = {"image_quality": 70, **({"chunk_size": chunk_size} if chunk_size else {})}
     parts = [
@@ -193,7 +196,7 @@ def upload_images(session: Session, task_id: int, org: str, count: int, chunk_si
         parts.append(
             f'--{boundary}\r\nContent-Disposition: form-data; name="client_files[{i}]"; filename="frame{i}.png"\r\n'
             "Content-Type: image/png\r\n\r\n".encode()
-            + tiny_png((40 + 60 * i) % 256)
+            + tiny_png((40 + 60 * i) % 256, side)
             + b"\r\n"
         )
     parts.append(f"--{boundary}--\r\n".encode())
