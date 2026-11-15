@@ -47,6 +47,7 @@ const KEYS = {
     Control: { code: 'ControlLeft', keyCode: 17 },
     Shift: { code: 'ShiftLeft', keyCode: 16 },
     Enter: { code: 'Enter', keyCode: 13, text: '\r' },
+    Escape: { code: 'Escape', keyCode: 27 },
 };
 const SHIFT = 8;
 
@@ -501,15 +502,20 @@ async function filterBar(page, org) {
     }
 }
 
-// 2. the operations card never scrolls sideways from 1024 to 1920 px (every 4 px, and every pixel where the card is
-// nearest 420 px wide); other tables that scroll sideways are listed, not judged
+// 2. the operations card never scrolls sideways from 1024 to 1920 px: every 8 px, and every width at which the cards'
+// grid (repeat(auto-fit, minmax(min(100%, 420px), 1fr)), 16 px gap) changes its number of columns, which is where a
+// card is narrowest (420 px when the content box allows it). The change widths are found on the page itself: between
+// two sweep widths with different column counts, every pixel is measured. Other tables that scroll sideways are
+// listed with their card and widths, not judged.
 const SWEEP = `(() => {
     const card = document.querySelector("section.cvat-team-analytics-operations");
     const wrap = card?.querySelector(".cvat-team-analytics-operations-scroll");
+    const grid = card?.closest(".cvat-team-analytics-cards");
+    const columns = grid ? getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length : 0;
     const others = [...document.querySelectorAll(".cvat-team-analytics-page .cvat-team-analytics-table-scroll")]
         .filter((t) => t !== wrap && t.scrollWidth > t.clientWidth + 1)
         .map((t) => (t.closest("section")?.className || "?").split(" ").filter((c) => c !== "cvat-team-analytics-card").join("."));
-    return { card: card ? Math.round(card.getBoundingClientRect().width * 10) / 10 : null,
+    return { card: card ? Math.round(card.getBoundingClientRect().width * 10) / 10 : null, columns,
         scroll: wrap ? [wrap.scrollWidth, wrap.clientWidth] : null, others };
 })()`;
 
@@ -528,18 +534,28 @@ async function widthSweep(page, org) {
         m.others.forEach((name) => scrolling.set(name, [...(scrolling.get(name) || []), width]));
         return m;
     };
-    for (let width = 1024; width <= 1920; width += 4) await measure(width);
-    const nearest = [...seen.entries()].filter(([, m]) => m.card !== null)
-        .sort((a, b) => Math.abs(a[1].card - 420) - Math.abs(b[1].card - 420))[0][0];
-    for (let width = nearest - 4; width <= nearest + 4; width++) await measure(width);
-    const exact = [...seen.entries()].filter(([, m]) => m.card !== null && Math.abs(m.card - 420) < 0.5).map(([w]) => w);
+    const coarse = [];
+    for (let width = 1024; width <= 1920; width += 8) coarse.push(width);
+    if (coarse[coarse.length - 1] !== 1920) coarse.push(1920);
+    for (const width of coarse) await measure(width);
+    const changes = [];
+    for (let i = 1; i < coarse.length; i++) {
+        if (seen.get(coarse[i]).columns === seen.get(coarse[i - 1]).columns) continue;
+        for (let width = coarse[i - 1] + 1; width < coarse[i]; width++) await measure(width);
+        for (let width = coarse[i - 1] + 1; width <= coarse[i]; width++) {
+            if (seen.get(width).columns !== seen.get(width - 1).columns) {
+                changes.push(`${width} px: ${seen.get(width - 1).columns} -> ${seen.get(width).columns} columns, card ${seen.get(width).card} px`);
+            }
+        }
+    }
+    const measured = [...seen.entries()].filter(([, m]) => m.card !== null);
+    const [narrowW, narrowM] = measured.sort((a, b) => a[1].card - b[1].card)[0];
     const wrong = [...seen.entries()].filter(([, m]) => !m.scroll || m.scroll[0] > m.scroll[1]).map(([w, m]) => [w, m.scroll]);
-    log(`width sweep: ${seen.size} widths from 1024 to 1920 px; the operations card ${Math.min(...[...seen.values()].map((m) => m.card))}`
-        + `-${Math.max(...[...seen.values()].map((m) => m.card))} px wide; exactly 420 px at ${exact.length ? exact.join(', ') : 'no width'} `
-        + `(nearest: ${nearest} px, ${seen.get(nearest).card} px)`);
+    log(`width sweep: ${seen.size} widths from 1024 to 1920 px (every 8 px, every pixel around a change of columns); `
+        + `column changes: ${changes.join('; ') || 'none'}; narrowest operations card ${narrowM.card} px at ${narrowW} px`);
     log(`other cards whose table scrolls sideways (card: widths): ${scrolling.size ? [...scrolling.entries()].map(([n, ws]) => `${n}: ${ws.length} widths, ${Math.min(...ws)}-${Math.max(...ws)} px`).join('; ') : 'none'}`);
-    check(!wrong.length, `the operations table scrolls sideways (scrollWidth > clientWidth) at ${JSON.stringify(wrong.slice(0, 10))}`);
-    check(exact.length > 0, `no window width gives a 420 px operations card (nearest ${nearest} px: ${seen.get(nearest).card} px)`);
+    check(!wrong.length, `expected scrollWidth <= clientWidth on the operations wrapper at every width; it scrolls sideways at `
+        + `${JSON.stringify(wrong.slice(0, 10))} (width, [scrollWidth, clientWidth])`);
     await setWidth(page, 1400);
 }
 
@@ -572,6 +588,12 @@ async function operationsTable(page) {
         `operation rows ${JSON.stringify(t.groups.map((g) => g.name))}`);
     check(t.groups.every((g) => g.cells === 4 && g.split && g.split.colspan === '5' && g.split.headers_ok),
         `each operation: 4 cells and a split row of colspan 5 pointing at its header: ${JSON.stringify(t.groups)}`);
+    // the split cell: its hidden prefix "<Operation> started by: ", then "N% hotkey / M% mouse", or Mouse only (always
+    // for Alignment), Not recorded (a legacy period) or a dash (no recorded starts)
+    const splitText = /started by: (\d+% hotkey \/ \d+% mouse|Mouse only|Not recorded|—)$/;
+    const odd = t.groups.filter((g) => !splitText.test(g.split.text) || (g.name === 'Alignment' && !g.split.text.endsWith('Mouse only')));
+    check(!odd.length, `split rows ${JSON.stringify(odd.map((g) => [g.name, g.split.text]))}, expected "<Operation> started by: `
+        + 'N% hotkey / M% mouse", "Mouse only" (always for Alignment), "Not recorded" or "—"');
     check(!t.old_table && !t.started_by, 'the operations card still has the old table class or a "Started by hotkey / mouse" header');
 }
 
@@ -586,11 +608,61 @@ async function openSelector(page, keys, kind) {
         const button = document.querySelector(".cvat-team-analytics-filter-${kind} .cvat-team-analytics-filter-button");
         const popup = document.querySelector(".cvat-team-analytics-filter-popup");
         const r = popup.getBoundingClientRect();
-        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 40));
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        // not clipped: inside the window, and no ancestor that clips it is narrower or shorter than it
+        let clippedBy = null;
+        for (let e = popup.parentElement; e && e !== document.body; e = e.parentElement) {
+            const s = getComputedStyle(e);
+            if (["hidden", "clip", "auto", "scroll"].some((v) => s.overflowX === v || s.overflowY === v)) {
+                const b = e.getBoundingClientRect();
+                if (r.left < b.left - 1 || r.right > b.right + 1 || r.top < b.top - 1 || r.bottom > b.bottom + 1) { clippedBy = e.className || e.tagName; break; }
+            }
+        }
         return { options: [...popup.querySelectorAll("li.cvat-team-analytics-filter-option[role=option]")].map((o) => o.textContent.trim()),
             expanded: button.getAttribute("aria-expanded"), focused: document.activeElement?.classList.contains("cvat-team-analytics-filter-search"),
-            on_top: !!hit && popup.contains(hit), status: popup.querySelector(".cvat-team-analytics-filter-status")?.textContent.trim() || "" };
+            on_top: !!hit && popup.contains(hit), inside_window: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+            clipped_by: clippedBy, status: popup.querySelector(".cvat-team-analytics-filter-status")?.textContent.trim() || "" };
     })()`);
+}
+
+// the Team Analytics requests the page sends, as the browser saw them (Network.requestWillBeSent of the page)
+function watchApi(browser, page) {
+    const seen = [];
+    browser.listeners.add((message) => {
+        if (message.sessionId !== page.sessionId || message.method !== 'Network.requestWillBeSent') return;
+        const { request } = message.params;
+        const url = new URL(request.url);
+        if (url.pathname.startsWith('/api/team-analytics/')) seen.push({ method: request.method, path: url.pathname, query: url.searchParams });
+    });
+    return seen;
+}
+
+const popupOpen = (page) => page.evaluate('!!document.querySelector(".cvat-team-analytics-filter-popup")');
+
+// opening sends exactly one list request with `by` and no project, annotator or shapes; opening again sends none;
+// Escape and a mousedown outside close it
+async function selectorRequests(page, keys, api, kind) {
+    const by = kind === 'project' ? 'projects' : 'annotators';
+    const from = api.length;
+    await openSelector(page, keys, kind);
+    await sleep(500);
+    const lists = api.slice(from).filter((r) => r.path.endsWith('/list'));
+    const q = lists[0]?.query;
+    const describe = lists.map((r) => `${r.method} ${r.path}?${r.query.toString()}`);
+    check(lists.length === 1 && q.get('by') === by && !['project', 'annotator', 'shapes'].some((k) => q.has(k)),
+        `opening the ${kind} selector sent ${JSON.stringify(describe)}, expected exactly one GET list with by=${by} and no project, annotator or shapes`);
+    await keys.press('Escape');
+    const afterEscape = await popupOpen(page);
+    const focusBack = await page.evaluate(`document.activeElement?.classList.contains("cvat-team-analytics-filter-button") && !!document.activeElement.closest(".cvat-team-analytics-filter-${kind}")`);
+    check(!afterEscape && focusBack, `Escape: popup still open ${afterEscape}, focus back on the ${kind} button ${focusBack}`);
+    const again = api.length;
+    await openSelector(page, keys, kind);
+    await sleep(500);
+    const repeated = api.slice(again).filter((r) => r.path.endsWith('/list'));
+    check(repeated.length === 0, `opening the ${kind} selector again sent ${repeated.length} more list requests, expected none`);
+    await keys.click(5, 300); // a mousedown on the page's left edge, outside the popup
+    check(!(await popupOpen(page)), `a click outside left the ${kind} selector open`);
+    log(`${kind} selector: one request ${describe[0]}; none on reopening; Escape closes and returns focus; a click outside closes`);
 }
 
 async function clickSelectorIn(page, keys, selector, index = 0) {
@@ -605,8 +677,9 @@ async function pick(page, keys, kind) {
     const before = await page.evaluate(FIGURES);
     const opened = await openSelector(page, keys, kind);
     const all = kind === 'project' ? 'All projects' : 'All annotators';
-    check(opened.expanded === 'true' && opened.focused && opened.on_top,
-        `the ${kind} selector opened: aria-expanded ${opened.expanded}, search focused ${opened.focused}, drawn over the cards ${opened.on_top}`);
+    check(opened.expanded === 'true' && opened.focused && opened.on_top && opened.inside_window && !opened.clipped_by,
+        `the ${kind} selector opened: aria-expanded ${opened.expanded}, search focused ${opened.focused}, drawn over the cards `
+        + `${opened.on_top}, inside the window ${opened.inside_window}, clipped by ${opened.clipped_by}; expected true, true, true, true, none`);
     check(opened.options[0] === all && opened.options.length >= 3,
         `${kind} options ${JSON.stringify(opened.options)} (status "${opened.status}"), expected "${all}" first and at least two to pick from`);
     // a named one: "No project" names no project to search for
@@ -630,8 +703,12 @@ async function pick(page, keys, kind) {
     return before;
 }
 
-async function selectors(page, keys, org) {
+async function selectors(page, keys, api, org) {
     await setWidth(page, 1400);
+    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await overviewReady(page, 'the week');
+    await selectorRequests(page, keys, api, 'project');
+    await selectorRequests(page, keys, api, 'annotator');
     await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
     await overviewReady(page, 'the week');
     const unfiltered = await pick(page, keys, 'project');
@@ -648,25 +725,47 @@ async function selectors(page, keys, org) {
     log('All and the clear button removed both filters; the figures are as before');
 }
 
-// 4. every term's tooltip: shown on hover and on keyboard focus, inside the window, with the glossary's text
-const TERMS = '[...document.querySelectorAll(".cvat-team-analytics-page button.cvat-team-analytics-term")]';
+// 4. every term's tooltip: shown on hover and on keyboard focus, inside the window, with the glossary's text.
+// Where the 13 terms of the overview sit, in document order: the section (class) around each, and its term
+const PLACES = [
+    ['cvat-team-analytics-sessions', 'Session'],
+    ['cvat-team-analytics-average-creation', 'Time per operation'],
+    ['cvat-team-analytics-time-chart', 'Working time'],
+    ['cvat-team-analytics-split', 'Working time'],
+    ['cvat-team-analytics-operations', 'Time per operation'],
+    ['cvat-team-analytics-creation-methods', 'Time per operation'],
+    ['cvat-team-analytics-model-row', 'Model'],
+    ['cvat-team-analytics-working-time-by-project', 'Working time'],
+    ['cvat-team-analytics-working-time-by-annotator', 'Working time'],
+    ['cvat-team-analytics-details', 'Session'],
+    ['cvat-team-analytics-details', 'Working time'],
+    ['cvat-team-analytics-details', 'Model'],
+    ['cvat-team-analytics-details', 'Time per operation'],
+];
+const TERMS ='[...document.querySelectorAll(".cvat-team-analytics-page button.cvat-team-analytics-term")]';
 
 async function terms(page, keys, org) {
     await setWidth(page, 1400);
     await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
     await overviewReady(page, 'the week');
-    const found = await page.evaluate(`${TERMS}.map((t) => ({ label: t.textContent.trim(), id: t.getAttribute("aria-describedby"),
+    const found = await page.evaluate(`${TERMS}.map((t, i) => ({ label: t.textContent.trim(), id: t.getAttribute("aria-describedby"),
+        placed: !!${JSON.stringify(PLACES)}[i] && !!t.closest("." + ${JSON.stringify(PLACES)}[i][0]),
         section: (t.closest("section")?.className || "").split(" ").find((c) => c !== "cvat-team-analytics-card") || "",
         titled: (() => { let e = t; const card = t.closest(".cvat-team-analytics-card"); while (e && e !== card?.parentElement) { if (e.hasAttribute("title")) return true; e = e.parentElement; } return false; })() }))`);
     log(`terms on the overview: ${found.map((f) => `${f.label} (${f.section})`).join(', ')}`);
     check(found.length === 13, `${found.length} terms on the overview, expected 13`);
+    const misplaced = found.map((f, i) => [i + 1, f.label, f.section, PLACES[i]]).filter(([i, label]) => !found[i - 1].placed
+        || termOf(label) !== PLACES[i - 1][1]);
+    check(!misplaced.length, `terms out of place (n, label, section seen, [section, term] expected): ${JSON.stringify(misplaced)}`);
     check(found.every((f) => termOf(f.label) && f.id), `terms without a known name or a tooltip id: ${JSON.stringify(found.filter((f) => !termOf(f.label) || !f.id))}`);
     check(!found.some((f) => f.titled), `terms with a native title on them or around them in their card: ${JSON.stringify(found.filter((f) => f.titled))}`);
     const tooltip = (id) => `(() => { const inner = document.getElementById(${JSON.stringify(id)}); const wrap = inner?.closest(".ant-tooltip");
         if (!inner || !wrap || wrap.classList.contains("ant-tooltip-hidden") || getComputedStyle(wrap).display === "none" || !inner.checkVisibility()) return null;
         const r = inner.getBoundingClientRect();
         return { text: inner.textContent.trim(), inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
-            rect: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)], under_body: !inner.closest(".cvat-team-analytics-page") }; })()`;
+            rect: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)], under_body: !inner.closest(".cvat-team-analytics-page"),
+            shown: [...document.querySelectorAll(".ant-tooltip")].filter((t) => !t.classList.contains("ant-tooltip-hidden")
+                && getComputedStyle(t).display !== "none" && t.checkVisibility()).length }; })()`;
     for (const [i, f] of found.entries()) {
         const want = TERM_TEXTS[termOf(f.label)];
         await page.evaluate(`${TERMS}[${i}].scrollIntoView({block: "center"})`);
@@ -681,8 +780,9 @@ async function terms(page, keys, org) {
         await page.evaluate(`${TERMS}[${i}].blur()`);
         await page.waitFor(`!${tooltip(f.id)}`, `the tooltip of "${f.label}" hidden after the focus left`, 5000);
         for (const [how, shown] of [['hover', hovered], ['focus', focused]]) {
-            check(shown.text === want && shown.inside && shown.under_body,
-                `"${f.label}" (${f.section}) on ${how}: ${JSON.stringify(shown)}, expected the ${termOf(f.label)} text inside the window, under the body`);
+            check(shown.text === want && shown.inside && shown.under_body && shown.shown === 1,
+                `"${f.label}" (${f.section}) on ${how}: ${JSON.stringify(shown)}, expected the ${termOf(f.label)} text inside the window, `
+                + 'under the body, and one tooltip shown');
         }
     }
     log(`${found.length} terms: each tooltip shown on hover and on focus, inside the window, with the glossary's text, hidden after`);
@@ -709,45 +809,136 @@ async function gone(page, org) {
     log('no definitions block, no organization prompt, no "Started by hotkey / mouse" header');
 }
 
-// 6. the settings modal: it opens, lists the seeded Technical accounts, and a save of the same list succeeds
-async function settingsModal(page, keys, org, seeded) {
+// 6. the settings modal: it opens, lists the seeded Technical accounts by name, the picker finds a user of another
+// organization, rows added and removed then Cancel send no PUT (and reopening shows the server's list), and a Save
+// of the unchanged list answers and closes. A deleted user's "deleted account, id N" label is left to check-settings:
+// its deleted-user part puts the list back without the deleted user, so none is listed when this step runs.
+const MODAL = '.ant-modal.cvat-team-analytics-settings-modal';
+const modalNames = (page) => page.evaluate(`[...document.querySelectorAll("${MODAL} .cvat-team-analytics-settings-account-name")].map((e) => e.textContent.trim())`);
+const MODAL_CLOSED = `(() => { const m = document.querySelector("${MODAL}"); return !m || !m.checkVisibility(); })()`;
+
+async function openModal(page, keys) {
+    await clickSelectorIn(page, keys, '.cvat-team-analytics-header .cvat-team-analytics-settings-button');
+    await page.waitFor(`!!document.querySelector("${MODAL}") && !document.querySelector("${MODAL} .cvat-team-analytics-settings-loading")`, 'the settings modal', 30000);
+}
+
+async function settingsModal(page, keys, api, org, seeded, other) {
     await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
     await overviewReady(page, 'the week');
-    await clickSelectorIn(page, keys, '.cvat-team-analytics-header .cvat-team-analytics-settings-button');
-    await page.waitFor('!!document.querySelector(".ant-modal.cvat-team-analytics-settings-modal") && !document.querySelector(".cvat-team-analytics-settings-loading")', 'the settings modal', 30000);
-    const modal = await page.evaluate(`(() => { const m = document.querySelector(".ant-modal.cvat-team-analytics-settings-modal");
-        return { title: m.querySelector(".ant-modal-title")?.textContent.trim(), failed: !!m.querySelector(".cvat-team-analytics-settings-load-failed"),
-            names: [...m.querySelectorAll(".cvat-team-analytics-settings-account-name")].map((e) => e.textContent.trim()) }; })()`);
-    log(`settings modal "${modal.title}": accounts ${JSON.stringify(modal.names)}`);
-    check(modal.title === 'Team Analytics settings' && !modal.failed, `the settings modal: ${JSON.stringify(modal)}`);
-    check(JSON.stringify([...modal.names].sort()) === JSON.stringify([...seeded].sort()),
-        `the modal lists ${JSON.stringify(modal.names)}, expected the seeded ${JSON.stringify(seeded)}`);
-    await clickSelectorIn(page, keys, '.cvat-team-analytics-settings-modal .cvat-team-analytics-settings-save');
-    await page.waitFor(`(() => { const m = document.querySelector(".ant-modal.cvat-team-analytics-settings-modal");
+    let from = api.length;
+    await openModal(page, keys);
+    const modal = await page.evaluate(`(() => { const m = document.querySelector("${MODAL}");
+        return { title: m.querySelector(".ant-modal-title")?.textContent.trim(), failed: !!m.querySelector(".cvat-team-analytics-settings-load-failed") }; })()`);
+    const names = await modalNames(page);
+    log(`settings modal "${modal.title}": accounts ${JSON.stringify(names)}; requests ${JSON.stringify(api.slice(from).map((r) => `${r.method} ${r.path}`))}`);
+    check(modal.title === 'Team Analytics settings' && !modal.failed, `the settings modal: ${JSON.stringify(modal)}, expected "Team Analytics settings", loaded`);
+    check(api.slice(from).some((r) => r.method === 'GET' && r.path.endsWith('/settings')), 'opening the modal sent no GET settings');
+    check(JSON.stringify([...names].sort()) === JSON.stringify([...seeded].sort()),
+        `the modal lists ${JSON.stringify(names)}, expected the seeded ${JSON.stringify(seeded)}`);
+
+    // the picker finds a user of another organization than the one selected; it is added, then removed
+    from = api.length;
+    await clickSelectorIn(page, keys, `${MODAL} .cvat-team-analytics-settings-picker`);
+    await page.send('Input.insertText', { text: other });
+    const option = `[...document.querySelectorAll(".cvat-team-analytics-settings-picker-dropdown .ant-select-item-option")].findIndex((o) => o.textContent.trim().split(" ")[0] === ${JSON.stringify(other)})`;
+    await page.waitFor(`${option} >= 0`, `${other} offered by the picker`, 15000);
+    const searched = api.slice(from).filter((r) => r.path.endsWith('/settings/users')).map((r) => r.query.get('search'));
+    await clickSelectorIn(page, keys, '.cvat-team-analytics-settings-picker-dropdown .ant-select-item-option', await page.evaluate(option));
+    await page.waitFor(`[...document.querySelectorAll("${MODAL} .cvat-team-analytics-settings-account-name")].some((e) => e.textContent.trim() === ${JSON.stringify(other)})`, `${other} added as a row`, 10000);
+    if (SHOTS) await page.screenshot(`page-${org}-settings-picked`);
+    await clickSelectorIn(page, keys, `${MODAL} .cvat-team-analytics-settings-remove[aria-label="Remove ${other}"]`);
+    const afterRemove = await modalNames(page);
+    check(!afterRemove.includes(other), `${other} still listed after its remove button: ${JSON.stringify(afterRemove)}`);
+    await clickSelectorIn(page, keys, `${MODAL} .cvat-team-analytics-settings-cancel`);
+    await page.waitFor(MODAL_CLOSED, 'the modal closed by Cancel', 10000);
+    const puts = api.slice(from).filter((r) => r.method === 'PUT');
+    check(puts.length === 0, `adding and removing ${other} then Cancel sent ${puts.length} PUT requests, expected none`);
+    log(`picker: searches ${JSON.stringify(searched)} found ${other} (another organization than ${org}); added, removed, Cancel: no PUT`);
+    await openModal(page, keys);
+    const reopened = await modalNames(page);
+    check(JSON.stringify([...reopened].sort()) === JSON.stringify([...seeded].sort()), `reopened after Cancel the modal lists ${JSON.stringify(reopened)}, expected the server's ${JSON.stringify(seeded)}`);
+
+    // Save of the unchanged list
+    from = api.length;
+    await clickSelectorIn(page, keys, `${MODAL} .cvat-team-analytics-settings-save`);
+    await page.waitFor(`(() => { const m = document.querySelector("${MODAL}");
         return !m || !m.checkVisibility() || !!m.querySelector(".cvat-team-analytics-settings-error"); })()`, 'the modal closed after Save', 30000);
     const error = await page.evaluate('document.querySelector(".cvat-team-analytics-settings-error")?.textContent.trim() || ""');
     check(!error, `the save failed: "${error}"`);
+    const sent = api.slice(from).filter((r) => r.method === 'PUT' && r.path.endsWith('/settings'));
+    check(sent.length === 1, `Save sent ${sent.length} PUT settings, expected one`);
     const saved = await page.evaluate('fetch("/api/team-analytics/settings").then((r) => r.json()).then((b) => b.technical_accounts.map((a) => a.user_name))');
     check(JSON.stringify([...saved].sort()) === JSON.stringify([...seeded].sort()), `after the save the list is ${JSON.stringify(saved)}`);
-    log(`Save of the same list: the modal closed with no error; the list is still ${JSON.stringify(saved)}`);
+    log(`Save of the same list: one PUT, the modal closed with no error; the list is still ${JSON.stringify(saved)}`);
+}
+
+// 7. at instance scope (no organization selected) the project selector names projects of several organizations by
+// their names, not "Project #N" (the names come from the fork's project-names lookup)
+async function instanceNames(browser) {
+    const page = await signIn(browser, 'ta-admin', '');
+    const keys = input(page);
+    await setWidth(page, 1400);
+    await page.goto(`${BASE}/team-analytics?period=week`);
+    await overviewReady(page, 'instance scope');
+    const subtitle = await page.evaluate('document.querySelector(".cvat-team-analytics-heading")?.textContent || ""');
+    check(subtitle.includes('All organizations and personal workspaces'), `the heading reads "${subtitle.trim()}", expected instance scope`);
+    const opened = await openSelector(page, keys, 'project');
+    const numbered = opened.options.filter((o) => /^Project #\d+$/.test(o));
+    const wanted = ['ta-tracer', 'ta-settings-probe']; // ta-org-a's (and ta-org-b's) and ta-org-s's
+    const missing = wanted.filter((name) => !opened.options.some((o) => o === name));
+    log(`instance scope: ${opened.options.length} project options, ${numbered.length} named "Project #N": ${JSON.stringify(opened.options.slice(0, 12))}`);
+    check(!numbered.length && !missing.length, `instance scope project options: "Project #N" ${JSON.stringify(numbered)}, missing ${JSON.stringify(missing)}; `
+        + 'expected every project by name, those of ta-org-a and ta-org-s among them');
+    if (SHOTS) await page.screenshot('page-instance-project-selector');
+}
+
+// 8. screenshots for the evidence record at 1400 and 1024 px: the overview, the open project selector, a shown
+// tooltip, the settings modal
+async function screenshots(page, keys, org) {
+    for (const width of [1400, 1024]) {
+        await setWidth(page, width);
+        await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+        await overviewReady(page, 'the week');
+        await fullShot(page, `page-${org}-${width}-overview`, width);
+        await openSelector(page, keys, 'project');
+        await page.screenshot(`page-${org}-${width}-project-selector`);
+        await keys.press('Escape');
+        await page.evaluate(`${TERMS}[4].scrollIntoView({block: "center"})`);
+        await sleep(300);
+        const r = await page.evaluate(`(() => { const b = ${TERMS}[4].getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`);
+        await keys.move(r.x, r.y);
+        await sleep(800);
+        await page.screenshot(`page-${org}-${width}-tooltip`);
+        await keys.move(5, 5);
+        await openModal(page, keys);
+        await page.screenshot(`page-${org}-${width}-settings`);
+        await clickSelectorIn(page, keys, `${MODAL} .cvat-team-analytics-settings-cancel`);
+        await page.waitFor(MODAL_CLOSED, 'the modal closed by Cancel', 10000);
+    }
+    log(`screenshots at 1400 and 1024 px (overview, project selector, tooltip, settings) in ${SHOTS}`);
 }
 
 async function pageChecks(org) {
     const seeded = (process.env.TA_TECHNICAL_ACCOUNTS || '').split(/[\s,]+/).filter(Boolean);
+    check(!!SHOTS, 'TA_SCREENSHOT_DIR must name a directory outside the repository for the screenshots');
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ta-fixes-'));
     let browser;
     try {
         browser = await launch(profile);
         const page = await signIn(browser, 'ta-admin', org);
+        await page.send('Network.enable', {});
+        const api = watchApi(browser, page);
         const keys = input(page);
         await filterBar(page, org);
         await widthSweep(page, org);
         await operationsTable(page);
         await gone(page, org);
-        await selectors(page, keys, org);
+        await selectors(page, keys, api, org);
         await terms(page, keys, org);
-        await settingsModal(page, keys, org, seeded);
-        if (SHOTS) await fullShot(page, `page-${org}-1400`, 1400);
+        // a user of another organization than ORG for the picker: ta-org-b's owner
+        await settingsModal(page, keys, api, org, seeded, 'ta-owner-b');
+        await screenshots(page, keys, org);
+        await instanceNames(browser);
     } finally {
         await browser?.close();
         fs.rmSync(profile, { recursive: true, force: true });

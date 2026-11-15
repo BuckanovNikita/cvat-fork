@@ -22,7 +22,9 @@ const BROWSER = process.env.TA_BROWSER_BIN || 'google-chrome';
 const SHOTS = process.env.TA_SCREENSHOT_DIR || '';
 const ORG = 'ta-org-a';
 const ADMIN = 'ta-admin';
-const REFUSED = ['ta-owner', 'ta-maintainer', 'ta-worker'];
+// an owner, a maintainer and a worker of ta-org-a, and an ordinary user of no organization (signed in without one)
+const REFUSED = ['ta-owner', 'ta-maintainer', 'ta-worker', 'ta-outsider'];
+const DENIED_TEXT = 'This page is for administrators of this CVAT instance.';
 // stack_api.py WORK for ta-org-a, as the page formats hours
 const EXPECTED_ROWS = [['ta-worker', '1.5 h'], ['ta-supervisor', '0.5 h']];
 
@@ -123,7 +125,8 @@ const LINK = '[...document.querySelectorAll(".cvat-header a, .cvat-header button
 async function signIn(browser, username, org = ORG) {
     const page = await openPage(browser);
     await page.goto(`${BASE}/auth/login`);
-    await page.evaluate(`localStorage.setItem("currentOrganization", ${JSON.stringify(org)})`);
+    // org "": no organization selected (CVAT's personal workspace; for an administrator, instance scope)
+    await page.evaluate(org ? `localStorage.setItem("currentOrganization", ${JSON.stringify(org)})` : 'localStorage.removeItem("currentOrganization")');
     await page.type('#credential', username);
     await page.type('#password', PASSWORD);
     // CVAT throttles sign-ins (429), as after the volume's hundred: the form is sent again after a pause,
@@ -137,6 +140,7 @@ async function signIn(browser, username, org = ORG) {
         log(`${username}: not signed in yet (attempt ${attempt}); sending the form again in 25 s`);
         await sleep(25000);
     }
+    if (!org) return page;
     // an administrator opens organizations it is no member of the same way; if this times out for ta-admin, the
     // UI did not accept that organization for it
     await page.waitFor(
@@ -176,7 +180,7 @@ async function administrator(browser) {
 // Everyone else, the maintainer of the organization included, sees no link, the not-available state on a direct
 // visit and CVAT's refusal from the API.
 async function refused(browser, username, linkDelayMs) {
-    const page = await signIn(browser, username);
+    const page = await signIn(browser, username, username === 'ta-outsider' ? '' : ORG);
     // the administrator's link appeared linkDelayMs after the organization showed; wait well past it
     await sleep(Math.max(5000, 3 * linkDelayMs));
     check(!(await page.evaluate(`!!(${LINK})`)), `${username} sees the Team Analytics link`);
@@ -186,7 +190,8 @@ async function refused(browser, username, linkDelayMs) {
         'document.querySelector(".cvat-team-analytics-denied")?.textContent.trim()', `the not-available state for ${username}`,
     );
     await page.screenshot(`${username}-team-analytics`);
-    check(denied.includes('Team analytics is not available'), `${username} sees "${denied}"`);
+    check(denied.includes('Team analytics is not available') && denied.includes(DENIED_TEXT),
+        `${username} sees "${denied}", expected "Team analytics is not available" and "${DENIED_TEXT}"`);
     const extras = await page.evaluate('[".cvat-team-analytics-settings-button", ".cvat-team-analytics-filters"].filter((s) => document.querySelector(s))');
     check(extras.length === 0, `${username}'s not-available page shows ${JSON.stringify(extras)}, expected neither the Settings button nor the filter row`);
     // the browser's own fetch sends Accept */*; CVAT's API answers 406 to a bare application/json
