@@ -73,12 +73,17 @@ function AdministratorPage(): JSX.Element {
             .filter((id) => id > 0 && !(id in knownNames.current) && !unnamed.current.has(id));
         let current = true;
         if (asked.length) {
-            // a request that failed leaves its ids out of `answered`: they are asked again
+            // a request that failed leaves its ids out of `answered`: they are asked again. An answered id without a
+            // name is remembered also when the lookup as a whole fails (another request failed and none named a
+            // project), so that only the failed request's ids are asked again.
             const answered = new Set<number>();
-            lookupProjectNames(asked, requestService, answered).then((names) => {
+            const remember = (names: ProjectNames): void => {
                 asked.filter((id) => answered.has(id) && !(id in names)).forEach((id) => unnamed.current.add(id));
+            };
+            lookupProjectNames(asked, requestService, answered).then((names) => {
+                remember(names);
                 if (current) setProjectNames((known) => ({ ...known, ...names }));
-            }).catch(() => { /* shown by identifier, asked again later */ });
+            }, () => remember({}));
         }
         return () => { current = false; };
     };

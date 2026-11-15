@@ -40,7 +40,8 @@ export function namesChunks(ids: number[]): number[][] {
 }
 
 // The names of the existing projects among `ids`. `answered`, when given, receives the ids of the requests that
-// were answered: an id there without a name names no project, while the ids of a failed request may be asked again.
+// were answered (named or not), also when the lookup then throws because a request failed and none named a project:
+// an id there without a name names no project, while the ids of a failed request may be asked again.
 export async function lookupProjectNames(
     ids: number[], request: RequestService = requestService, answered?: Set<number>,
 ): Promise<ProjectNames> {

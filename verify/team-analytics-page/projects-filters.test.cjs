@@ -217,7 +217,8 @@ function mountPage({
             // as the real lookup: the ids of an answered lookup go into `answered`, those of a failed one do not
             lookupProjectNames: async (ids, request, answered) => {
                 lookups.push(ids);
-                const found = await names(ids);
+                // `names` may itself record a partly answered lookup in `answered` and then throw
+                const found = await names(ids, answered);
                 ids.forEach((id) => answered?.add(id));
                 return found;
             },
@@ -370,6 +371,38 @@ test('ids the names lookup did not name are not asked again until the data is re
         await view.settle();
         assert.ok(lookups.flat().filter((id) => id === 2).length === 1, `asked once: ${JSON.stringify(lookups)}`);
     });
+});
+
+test('a lookup that throws still remembers the ids of its answered request without names', async () => {
+    let first = true;
+    const { history, lookups, Page } = mountPage({
+        // project 1's request was answered with no name, project 2's failed: the lookup throws
+        names: async (ids, answered) => {
+            if (!first) return {};
+            first = false;
+            answered?.add(1);
+            throw new Error('503');
+        },
+    });
+    await opened(Page, async (view) => {
+        assert.deepEqual([...lookups[0]].sort(), [1, 2]);
+        await act(async () => { history.push('/team-analytics?project=7&org=team-org'); });
+        await view.settle();
+        assert.deepEqual([...lookups.at(-1)].sort(), [2, 7], 'project 1 is not asked again, project 2 is');
+    });
+});
+
+test('the real lookup reports an answered request without names even when it throws', async () => {
+    // seven-digit ids: about 300 per request, so 400 ids are two requests; the second one fails
+    const ids = Array.from({ length: 400 }, (_, index) => 9_000_001 + index);
+    const { request, requests } = suppliedService((url, sent) => (sent.params.ids.includes(String(ids[399])) ?
+        { status: 503, body: null } : { body: { names: {} } }));
+    const { lookupProjectNames } = loadPage('project-names.ts');
+    const answered = new Set();
+    await assert.rejects(lookupProjectNames(ids, request, answered));
+    assert.equal(requests.length, 2);
+    const firstChunk = requests[0].params.ids.split(',').map(Number);
+    assert.deepEqual([...answered], firstChunk, 'the answered request\'s ids, not the failed one\'s');
 });
 
 test('ids of a names lookup that failed are asked again', async () => {
