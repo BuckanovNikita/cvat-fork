@@ -138,12 +138,6 @@ class History:
         rows = self._sql.rows("control/history_next_day.sql", {"today": today.isoformat()})
         return rows[0] if rows else None
 
-    def next_day(self) -> date | None:
-        """The day the next history step computes: today for its hours before the refresh window, else the
-        newest earlier day to compute; None when there is nothing to do."""
-        following = self._next(self._today())
-        return following["day"] if following else None
-
     def _version(self, at_least: int = 0) -> int:
         latest = self._sql.rows("control/history_version.sql")[0]["version"] or 0
         return max(int(time.time() * 1000), latest + 1, at_least)
