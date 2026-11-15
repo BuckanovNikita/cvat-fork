@@ -750,10 +750,12 @@ async function selectors(page, keys, api, org) {
     log('All and the clear button removed both filters; the figures are as before');
 }
 
-// 3b. an open selector never makes the page scroll sideways: with each popup open, the document and the page
-// container (.cvat-team-analytics-page, which scrolls) have scrollWidth <= clientWidth and the popup's box lies inside
-// the container (its left edge to its left edge plus its client width), at 1024 and 1400 px and at the width of the
-// sweep where the Annotator selector's right edge comes nearest the container's right edge
+// 3b. an open selector never makes the page scroll sideways: at 1024 and 1400 px and at the width of the sweep where
+// the Annotator selector's right edge comes nearest the container's right edge, the scroll widths of the document
+// and of the page container (.cvat-team-analytics-page, which scrolls) are taken with every selector closed; with
+// each popup open neither is wider than that, the page container has scrollWidth <= clientWidth (CVAT's own layout
+// may make the document wider than a 1024 px window by itself: that is recorded, not judged), and the popup's box
+// and its longest option lie inside the container (its left edge to its left edge plus its client width)
 const POPUP_FIT = `(() => {
     const popup = document.querySelector(".cvat-team-analytics-filter-popup");
     const page = document.querySelector(".cvat-team-analytics-page");
@@ -770,6 +772,22 @@ const POPUP_FIT = `(() => {
         longest: longest ? { text: longest.textContent.trim(), box: [Math.round(l.left), Math.round(l.right)] } : null,
         longest_inside: !!longest && l.left >= p.left - 0.5 && l.right <= right + 0.5,
         side: [...popup.classList].find((c) => c.startsWith("cvat-team-analytics-filter-popup-")) || "" };
+})()`;
+// [scrollWidth, clientWidth] of the document and of the page container
+const SCROLL_WIDTHS = `(() => { const s = document.scrollingElement; const p = document.querySelector(".cvat-team-analytics-page");
+    return { document: [s.scrollWidth, s.clientWidth], page: p ? [p.scrollWidth, p.clientWidth] : [0, 0] }; })()`;
+// the element whose box reaches furthest right beyond the window, the innermost of those that reach as far (the
+// last in document order), for the record only
+const WIDEST_BEYOND = `(() => {
+    let best = null;
+    for (const e of document.body.querySelectorAll("*")) {
+        const r = e.getBoundingClientRect();
+        if (r.right > innerWidth + 0.5 && (!best || r.right >= best.right)) {
+            best = { tag: e.tagName.toLowerCase(), class: String(e.className && e.className.baseVal !== undefined ? e.className.baseVal : e.className).slice(0, 160),
+                right: Math.round(r.right), width: Math.round(r.width), parent: String(e.parentElement?.className || "").slice(0, 120) };
+        }
+    }
+    return best;
 })()`;
 // the options are in: the status line is gone, empty or hidden, and a named option (not "All ...") is listed
 const OPTIONS_LOADED = `(() => {
@@ -808,9 +826,20 @@ async function popupFit(page, keys, org) {
     check(!!edge, 'no Annotator selector found on the filter bar between 1024 and 1920 px');
     log(`the Annotator selector is nearest the page container's right edge at ${edge.width} px (${edge.gap} px from it)`);
     const wrong = [];
+    let widest = null;
     for (const width of [1024, 1400, edge.width]) {
         await setWidth(page, width);
         await sleep(800);
+        // the baseline: CVAT's own layout may be wider than the window at its narrowest (the document scrolls then
+        // with no popup open); a popup must not add to that
+        const closed = await page.evaluate(SCROLL_WIDTHS);
+        log(`${width} px, selectors closed: document ${closed.document.join('/')}, page ${closed.page.join('/')}`);
+        if (closed.document[0] > closed.document[1] && !widest) {
+            widest = await page.evaluate(WIDEST_BEYOND);
+            log(`for the record, not judged: at ${width} px with the selectors closed the document is wider than the window; `
+                + `the element reaching furthest right: ${JSON.stringify(widest)}`);
+        }
+        if (closed.page[0] > closed.page[1]) wrong.push([width, 'selectors closed', closed]);
         for (const kind of ['project', 'annotator']) {
             await openSelector(page, keys, kind);
             // measured once the names are in: while "Loading…" shows the popup is at its narrowest
@@ -819,16 +848,21 @@ async function popupFit(page, keys, org) {
             await sleep(300);
             const fit = await page.evaluate(POPUP_FIT);
             log(`${width} px, ${kind} selector open: ${JSON.stringify(fit)}`);
-            if (!fit || fit.document[0] > fit.document[1] || fit.page[0] > fit.page[1] || !fit.inside || !fit.longest_inside) {
-                wrong.push([width, kind, fit]);
+            // with the popup open: neither the document nor the page container wider than with it closed, the page
+            // container (the fork's own element) never scrolling sideways, the popup and its longest option inside it
+            if (!fit || fit.document[0] > closed.document[0] || fit.page[0] > closed.page[0] || fit.page[0] > fit.page[1]
+                || !fit.inside || !fit.longest_inside) {
+                wrong.push([width, kind, { closed, open: fit }]);
             }
             await keys.press('Escape');
             await page.waitFor('!document.querySelector(".cvat-team-analytics-filter-popup")', 'the popup closed by Escape', 5000);
         }
     }
-    check(!wrong.length, `an open selector made the page scroll sideways or passed the page container: ${JSON.stringify(wrong)} `
-        + '(width, selector, {document and page [scrollWidth, clientWidth], popup [left, right], container [left, right]}); '
-        + 'expected scrollWidth <= clientWidth for both and the popup inside the container');
+    check(!wrong.length, `an open selector widened the document or the page container, the page container scrolls sideways, `
+        + `or the popup passed the page container: ${JSON.stringify(wrong)} (width, selector, {closed: document and page `
+        + '[scrollWidth, clientWidth] with the selectors closed, open: the same with the popup open, popup [left, right], '
+        + 'container [left, right]}); expected no scroll width above the closed one, page scrollWidth <= clientWidth, and '
+        + 'the popup and its longest option inside the container');
     await setWidth(page, 1400);
 }
 
