@@ -871,7 +871,8 @@ fixes_py() {
 }
 fixes_browser() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
-        TA_SCREENSHOT_DIR="$FIX_SHOTS" TA_TECHNICAL_ACCOUNTS="$TA_TECHNICAL_ACCOUNTS" nice -n19 node "$HERE/fixes_browser.cjs" "$@"
+        TA_SCREENSHOT_DIR="$FIX_SHOTS" TA_TECHNICAL_ACCOUNTS="$TA_TECHNICAL_ACCOUNTS" TA_VOLUME_ORG="${TA_VOLUME_ORG:-ta-org-v}" \
+        nice -n19 node "$HERE/fixes_browser.cjs" "$@"
 }
 check_fixes() {
     local only="${1:-}" step state="$STATE_DIR/fixes-gestures.json"
@@ -893,7 +894,10 @@ check_fixes() {
                 fixes_browser look "${TA_VOLUME_ORG:-ta-org-v}"
                 log "screenshots: $(show_path "$FIX_SHOTS")" ;;
             page)
-                # ta-org-c holds several projects and annotators (each final run adds projects), the seeded list
+                # ta-org-c: the real UI's work (Model objects among it) for the bar, the sweep, the terms, the
+                # settings modal and the screenshots; the selectors and their popups use the volume's organization
+                # (TA_VOLUME_ORG: forty projects, a hundred annotators); instance scope's names are judged against
+                # what the organizations' own selectors name
                 fixes_browser page ta-org-c ;;
             *) fixes_py "$step" ;;
         esac

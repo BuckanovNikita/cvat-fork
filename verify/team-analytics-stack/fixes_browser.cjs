@@ -39,6 +39,8 @@ const {
 } = require('./browser_check.cjs');
 
 const BASE = process.env.TA_BASE_URL;
+// the volume's organization (final_run.py load-volume, part of check-final): several projects and annotators
+const VOLUME_ORG = process.env.TA_VOLUME_ORG || 'ta-org-v';
 const SHOTS = process.env.TA_SCREENSHOT_DIR || '';
 const LATENCY_MS = 1500; // each request for frame data is held back this long while F is held
 const HOLD_MS = 4000;
@@ -833,14 +835,22 @@ async function terms(page, keys, org) {
     await setWidth(page, 1400);
     await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
     await overviewReady(page, 'the week');
+    // two terms exist only with their data: the Model row of the creation methods when the period has Model objects,
+    // and the details' Model column unless the period is legacy (its column is "Boxes saved" then, with no term)
+    const gates = await page.evaluate(`({ model: !!document.querySelector(".cvat-team-analytics-model-row"),
+        legacy: [...document.querySelectorAll(".cvat-team-analytics-details th")].some((th) => th.textContent.trim() === "Boxes saved") })`);
+    const places = PLACES.filter(([section, term]) => (section !== 'cvat-team-analytics-model-row' || gates.model)
+        && !(section === 'cvat-team-analytics-details' && term === 'Model' && gates.legacy));
+    log(`terms expected: ${places.length} (Model row ${gates.model ? 'shown' : 'not shown: no Model objects'}, details `
+        + `${gates.legacy ? 'legacy' : 'with its Model column'})`);
     const found = await page.evaluate(`${TERMS}.map((t, i) => ({ label: t.textContent.trim(), id: t.getAttribute("aria-describedby"),
-        placed: !!${JSON.stringify(PLACES)}[i] && !!t.closest("." + ${JSON.stringify(PLACES)}[i][0]),
+        placed: !!${JSON.stringify(places)}[i] && !!t.closest("." + ${JSON.stringify(places)}[i][0]),
         section: (t.closest("section")?.className || "").split(" ").find((c) => c !== "cvat-team-analytics-card") || "",
         titled: (() => { let e = t; const card = t.closest(".cvat-team-analytics-card"); while (e && e !== card?.parentElement) { if (e.hasAttribute("title")) return true; e = e.parentElement; } return false; })() }))`);
     log(`terms on the overview: ${found.map((f) => `${f.label} (${f.section})`).join(', ')}`);
-    check(found.length === 13, `${found.length} terms on the overview, expected 13`);
-    const misplaced = found.map((f, i) => [i + 1, f.label, f.section, PLACES[i]]).filter(([i, label]) => !found[i - 1].placed
-        || termOf(label) !== PLACES[i - 1][1]);
+    check(found.length === places.length, `${found.length} terms on the overview, expected ${places.length}`);
+    const misplaced = found.map((f, i) => [i + 1, f.label, f.section, places[i]]).filter(([i, label]) => !found[i - 1].placed
+        || termOf(label) !== places[i - 1][1]);
     check(!misplaced.length, `terms out of place (n, label, section seen, [section, term] expected): ${JSON.stringify(misplaced)}`);
     check(found.every((f) => termOf(f.label) && f.id), `terms without a known name or a tooltip id: ${JSON.stringify(found.filter((f) => !termOf(f.label) || !f.id))}`);
     check(!found.some((f) => f.titled), `terms with a native title on them or around them in their card: ${JSON.stringify(found.filter((f) => f.titled))}`);
@@ -979,21 +989,50 @@ async function settingsModal(page, keys, api, org, seeded, other) {
 
 // 7. at instance scope (no organization selected) the project selector names projects of several organizations by
 // their names, not "Project #N" (the names come from the fork's project-names lookup)
-async function instanceNames(browser) {
+// The projects ORG's project selector names for the week (without "All projects" and "No project"), as the page
+// itself shows them inside the organization: what instance scope must name too.
+async function orgProjectNames(page, keys, org) {
+    try {
+        await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+        await overviewReady(page, `the week of ${org}`);
+        await openSelector(page, keys, 'project');
+        await page.waitFor(OPTIONS_LOADED, `${org}'s project options loaded`, 30000);
+    } catch (error) {
+        // an organization with no work this week has no rows and no options: it names nothing
+        log(`${org}: no project names this week (${error.message})`);
+        return [];
+    }
+    const options = await page.evaluate('[...document.querySelectorAll(".cvat-team-analytics-filter-popup li.cvat-team-analytics-filter-option[role=option]:not(.cvat-team-analytics-filter-option-all)")].map((o) => o.textContent.trim())');
+    await keys.press('Escape');
+    return options.filter((o) => o !== 'No project');
+}
+
+async function instanceNames(browser, orgs) {
     const page = await signIn(browser, 'ta-admin', '');
     const keys = input(page);
     await setWidth(page, 1400);
+    // the names each organization's own selector shows this week; at least two organizations must have some, or
+    // there is nothing to judge "names of several organizations in one list" by
+    const byOrg = {};
+    for (const org of orgs) byOrg[org] = await orgProjectNames(page, keys, org);
+    const named = Object.entries(byOrg).filter(([, names]) => names.length);
+    log(`project names this week by organization: ${JSON.stringify(Object.fromEntries(Object.entries(byOrg).map(([o, n]) => [o, n.length])))}`);
+    check(named.length >= 2, `fewer than two of ${JSON.stringify(orgs)} have projects with work this week (${JSON.stringify(byOrg)}): `
+        + 'the stack has no data for this part (run check-final first)');
     await page.goto(`${BASE}/team-analytics?period=week`);
     await overviewReady(page, 'instance scope');
     const subtitle = await page.evaluate('document.querySelector(".cvat-team-analytics-heading")?.textContent || ""');
     check(subtitle.includes('All organizations and personal workspaces'), `the heading reads "${subtitle.trim()}", expected instance scope`);
-    const opened = await openSelector(page, keys, 'project');
-    const numbered = opened.options.filter((o) => /^Project #\d+$/.test(o));
-    const wanted = ['ta-tracer', 'ta-settings-probe']; // ta-org-a's (and ta-org-b's) and ta-org-s's
-    const missing = wanted.filter((name) => !opened.options.some((o) => o === name));
-    log(`instance scope: ${opened.options.length} project options, ${numbered.length} named "Project #N": ${JSON.stringify(opened.options.slice(0, 12))}`);
-    check(!numbered.length && !missing.length, `instance scope project options: "Project #N" ${JSON.stringify(numbered)}, missing ${JSON.stringify(missing)}; `
-        + 'expected every project by name, those of ta-org-a and ta-org-s among them');
+    await openSelector(page, keys, 'project');
+    await page.waitFor(OPTIONS_LOADED, 'instance scope project options loaded', 60000);
+    const opened = await page.evaluate('[...document.querySelectorAll(".cvat-team-analytics-filter-popup li.cvat-team-analytics-filter-option[role=option]")].map((o) => o.textContent.trim())');
+    const numbered = opened.filter((o) => /^Project #\d+$/.test(o));
+    // every organization's first name, found by its name at instance scope
+    const missing = named.map(([org, names]) => [org, names[0]]).filter(([, name]) => !opened.includes(name));
+    log(`instance scope: ${opened.length} project options, ${numbered.length} named "Project #N": ${JSON.stringify(opened.slice(0, 12))}`);
+    check(!numbered.length && !missing.length, `instance scope project options: "Project #N" ${JSON.stringify(numbered)}, missing `
+        + `${JSON.stringify(missing)} (organization, name its own selector shows); expected every project by name, those of `
+        + `${named.map(([o]) => o).join(', ')} among them`);
     if (SHOTS) await page.screenshot('page-instance-project-selector');
 }
 
@@ -1038,13 +1077,15 @@ async function pageChecks(org) {
         await widthSweep(page, org);
         await operationsTable(page);
         await gone(page, org);
-        await selectors(page, keys, api, org);
-        await popupFit(page, keys, org);
+        // the selectors need several projects and annotators with work this week: the volume organization (forty
+        // projects, a hundred annotators, its current week loaded by check-final), also the longest list
+        await selectors(page, keys, api, VOLUME_ORG);
+        await popupFit(page, keys, VOLUME_ORG);
         await terms(page, keys, org);
         // a user of another organization than ORG for the picker: ta-org-b's owner
         await settingsModal(page, keys, api, org, seeded, 'ta-owner-b');
         await screenshots(page, keys, org);
-        await instanceNames(browser);
+        await instanceNames(browser, [...new Set([org, VOLUME_ORG, 'ta-org-a', 'ta-org-s'])]);
     } finally {
         await browser?.close();
         fs.rmSync(profile, { recursive: true, force: true });
