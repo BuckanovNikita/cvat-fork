@@ -42,7 +42,7 @@ def detector(when: datetime, rectangles: int, objects: int, **kwargs) -> dict:
 
 
 class ModelCase(OperationsCase):
-    stack_options = {"technical_accounts": ("importer",)}
+    stack_options = {"technical_accounts": (99,)}
 
     def overview(self, **query) -> dict:
         self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))
@@ -157,6 +157,61 @@ class ConfiguredListTest(ModelCase):
         self.assertEqual([row["user_name"] for row in body["by_annotator"]["rows"]], ["importer"])
         self.assertEqual(body["saved_boxes"]["by_annotator"],
                          [{"user_id": IMPORTER[0], "user_name": "importer", "boxes": 5}])
+
+    def test_a_change_of_the_list_applies_to_past_hours_on_the_next_read(self):
+        self.stack.add_events([
+            working_time(seconds(T, 10), 600_000, user=IMPORTER, org=ORG),
+            saved("create", seconds(T, 20), 5),
+        ])
+        self.assertEqual(self.model(shapes="bounding_boxes"), 0)
+
+        # the worker reads the list for every answer; the stored totals stay as they are
+        self.stack.technical_accounts = (IMPORTER[0],)
+        status, body = self.stack.overview("lead", org="org7", shapes="bounding_boxes")
+
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["creation_methods"]["model"]["objects"], 5)
+        self.assertEqual(body["creation_methods"]["technical_accounts"], 1)
+        self.assertEqual(body["by_annotator"]["rows"], [])
+        self.assertEqual(body["saved_boxes"]["by_annotator"], [])
+
+
+class TechnicalAccountByIdTest(ModelCase):
+    """The list holds user ids: a technical account stays technical under every name it had, and another user
+    who has one of its names is a person."""
+
+    def test_a_renamed_technical_account_is_technical_in_every_hour(self):
+        self.stack.add_events([
+            working_time(at("2026-11-12 10:00:10"), 600_000, user=(99, "ingest-bot"), org=ORG),
+            saved("create", at("2026-11-12 10:00:20"), 3, user=(99, "ingest-bot")),
+            working_time(seconds(T, 10), 600_000, user=IMPORTER, org=ORG),
+            saved("create", seconds(T, 20), 5),
+            working_time(seconds(T, 10), 300_000, user=ALICE, org=ORG),
+        ])
+
+        body = self.overview(shapes="bounding_boxes")
+
+        self.assertEqual(body["creation_methods"]["model"]["objects"], 8)
+        self.assertEqual([row["user_name"] for row in body["by_annotator"]["rows"]], ["alice"])
+        self.assertEqual(body["saved_boxes"]["by_annotator"], [])
+        status, details = self.stack.get("/api/team-analytics/details", "lead", org="org7")
+        self.assertEqual(status, 200, details)
+        self.assertEqual([row["user_name"] for row in details["rows"]], ["alice"])
+
+    def test_another_user_with_a_technical_accounts_name_is_a_person(self):
+        namesake = (98, "importer")
+        self.stack.add_events([
+            working_time(seconds(T, 10), 600_000, user=namesake, org=ORG),
+            saved("create", seconds(T, 20), 4, user=namesake),
+            saved("create", seconds(T, 20), 5),  # the technical account itself
+        ])
+
+        body = self.overview(shapes="bounding_boxes")
+
+        self.assertEqual(body["creation_methods"]["model"]["objects"], 5)
+        self.assertEqual([(row["user_id"], row["user_name"]) for row in body["by_annotator"]["rows"]],
+                         [(98, "importer")])
+        self.assertEqual(body["saved_boxes"]["by_annotator"], [{"user_id": 98, "user_name": "importer", "boxes": 4}])
 
 
 class DetectorTest(ModelCase):

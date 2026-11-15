@@ -162,7 +162,7 @@ class PermissionStandIn:
 # --- the stack a test runs against -------------------------------------------------------------------
 
 class Stack:
-    def __init__(self, *, now: datetime = NOW, technical_accounts: tuple[str, ...] = (),
+    def __init__(self, *, now: datetime = NOW, technical_accounts: tuple[int, ...] = (),
                  refresh_window_hours: int = 48, config_options: dict | None = None) -> None:
         suffix = uuid.uuid4().hex[:12]
         self.events_db = f"ta_test_events_{suffix}"
@@ -173,6 +173,9 @@ class Stack:
         _create_events_database(self.events_db)
         self.callers = PermissionStandIn()
         self.now = now
+        # the user ids on the Technical accounts list, as the worker reads them from Postgres for each answer
+        # (jobs.technical_account_ids); a test may change them between two reads
+        self.technical_accounts = tuple(technical_accounts)
         self.config = Config(
             clickhouse_host=os.environ["CLICKHOUSE_HOST"],
             clickhouse_port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
@@ -180,7 +183,6 @@ class Stack:
             clickhouse_password=os.environ.get("CLICKHOUSE_PASSWORD", "user"),
             events_db=self.events_db,
             totals_db=self.totals_db,
-            technical_accounts=technical_accounts,
             refresh_window_hours=refresh_window_hours,
             **(config_options or {}),  # any other setting of the engine, e.g. a shorter limit
         )
@@ -238,11 +240,12 @@ class Stack:
     def answer(self, endpoint: str, scope: Scope, query: dict[str, str],
                clock: Callable[[], datetime] | None = None) -> tuple[int, dict]:
         """What the worker's read job stores for one read (jobs.read_answer), as a client decodes it: the engine is
-        built for the read with the worker's read limit; a refused parameter is a 400."""
+        built for the read with the worker's read limit and given the stack's technical accounts; a refused
+        parameter is a 400."""
         engine = Engine(self.config, clock=clock or (lambda: self.now), lock=self.lock(), read_limit=READ_LIMIT,
                         statement_limit=STATEMENT_LIMIT)
         try:
-            status, body = 200, engine.answer(endpoint, scope, query)
+            status, body = 200, engine.answer(endpoint, scope, query, technical_accounts=self.technical_accounts)
         except BadRequest as error:
             status, body = 400, {"error": "bad_request", "detail": str(error)}
         return status, json.loads(json.dumps(body))

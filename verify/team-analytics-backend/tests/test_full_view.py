@@ -17,7 +17,7 @@ LIST = "/api/team-analytics/list"
 
 
 class FullViewCase(OperationsCase):
-    stack_options = {"technical_accounts": ("importer",)}
+    stack_options = {"technical_accounts": (99,)}
 
     def listed(self, by: str, **query) -> dict:
         self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))

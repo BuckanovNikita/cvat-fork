@@ -25,7 +25,7 @@ FROM (
     UNION ALL
     SELECT 'annotator' AS kind, user_id AS id, argMax(user_name, hour) AS name, sum(objects) AS boxes
     FROM saved
-    WHERE user_name NOT IN {technical_accounts:Array(String)}
+    WHERE user_id NOT IN {technical_accounts:Array(UInt64)}
     GROUP BY user_id
     HAVING boxes > 0
     UNION ALL

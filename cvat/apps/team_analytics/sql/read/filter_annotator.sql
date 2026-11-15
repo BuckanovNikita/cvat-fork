@@ -4,5 +4,5 @@ SELECT argMax(user_name, hour) AS latest_user_name
 FROM $totals_db.working_time_hourly
 WHERE user_id = {annotator:UInt64}
     AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-    AND user_name NOT IN {technical_accounts:Array(String)}
+    AND user_id NOT IN {technical_accounts:Array(UInt64)}
 GROUP BY user_id

@@ -31,7 +31,7 @@ WITH
                 GROUP BY hour
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-            AND user_name NOT IN {technical_accounts:Array(String)}
+            AND user_id NOT IN {technical_accounts:Array(UInt64)}
             AND ({has_project:UInt8} = 0 OR {line_kind:String} = 'projects' OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR {line_kind:String} = 'annotators' OR user_id = {annotator:UInt64})
             AND ({line_kind:String} = 'scope' OR line IN {ids:Array(UInt64)})
@@ -61,7 +61,7 @@ WITH
                 GROUP BY hour
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-            AND user_name NOT IN {technical_accounts:Array(String)}
+            AND user_id NOT IN {technical_accounts:Array(UInt64)}
             AND ({has_project:UInt8} = 0 OR {line_kind:String} = 'projects' OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR {line_kind:String} = 'annotators' OR user_id = {annotator:UInt64})
             AND ({line_kind:String} = 'scope' OR line IN {ids:Array(UInt64)})
@@ -84,7 +84,7 @@ WITH
                 GROUP BY hour
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-            AND user_name NOT IN {technical_accounts:Array(String)}
+            AND user_id NOT IN {technical_accounts:Array(UInt64)}
             AND ({has_project:UInt8} = 0 OR {line_kind:String} = 'projects' OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR {line_kind:String} = 'annotators' OR user_id = {annotator:UInt64})
             AND ({line_kind:String} = 'scope' OR line IN {ids:Array(UInt64)})

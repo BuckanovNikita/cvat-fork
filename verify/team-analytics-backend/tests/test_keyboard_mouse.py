@@ -99,7 +99,7 @@ class InputFiguresTest(KeyboardMouseCase):
 
 
 class ScopeTest(KeyboardMouseCase):
-    stack_options = {"technical_accounts": ("robot",)}
+    stack_options = {"technical_accounts": (99,)}
 
     def test_filters_by_project_and_annotator_and_technical_accounts_are_left_out(self):
         t = "2026-11-13 10:00:00"

@@ -9,7 +9,7 @@ CAROL = (13, "carol")
 
 
 class OrganizationLeadCase(StackTestCase):
-    """A maintainer of organization 7 reads its figures."""
+    """An administrator who selected organization 7 reads its figures."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -70,7 +70,7 @@ class WorkingTimePerAnnotatorTest(OrganizationLeadCase):
 
 
 class TechnicalAccountsTest(OrganizationLeadCase):
-    stack_options = {"technical_accounts": ("importer",)}
+    stack_options = {"technical_accounts": (99,)}
 
     def test_technical_accounts_are_not_annotators(self):
         self.stack.add_events([

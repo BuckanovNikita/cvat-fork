@@ -84,13 +84,26 @@ class Engine:
         """One step (see worker.py); returns the seconds to wait before the next."""
         return self.worker.step()
 
-    def answer(self, endpoint: str, scope: Scope, query: dict[str, str]) -> dict:
-        """What `endpoint` answers for `scope` and `query`. Raises `periods.BadRequest` for a parameter
-        it refuses."""
+    def answer(
+        self,
+        endpoint: str,
+        scope: Scope,
+        query: dict[str, str],
+        *,
+        technical_accounts: tuple[int, ...],
+    ) -> dict:
+        """What `endpoint` answers for `scope` and `query`, with the user ids of the technical accounts
+        as they were read for this answer (the backend keeps the list; nothing here reads it). Raises
+        `periods.BadRequest` for a parameter it refuses."""
         module = self.endpoints.get(endpoint)
         if module is None:
             raise UnknownEndpoint(endpoint)
         request = Request(
-            scope=scope, query=query, sql=self.sql, config=self.config, now=self.now()
+            scope=scope,
+            query=query,
+            sql=self.sql,
+            config=self.config,
+            now=self.now(),
+            technical_accounts=tuple(technical_accounts),
         )
         return module.handle(request)

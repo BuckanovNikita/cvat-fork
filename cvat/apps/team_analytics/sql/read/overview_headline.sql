@@ -13,7 +13,7 @@ SELECT
                     GROUP BY hour
                 )
                 AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-                AND user_name NOT IN {technical_accounts:Array(String)}
+                AND user_id NOT IN {technical_accounts:Array(UInt64)}
                 AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
                 AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
             GROUP BY project_id
@@ -30,7 +30,7 @@ FROM (
             GROUP BY hour
         )
         AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-        AND user_name NOT IN {technical_accounts:Array(String)}
+        AND user_id NOT IN {technical_accounts:Array(UInt64)}
         AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
         AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     GROUP BY user_id

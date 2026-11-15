@@ -18,7 +18,7 @@ WITH
                 GROUP BY hour
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-            AND user_name NOT IN {technical_accounts:Array(String)}
+            AND user_id NOT IN {technical_accounts:Array(UInt64)}
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     ),
@@ -32,7 +32,7 @@ WITH
                 GROUP BY hour
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-            AND user_name NOT IN {technical_accounts:Array(String)}
+            AND user_id NOT IN {technical_accounts:Array(UInt64)}
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     ),
@@ -50,7 +50,7 @@ WITH
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
             AND source = 'saved' AND action = 'create' AND resource = 'shapes' AND shape_type = 'rectangle'
-            AND ({has_annotator:UInt8} = 0 OR user_name NOT IN {technical_accounts:Array(String)})
+            AND ({has_annotator:UInt8} = 0 OR user_id NOT IN {technical_accounts:Array(UInt64)})
     ),
     (SELECT count() FROM ops_in) AS operation_rows,
     (SELECT sum(working_ms) FROM wt) AS working_all

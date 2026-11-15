@@ -21,7 +21,7 @@ WITH
                 GROUP BY hour
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-            AND user_name NOT IN {technical_accounts:Array(String)}
+            AND user_id NOT IN {technical_accounts:Array(UInt64)}
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     ),
@@ -48,8 +48,8 @@ WITH
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND action = 'create'
             AND (
-                (source = 'saved' AND user_name IN {technical_accounts:Array(String)} AND {has_annotator:UInt8} = 0)
-                OR (source = 'detector' AND user_name NOT IN {technical_accounts:Array(String)}
+                (source = 'saved' AND user_id IN {technical_accounts:Array(UInt64)} AND {has_annotator:UInt8} = 0)
+                OR (source = 'detector' AND user_id NOT IN {technical_accounts:Array(UInt64)}
                     AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64}))
             )
             -- all shapes when asked for or in a legacy period (before the cutover to the new logging)

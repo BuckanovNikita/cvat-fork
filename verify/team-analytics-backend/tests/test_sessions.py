@@ -85,7 +85,7 @@ class PauseRuleTest(SessionsCase):
 
 
 class PerAnnotatorTest(SessionsCase):
-    stack_options = {"technical_accounts": ("importer",)}
+    stack_options = {"technical_accounts": (99,)}
 
     def test_each_annotator_has_a_session_count_and_average_whatever_the_job_stage(self):
         self.stack.add_events([

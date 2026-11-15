@@ -275,7 +275,7 @@ class OtherTest(OperationsCase):
 
 
 class PeriodAndScopeTest(OperationsCase):
-    stack_options = {"technical_accounts": ("importer",)}
+    stack_options = {"technical_accounts": (99,)}
 
     def test_figures_cover_the_period_and_the_organization_only(self):
         self.stack.add_events([

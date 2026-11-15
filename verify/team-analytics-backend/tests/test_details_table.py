@@ -18,7 +18,7 @@ P3 = {"project": 3, "task": 3, "job": 3}
 
 
 class DetailsCase(OperationsCase):
-    stack_options = {"technical_accounts": ("importer",)}
+    stack_options = {"technical_accounts": (99,)}
 
     def details_response(self, **query) -> tuple[int, dict]:
         self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))
