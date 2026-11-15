@@ -263,8 +263,8 @@ layers; of the 92 files under `/opt/team-analytics`, only `team_analytics/http_s
 (this branch's change); the two copy layers differ in digest. The check tag was removed.
 `tools/git-filter-repo`: SHA-256
 `67447413e273fc76809289111748870b6f6072f08b17efe94863a92d810b7d94`, its `--version` prints
-`a40bce548d2c`, both recorded in the specification; by the owner's decision the commit that
-added it is not named.
+`a40bce548d2c`, both recorded in the specification; the commit that added it is deliberately
+not named.
 Its upstream release is not identified; no outside request was made to find it.
 
 **Finding 5, the rest (recorded).** `build-ui.sh` pins the Node image by tag, and upstream's
@@ -279,10 +279,70 @@ history carries the same details, so a redaction at the tip would withdraw nothi
 ## Part three: outstanding
 
 - The owner's decision on finding 1 (issue 19).
-- With a live stack, after the stack in use is down: merge of the integration tip, the service
-  image rebuilt under its real tag, one fresh `up`, `check-render` on the live cluster (also of
-  the last-fixes review's duplicate-key render), the service pod shown running under the new
-  container restrictions, and `down` leaving nothing.
+- ~~With a live stack: merge, rebuild, `up`, live `check-render`, the pod under the
+  restrictions, `down`.~~ Done; see part four.
 - The reviewer's second pass over the commits after `fe87ffaf`, these fixes included, before any
   criterion of ticket 28 is ticked.
-- The whole service suite on both ClickHouse images, after the merge (run by the orchestrator).
+- The whole service suite on both ClickHouse images (run by the orchestrator from the first
+  step's head; nothing under `team-analytics/service/`, the ClickHouse component or
+  `verify/team_analytics_service.sh` changed after it, the merge included).
+
+## Part four: the live run, 2026-11-15
+
+Run from branch `fix/security-review` after merging the integration branch at `236b3878` (the
+final run's tip); the merge brought in no change to the service. Times are UTC. The stack's
+namespace is written `cvat-ta-it-<user>`. Logs are kept outside the repository.
+
+### Images
+
+| Image | ID |
+| --- | --- |
+| `cvat/team-analytics:v2.82.0` | `sha256:91db1f1194d7`, rebuilt from the merged tree with the local-only `build-team-analytics-service.sh` (no pull, no network); the pod ran this ID |
+| `cvat/server:v2.82.0-fork-policies` | `sha256:4b38c649ae96`, the final run's, unchanged |
+| `cvat/ui:v2.82.0-team-analytics` | `sha256:a7229efd9174`, the final run's, unchanged |
+
+The service image built before, `sha256:3bf1631cd7da`, lost its tag to the rebuild and was
+left in place.
+
+### Live outcomes
+
+- **Before.** `run.sh status` showed no namespace and no port-forward, `check-ingress-gone`
+  passed, nothing listened on 8490. After the merge the guard replay (part two) gave the same
+  result: the four genuine renders accepted, 52 of 57 doctored renders refused.
+- **`run.sh preflight`** passed: the server image, the issue matrix against both policy sides,
+  the chart build and the render checks with the changed guard.
+- **`run.sh up` from an empty namespace** (03:57 to 04:11) passed from start to finish on the
+  first attempt. The guard accepted the chart render, the service (with the container
+  restrictions), the proxy and the Ingress before each was applied; the tracer, task progress,
+  the final run with the volume, the page in a browser, the service stopped and started again,
+  the issue matrix and the four access cases all passed.
+- **Live `check-render`.** The chart render from `run.sh render`: accepted. The last-fixes
+  review's duplicate-key render, through kubectl's own parser: accepted. kubectl
+  (client 1.36.1) does not refuse duplicate keys: it keeps the last one, as PyYAML does, so its
+  object stream names the listed image `redis:7.2.11` and the guard judges exactly what kubectl
+  would apply. The review's assumption that kubectl refuses duplicate keys does not hold here;
+  no gap follows from it. (`check-render` adds the backend check, so it refuses the service,
+  proxy and Ingress renders by themselves for lacking the fork server image; `up` judges those
+  without it, and accepted them.)
+- **The service pod under the restrictions.** The cluster held, for the container,
+  `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"seccompProfile":{"type":"RuntimeDefault"}}`,
+  and for the pod `runAsUser` and `runAsGroup` 1000 with `runAsNonRoot`. Inside the running
+  container: uid 1000, `CapPrm`, `CapEff` and `CapBnd` all zero, `NoNewPrivs: 1`, `Seccomp: 2`
+  (filtering). The pod in place at the end (started 04:08, after the final run's service stop
+  and start) was Ready with 0 restarts and answered every page and access check that `up` runs
+  after that point. The first pod of the run restarted twice in its first seconds: its log ends
+  in `OperationalError … cvat-clickhouse:8123 … Failed to establish a new connection`, the
+  service starting before the chart's ClickHouse accepted connections. That is the start order
+  the launcher has always had (the service is applied while the chart's workloads come up), not
+  the restrictions.
+- **`run.sh down`** (04:18, exit 0) stopped the port-forward and deleted the namespace with its
+  five claims, and said nothing remains. `check-ingress-gone` passed. Looked at afterwards: no
+  namespace `cvat-ta-it-<user>` and none with the stack's label, no Ingress and no volume of
+  it, nothing listening on 8490, no port-forward process, no state directory. The check image
+  tag of part two is gone; no container of this run is left.
+
+### What stays unverified
+
+A read-only root filesystem (not tried). The guard's refusals were seen only on doctored
+renders judged offline; live, only acceptances were seen. The worker pool, the NetworkPolicy,
+the ClickHouse account and the limits on reads remain as recorded.

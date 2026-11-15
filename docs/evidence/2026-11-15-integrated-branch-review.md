@@ -303,3 +303,60 @@ on standard input and the restart rule (its report lists how each was establishe
 No stack was started: the guard on the service and the proxy inside a real `up` did not run.
 `SAVE=1` was not run. The waiting hour of finding 2 was not seen in a browser. The whole seam 1
 suite was not rerun here, only `tests.test_full_view` on the default image.
+
+## Review of the final run's tooling (2026-11-15)
+
+Who and how: a fresh agent that wrote none of it reviewed `de181cd7..236b3878` (the final run,
+ticket 27, and its follow-ups) at `236b3878`. It read the code, the documents and the run's
+logs, called the render guard and the bundle check on doctored inputs, and looked at the
+screenshots. It ran no stack and changed nothing. It found seven Low findings and nothing that
+makes a product figure wrong or lets a fix step pass with its fix absent on the paths the run
+reached. They were answered on branch `fix/security-review` (the security review's branch),
+while its own live stack was up (see `2026-11-15-security-review.md`, part four), and each fix
+in the tooling was shown by rerunning its step on that stack.
+
+1. **`unprocessed` left its marker event when a judged read failed** (the delete sat in a later
+   `finally`). Fixed (`b3140b78`): the marker is deleted in a `finally` that covers everything
+   from its INSERT on, the wait after the lease's release included. Shown: `run.sh check-fixes
+   unprocessed` passed (marker on 2026-09-09, week bucket 2026-09-07 and month bucket 2026-09
+   not processed with null values for both callers, lease released after 8 s, the days
+   processed 25 s later), and the events table then held 0 rows of the marker. The failure
+   path itself was not provoked.
+2. **Its trend judgement dropped out when no weekly bucket held the probe day.** Fixed
+   (`b3140b78`) by failing, not skipping: the step now fails when either trend step has no
+   bucket for the probe day. The probe's placement is unchanged, so on a kept stack whose
+   reruns walk the probe out of the twelve weeks the step fails and says so. Shown on the same
+   run: both buckets were found and judged.
+3. **The held-key judgement and two documents.** Recorded, documents changed (`2ef266b2`). With
+   every key-down moving a frame, only the press at the last frame tells the counting rule from
+   its absence. The final run's evidence now carries dated notes saying that part one's
+   `gestures` row and its 13:10 restatement are the plan, superseded by part two and ticket 13
+   (no fewer frames than key-downs required; the grabbed drag allowed at most once). The fork
+   specification says the held-key step was meant to catch a stale last shown frame and what
+   the run showed instead.
+4. **The end-to-end `check-fixes` account mixed runs.** Fixed in the evidence (`2ef266b2`): it
+   now quotes `fix-all.log` (marker 2026-09-06, bucket 2026-08-31, 30 s, 3 052 events) and
+   gives the single-step runs' figures in brackets where they differ.
+5. **The seed check accepted volume annotators in every organization.** Fixed (`b3140b78`):
+   they are accepted only in the volume organization (`ta-org-v`, or the one `TA_VOLUME_ORG`
+   names). Shown by the cheapest path, `stack_api.py seed` (the check alone) on the stack after
+   its volume load: `ta-org-v` held its owner and 100 volume annotators, `ta-org-a`, `-b` and
+   `-c` exactly their seeded members, and the check passed. A misplaced annotator was not
+   staged.
+6. **The guard let an Ingress through and refused a harmless key.** Of the reviewer's three
+   cases, judged with the guard as it now is: the wildcard-host Ingress is refused (the Ingress
+   allowlist of the security review, `295658cc` and `c30e08fa`); a ConfigMap with a data key
+   `hostPath` is still refused, a false refusal that stays; `allowPrivilegeEscalation: true` is
+   still accepted. The guard's docstring and the stack README now list the host checks as the
+   only ones of their kind and say both of the latter (`2ef266b2`).
+7. **Two judgements passed on what they did not see.** Fixed (`b3140b78`): `gestures` refuses
+   a hotkey in the summaries under a name not pressed, copy and paste (`COPY_SHAPE`,
+   `PASTE_SHAPE`) aside; `technical-project` first requires the same annotator search to find
+   `ta-worker-c`, who works in that organization in `up`'s final run, before it accepts that the
+   search for `ta-bot` finds nothing. Shown: `check-fixes technical-project` passed
+   (`ta-worker-c` found, `ta-bot` not listed, the project's row as before), and `check-fixes
+   gestures` passed with summaries `SAVE_JOB 2, COPY_SHAPE 1, PASTE_SHAPE 1, NEXT_FRAME 66`, 66
+   frames shown, figures creation 5, drawn 3, pasted 2, deletion 0, alignment 5, hotkey actions
+   70.
+
+Not done here: ticket 27 is not ticked again; nothing in it changed.
