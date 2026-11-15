@@ -392,7 +392,12 @@ test('the popup is placed inside the page container', () => {
     // a box too far right for a left-anchored popup and too far left for a right-anchored one: shifted to the
     // container's left edge, no wider than the container
     assert.deepEqual(placePopup({ left: 150, right: 300 }, 360, { left: 0, right: 400 }),
-        { side: 'shifted', left: -150, maxWidth: 400 });
+        { side: 'shifted', left: -150, maxWidth: 360 }, 'no wider than the popup may become');
+    assert.deepEqual(placePopup({ left: 150, right: 300 }, 360, { left: 0, right: 300 }),
+        { side: 'shifted', left: -150, maxWidth: 300 }, 'no wider than a narrow container');
+    // a container wider than the popup may become, with neither edge fitting: the 360px cap holds
+    assert.deepEqual(placePopup({ left: 210, right: 350 }, 360, { left: 0, right: 560 }),
+        { side: 'shifted', left: -210, maxWidth: 360 });
 });
 
 test('opening near the right edge of the page anchors the popup to the box\'s right edge', async () => {
@@ -433,7 +438,8 @@ test('opening near the right edge of the page anchors the popup to the box\'s ri
             const shifted = selector(view.container, 'annotator').querySelector('.cvat-team-analytics-filter-popup');
             assert.ok(shifted.classList.contains('cvat-team-analytics-filter-popup-shifted'), shifted.className);
             assert.equal(shifted.style.left, '-150px');
-            assert.equal(shifted.style.maxWidth, '400px');
+            // the 400px container is wider than the popup may become: the 360px cap holds
+            assert.equal(shifted.style.maxWidth, '360px');
 
             // opened while its list loads, the popup is at its narrowest (260px); it is placed by the widest it
             // becomes (360px): a box that fits 260 but not 360 opens from its right edge

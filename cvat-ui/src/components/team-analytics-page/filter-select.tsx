@@ -61,7 +61,11 @@ export function placePopup(
     // the popup's 1px border lines up with the box's (`left: -1px` / `right: -1px` in the styles)
     if (box.left - 1 + width <= container.right) return { side: 'left' };
     if (box.right + 1 - width >= container.left) return { side: 'right' };
-    return { side: 'shifted', left: container.left - box.left, maxWidth: container.right - container.left };
+    // the inline max-width replaces the stylesheet's cap, so it keeps that cap (`width`, the widest the popup may
+    // become) as well as the container's width
+    return {
+        side: 'shifted', left: container.left - box.left, maxWidth: Math.min(container.right - container.left, width),
+    };
 }
 
 // left and right are the styles' classes; a shifted popup is placed inline
