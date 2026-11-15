@@ -715,8 +715,8 @@ check_access_cases() {
 
 # Only administrators create organizations (ORGANIZATIONS_MIN_ROLE_TO_CREATE = "admin" in the fork's settings):
 # org_creation.py has accounts with the global role user and worker and an owner and a maintainer of an
-# organization refused, an administrator create one (deleted again), and the seeded organizations answer their
-# maintainers. Its worker and user accounts come from issue_accounts.json and accounts.json, loaded here (the
+# organization refused, an administrator create one (deleted again), and the administrator read both seeded
+# organizations. Its worker and user accounts come from issue_accounts.json and accounts.json, loaded here (the
 # seed creates organizations through the ORM, not through the API the rule guards).
 check_org_creation() {
     log "organization creation: loading the accounts of accounts.json and issue_accounts.json"

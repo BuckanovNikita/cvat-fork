@@ -27,7 +27,8 @@ Parts:
                   as before
 
 The generation is read from Django's cache in the server pod (stack_ops.generation); while it is measured the
-refresh lock is held (as fixes_run.py unprocessed does), so no refresh step that writes moves it meanwhile.
+analytics worker is at zero, so no refresh run moves it meanwhile (a run advances it when it ends, after its last
+step has let the refresh lock go, so holding that lock would not be enough), and it is brought back after.
 
 Environment: TA_BASE_URL, TA_SEED_PASSWORD, TA_KUBE_CONTEXT, TA_NAMESPACE, TA_RELEASE. Standard library only.
 """
@@ -38,7 +39,6 @@ import sys
 import time
 import urllib.parse
 import urllib.request
-import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # run with python3 -I, which leaves it out
@@ -59,7 +59,7 @@ from stack_api import (  # noqa: E402
     send_work,
     technical_accounts,
 )
-from stack_ops import generation, lock_holder, release_lock, take_lock  # noqa: E402
+from stack_ops import WORKER, WORKER_SELECTOR, generation, scale  # noqa: E402
 
 PROJECT_NAMES = API + "project-names"
 PROBE_ORG = "ta-org-s"
@@ -71,7 +71,6 @@ PROBE_PROJECT = "ta-settings-probe"
 UNKNOWN_ID = 2_000_000_000  # no user and no project has it
 SEARCH_LIMIT = 20
 SEARCH_MAX = 150
-LEASE_S = 90
 
 
 class Failed(Exception):
@@ -114,25 +113,28 @@ def user_id(session: Session, username: str) -> int:
     return found
 
 
-class RefreshLock:
-    """The refresh lock held as a worker's step takes it, so that no refresh that writes advances the generation
-    while it is measured; waits while a step holds it, released only while still ours."""
+class WorkerStopped:
+    """The analytics worker at zero while the generation is measured. A refresh run advances the generation once
+    when it ends, after its last step has released the refresh lock (core/run.py), so holding that lock does not
+    keep a run that started earlier from advancing it; with no worker no run ends. The settings are answered by
+    the API process, not by the worker. Back up, it waits until status is answered again."""
 
-    def __enter__(self) -> RefreshLock:
-        self.token = f"ta-stack-settings-{uuid.uuid4().hex[:12]}"
-        for _ in range(60):
-            if take_lock(self.token, LEASE_S):
-                self.at = time.monotonic()
-                return self
-            time.sleep(5)
-        raise Failed(f"the refresh lock stayed taken for five minutes (holder {lock_holder()})")
+    def __enter__(self) -> WorkerStopped:
+        scale(WORKER, 0, WORKER_SELECTOR)
+        log("analytics worker at 0 while the generation is measured")
+        return self
 
     def __exit__(self, *exc: object) -> None:
-        released = release_lock(self.token)
-        held = time.monotonic() - self.at
-        log(f"refresh lock released after {held:.0f} s (still ours: {released})")
-        if not exc[0] and (not released or held > LEASE_S - 5):
-            raise Failed(f"the refresh lock ran out while the generation was measured ({held:.0f} s of {LEASE_S})")
+        scale(WORKER, 1, WORKER_SELECTOR)
+        started = time.monotonic()
+        while True:
+            status, body = reader("").call(API + "status?tz=UTC")
+            if status == 200 and isinstance(body, dict) and body.get("refresh") is not None:
+                break
+            if time.monotonic() - started > 300:
+                raise Failed(f"status not answered within 300 s after the worker came back: {status} {body}")
+            time.sleep(2)
+        log(f"analytics worker at 1; status answered after {time.monotonic() - started:.0f} s")
 
 
 # ---------------------------------------------------------------- parts
@@ -177,7 +179,7 @@ def bad_bodies(admin: Session, base: list[int]) -> str:
         "a duplicate": {"technical_accounts": [*base, known] if base else [known, known]},
         "an id of no user, not on the list": {"technical_accounts": [*base, UNKNOWN_ID]},
     }
-    with RefreshLock():
+    with WorkerStopped():
         before = generation()
         for what, body in bodies.items():
             status, answer = admin.send("PUT", SETTINGS, body)
@@ -195,7 +197,7 @@ def generation_steps(admin: Session, base: list[int]) -> str:
     extra = user_id(admin, "ta-outsider")  # does no job work: no figure moves
     need(extra not in base, f"ta-outsider is already on the seeded list {base}")
     try:
-        with RefreshLock():
+        with WorkerStopped():
             g0 = generation()
             save(admin, [*base, extra])
             g1 = generation()
@@ -309,15 +311,21 @@ def probe_work(timeout_s: int) -> tuple[int, dict]:
     found = owner.request("GET", f"/api/projects?org={PROBE_ORG}&name={PROBE_PROJECT}")
     if found["count"]:
         project = found["results"][0]["id"]
-        log(f"{PROBE_PROJECT} exists in {PROBE_ORG} (project {project}); its work is already loaded")
+        jobs = owner.request("GET", f"/api/jobs?org={PROBE_ORG}&project_id={project}&page_size=10")["results"]
+        need(len(jobs) == len(PROBE_WORK), f"{PROBE_PROJECT} (project {project}) has {len(jobs)} jobs, expected "
+                                           f"{len(PROBE_WORK)}: an earlier run stopped half-way; run.sh down and up")
+        job = sorted(j["id"] for j in jobs)[0]  # create_jobs assigns the jobs in id order: the first is PROBE's
+        log(f"{PROBE_PROJECT} exists in {PROBE_ORG} (project {project}); its working time is already sent")
     else:
         annotators = list(PROBE_WORK)
         jobs = create_jobs(PROBE_ORG, annotators, PROBE_PROJECT)
-        project = jobs[0]["project_id"]
+        project, job = jobs[0]["project_id"], jobs[0]["job_id"]
         for username, ids in zip(annotators, jobs):
             send_work(username, PROBE_ORG, ids, PROBE_WORK[username])
-        worker = Session(PROBE)
-        job = jobs[0]["job_id"]
+    worker = Session(PROBE)
+    if worker.request("GET", f"/api/jobs/{job}/annotations?org={PROBE_ORG}")["shapes"]:
+        log(f"{PROBE}'s boxes are saved in job {job}")
+    else:
         label = worker.request("GET", f"/api/labels?job_id={job}&org={PROBE_ORG}")["results"][0]["id"]
         shapes = [{"type": "rectangle", "frame": 0, "label_id": label, "points": [1, 1, 3 + i, 3 + i],
                    "occluded": False, "z_order": 0, "attributes": []} for i in range(PROBE_BOXES)]
