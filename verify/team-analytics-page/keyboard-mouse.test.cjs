@@ -136,16 +136,22 @@ test('a scope without shape-tagged operations but with counted input shows its f
 test('the operations table splits creation, class change and deletion into hotkey and mouse starts', () => {
     const html = render(View, ready({ input: INPUT }));
     const table = html.match(/<section[^>]*cvat-team-analytics-operations[^>]*>(.*?)<\/section>/)[1];
-    assert.match(text(table), /Started by hotkey \/ mouse/);
-    const cells = [...table.matchAll(/<td[^>]*cvat-team-analytics-input-split[^>]*>(.*?)<\/td>/g)].map((m) => text(m[1]));
-    assert.deepEqual(cells, ['30% / 70%', 'Mouse only', '90% / 10%', '—']);
+    // a row of its own under each operation, the operation named for a screen reader
+    assert.match(table, /<tr class="cvat-team-analytics-input-split-row"><td colspan="5"/i);
+    assert.match(table, /Creation started by: /);
+    const cells = [...table.matchAll(/<td[^>]*cvat-team-analytics-input-split[^>]*>(.*?)<\/td>/g)].map((m) => (
+        text(m[1].replace(/<span class="cvat-team-analytics-visually-hidden">.*?<\/span>/, ''))
+    ));
+    assert.deepEqual(cells, ['30% hotkey / 70% mouse', 'Mouse only', '90% hotkey / 10% mouse', '—']);
     assert.match(table, /title="Creation: 30% by hotkey, 70% by mouse"/);
 });
 
 test('in a legacy period the split is not recorded, alignment still mouse only', () => {
     const html = render(View, ready({ operations: { ...OPERATIONS, legacy: true, shapes: 'all' } }));
     const table = html.match(/<section[^>]*cvat-team-analytics-operations[^>]*>(.*?)<\/section>/)[1];
-    const cells = [...table.matchAll(/<td[^>]*cvat-team-analytics-input-split[^>]*>(.*?)<\/td>/g)].map((m) => text(m[1]));
+    const cells = [...table.matchAll(/<td[^>]*cvat-team-analytics-input-split[^>]*>(.*?)<\/td>/g)].map((m) => (
+        text(m[1].replace(/<span class="cvat-team-analytics-visually-hidden">.*?<\/span>/, ''))
+    ));
     assert.deepEqual(cells, ['Not recorded', 'Mouse only', 'Not recorded', 'Not recorded']);
 });
 

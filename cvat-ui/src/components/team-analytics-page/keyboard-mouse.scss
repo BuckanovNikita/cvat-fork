@@ -121,21 +121,3 @@
     padding: $grid-unit-size * 3 0;
     text-align: center;
 }
-
-.cvat-team-analytics-input-split {
-    white-space: nowrap;
-}
-
-.cvat-team-analytics-input-split-bar {
-    display: inline-flex;
-    width: 96px;
-    height: 8px;
-    margin-right: $grid-unit-size;
-    vertical-align: middle;
-    border-radius: 4px;
-    overflow: hidden;
-
-    > span {
-        height: 8px;
-    }
-}
