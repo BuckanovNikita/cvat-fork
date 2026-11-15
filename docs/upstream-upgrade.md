@@ -317,8 +317,9 @@ access differs. The check pipeline runs both.
 
 Then check what the rebuilt fork server image serves. The bundle is built by the
 server's own builder inside the image, so a copy to a directory the server does
-not read shows here; `build-server.sh` runs the same checks and leaves no image
-under the tag when one fails, and the stack checks the served bundle again:
+not read shows here; `build-server.sh` runs the same checks and tags nothing when
+one fails (an earlier image under the tag stays, unchecked by that run, and the
+failure names its ID), and the stack checks the served bundle again:
 
 ```bash
 IMAGE=<fork server tag> BASE_IMAGE=<stock server tag> ./build-server.sh

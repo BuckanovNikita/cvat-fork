@@ -34,6 +34,8 @@
 #   run.sh check-bundle   check a policy bundle (tar.gz) given on stdin as check-policies does,
 #                         e.g. one from verify/policy_bundle.sh from-image IMAGE
 #   run.sh render-ingress print the service's Ingress as up applies it (class and host set)
+#   run.sh render-service print the service's manifests as up checks and applies them
+#   run.sh render-proxy   print the proxy's manifests as up checks and applies them
 #   run.sh check-ingress  one status request through the Ingress, with a session and without
 #   run.sh seed-access    (re)load the access cases' accounts (access_accounts.json)
 #   run.sh check-access [CASE]
@@ -198,7 +200,10 @@ stack_images() {
 # document, YAML or JSON, and flattens Lists; --local contacts no server) and has
 # render_guard.py judge every object against the cluster's resource list: a namespaced kind
 # only, no other namespace than the stack's, every image field on the stack's list and with a
-# tag other than latest, no pull policy other than IfNotPresent or Never. With a second
+# tag other than latest, no pull policy other than IfNotPresent or Never, nothing that reaches
+# the host or the outside (a Service other than ClusterIP, host networking, a host port or path,
+# privileged mode, added capabilities) and no role binding to a ClusterRole or to a subject
+# outside the namespace. With a second
 # argument, the backend check too: the fork server image is in the render and no other image
 # of its repository is, so a fallback to the stock image is refused although it is approved.
 # Writes the render's images, one per line, to the file named by GUARD_IMAGES when it is set.
@@ -345,7 +350,7 @@ report_failures() {
 # The service's own manifests (team-analytics/k8s) with the stack's image, release and refresh
 # interval. Its Ingress is applied apart (apply_ingress); the proxy stays the stack's address. Applied before the proxy,
 # whose nginx resolves the service name at start.
-apply_service() {
+render_service() {
     local rendered
     rendered="$(for f in config.yaml deployment.yaml service.yaml; do cat "$SERVICE_K8S/$f"; echo ---; done |
         sed -e "s|image: cvat/team-analytics:v2.82.0|image: $TA_SERVICE_IMAGE|" \
@@ -356,18 +361,35 @@ apply_service() {
     grep -q "image: $TA_SERVICE_IMAGE\$" <<<"$rendered" && grep -q "INTERVAL_S: \"$TA_REFRESH_INTERVAL_S\"" <<<"$rendered" \
         && grep -q "TECHNICAL_ACCOUNTS: \"$TA_TECHNICAL_ACCOUNTS\"" <<<"$rendered" \
         || die "could not set the service image or refresh interval in team-analytics/k8s"
-    log "applying the Team Analytics service ($TA_SERVICE_IMAGE, refresh every $TA_REFRESH_INTERVAL_S s)"
-    "${K[@]}" -n "$TA_NAMESPACE" apply -f - <<<"$rendered" >&2
-    # the service reads its ConfigMap at start: a changed configuration restarts it on a rerun
-    "${K[@]}" -n "$TA_NAMESPACE" patch deploy team-analytics --type merge -p \
-        "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"ta-stack/config-revision\":\"$(sha256sum <<<"$rendered" | cut -c1-12)\"}}}}}" >&2
+    printf '%s\n' "$rendered"
 }
 
-apply_proxy() {
+# Both apply only what the render guard accepts, as the chart and the Ingress.
+apply_service() {
+    local rendered="$STATE_DIR/service.yaml"
+    mkdir -p "$STATE_DIR"
+    render_service >"$rendered"
+    guard_render "$rendered"
+    log "applying the Team Analytics service ($TA_SERVICE_IMAGE, refresh every $TA_REFRESH_INTERVAL_S s)"
+    "${K[@]}" -n "$TA_NAMESPACE" apply -f "$rendered" >&2
+    # the service reads its ConfigMap at start: a changed configuration restarts it on a rerun
+    "${K[@]}" -n "$TA_NAMESPACE" patch deploy team-analytics --type merge -p \
+        "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"ta-stack/config-revision\":\"$(sha256sum <"$rendered" | cut -c1-12)\"}}}}}" >&2
+}
+
+render_proxy() {
     local rev
     rev="$(sha256sum "$HERE/proxy.yaml" | cut -c1-12)"
     sed -e "s/__RELEASE__/$TA_RELEASE/g" -e "s|__PROXY_IMAGE__|$TA_PROXY_IMAGE|g" -e "s/__CONFIG_REVISION__/$rev/g" \
-        "$HERE/proxy.yaml" | "${K[@]}" -n "$TA_NAMESPACE" apply -f - >&2
+        "$HERE/proxy.yaml"
+}
+
+apply_proxy() {
+    local rendered="$STATE_DIR/proxy.yaml"
+    mkdir -p "$STATE_DIR"
+    render_proxy >"$rendered"
+    guard_render "$rendered"
+    "${K[@]}" -n "$TA_NAMESPACE" apply -f "$rendered" >&2
 }
 
 # ---------------------------------------------------------------- port-forward
@@ -845,6 +867,8 @@ case "${1:-}" in
     check-render) [ -f "${2:-}" ] || die "usage: run.sh check-render FILE"
         guard_render "$2" "$TA_SERVER_IMAGE"; log "render accepted" ;;
     render-ingress) render_ingress ;;
+    render-service) render_service ;;
+    render-proxy) render_proxy ;;
     check-ingress) check_ingress ;;
     seed-access) seed_access ;;
     check-access) check_access_cases "${2:-}" ;;

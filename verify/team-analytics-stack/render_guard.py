@@ -14,6 +14,12 @@ Refused, each named on stderr:
   on the --allow list, or has no tag or the tag `latest` (Kubernetes pulls those by default);
 - an `imagePullPolicy` anywhere other than IfNotPresent or Never;
 - with --backend IMAGE: any image of IMAGE's repository other than IMAGE, or IMAGE absent;
+- what reaches the host or the outside from inside the namespace, in any object at any depth:
+  a Service of a type other than ClusterIP (unset, or headless with clusterIP None, is
+  ClusterIP) or with external IPs; host networking, host PID or host IPC; a host port; a host
+  path volume; privileged mode or added capabilities;
+- a RoleBinding whose role is a ClusterRole, or with a subject other than a ServiceAccount of
+  --namespace;
 - a render with no object.
 
 On success prints the render's images, normalised and sorted, one per line. Exit 0 accepted,
@@ -98,6 +104,51 @@ def image_fields(node: object, path: str) -> Iterator[tuple[str, object, object]
             yield from image_fields(value, f"{path}[{index}]")
 
 
+def host_reach(node: object, path: str) -> Iterator[str]:
+    """What in a pod spec or security context reaches the host, at any depth, so that a template
+    nested in a Deployment, a Job or a CronJob is judged as a Pod is."""
+    if isinstance(node, dict):
+        for key in ("hostNetwork", "hostPID", "hostIPC"):
+            if node.get(key) not in (None, False):
+                yield f"{key} at {path}.{key}"
+        if node.get("hostPort") not in (None, 0):
+            yield f"host port at {path}.hostPort: {node['hostPort']}"
+        if "hostPath" in node:
+            yield f"host path volume at {path}.hostPath"
+        if node.get("privileged") not in (None, False):
+            yield f"privileged mode at {path}.privileged"
+        capabilities = node.get("capabilities")
+        if isinstance(capabilities, dict) and capabilities.get("add"):
+            yield f"added capabilities at {path}.capabilities.add: {capabilities['add']}"
+        for key, value in node.items():
+            yield from host_reach(value, f"{path}.{key}")
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from host_reach(value, f"{path}[{index}]")
+
+
+def reach(obj: dict, name: str, namespace: str) -> Iterator[str]:
+    """Services that reach outside the cluster, host access, and role bindings that grant more than the
+    namespace's own roles to more than the namespace's own service accounts."""
+    kind = obj.get("kind")
+    spec = obj.get("spec") if isinstance(obj.get("spec"), dict) else {}
+    if kind == "Service":
+        if spec.get("type", "ClusterIP") != "ClusterIP":
+            yield f"Service reaching the host or the outside: {name} of type {spec.get('type')}"
+        if spec.get("externalIPs"):
+            yield f"Service with external IPs: {name}"
+    if kind == "RoleBinding":
+        role = obj.get("roleRef") if isinstance(obj.get("roleRef"), dict) else {}
+        if role.get("kind") != "Role":
+            yield f"role binding to a cluster-wide role: {name} binds {role.get('kind')}/{role.get('name')}"
+        subjects = obj.get("subjects") or []
+        for subject in subjects if isinstance(subjects, list) else [subjects]:
+            if not isinstance(subject, dict) or subject.get("kind") != "ServiceAccount" \
+                    or subject.get("namespace") not in (None, "", namespace):
+                yield f"role binding to a subject outside {namespace}: {name} binds {subject}"
+    yield from host_reach(obj, name)
+
+
 def judge(
     objects: list[object],
     namespace: str,
@@ -128,6 +179,7 @@ def judge(
         object_namespace = metadata.get("namespace")
         if object_namespace not in (None, "", namespace):
             problems.append(f"object in another namespace than {namespace}: {name} in {object_namespace}")
+        problems.extend(reach(obj, name, namespace))
         for path, image, policy in image_fields(obj, name):
             if policy is not None and policy not in ALLOWED_PULL_POLICIES:
                 problems.append(f"pull policy {policy!r} at {path}.imagePullPolicy")
