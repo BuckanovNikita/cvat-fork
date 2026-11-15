@@ -1,6 +1,7 @@
 {
   "users": {
     "ta-group-admin": {"group": "admin", "superuser": false},
+    "ta-revoked-admin": {"group": "admin", "superuser": false},
     "ta-owner-r": {"group": "user", "superuser": false},
     "ta-leaver": {"group": "user", "superuser": false},
     "ta-solo": {"group": "user", "superuser": false}

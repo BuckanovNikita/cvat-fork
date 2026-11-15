@@ -41,7 +41,7 @@
 #   run.sh render-proxy   print the proxy's manifests as up checks and applies them
 #   run.sh seed-access    (re)load the access cases' accounts (access_accounts.json)
 #   run.sh check-access [CASE]
-#                         the access cases against the real CVAT: removed-member, group-admin,
+#                         the access cases against the real CVAT: revoked-admin, group-admin,
 #                         personal-workspace, header-credentials (all of them without CASE)
 #   run.sh check-org-creation
 #                         only administrators create organizations: user, worker, owner and maintainer refused
@@ -722,7 +722,7 @@ access_py() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/access_cases.py" "$@"
 }
 
-# The access cases' own accounts (access_accounts.json); makes the removed member a member again.
+# The access cases' own accounts (access_accounts.json); puts the revoked administrator back in the admin group.
 seed_access() {
     log "loading the access cases' accounts"
     backend_shell "$HERE/seed_access.py" "$(cat "$HERE/access_accounts.json")" >&2
@@ -730,7 +730,7 @@ seed_access() {
 
 # The four access cases against the real CVAT, each judged by access_cases.py; with an argument,
 # only that case.
-ACCESS_CASES=(removed-member group-admin personal-workspace header-credentials)
+ACCESS_CASES=(revoked-admin group-admin personal-workspace header-credentials)
 check_access_cases() {
     local only="${1:-}" c
     [ -z "$only" ] || [[ " ${ACCESS_CASES[*]} " == *" $only "* ]] || die "unknown access case $only (${ACCESS_CASES[*]})"
