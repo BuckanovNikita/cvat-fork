@@ -487,7 +487,9 @@ async function pageChecks(contextFile) {
             const cells = (selector) => [...document.querySelectorAll(selector)].map((r) => [...r.children].map((c) => c.textContent.trim()));
             const value = (selector) => document.querySelector(selector)?.textContent.trim();
             return {
-                operations: Object.fromEntries(cells(".cvat-team-analytics-operations tbody tr").map((r) => [r[0], r[1]])),
+                // one row per operation (its hotkey/mouse split is a second row under it): the name, then the count
+                operations: Object.fromEntries([...document.querySelectorAll(".cvat-team-analytics-operations tr.cvat-team-analytics-operation-row")]
+                    .map((r) => [r.querySelector(".cvat-team-analytics-operation-name").textContent.trim(), r.querySelector("td").textContent.trim()])),
                 methods: Object.fromEntries(cells(".cvat-team-analytics-method-row, .cvat-team-analytics-model-row").map((r) => [r[0], r[2]])),
                 created: value(".cvat-team-analytics-objects-created .cvat-team-analytics-headline-value"),
                 sessions: value(".cvat-team-analytics-sessions .cvat-team-analytics-headline-value"),

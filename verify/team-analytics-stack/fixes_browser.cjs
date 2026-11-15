@@ -14,9 +14,15 @@
 //   node fixes_browser.cjs look ORG [split] the overview of ORG (read by ta-admin, the only readers being
 //                                           administrators) at 1400 px and at 400 px: the split bars of the
 //                                           two working-time cards (with split, some row of each in several
-//                                           parts) and the definitions block, judged from the page's layout;
+//                                           parts), no definitions block (the definitions are tooltips on the
+//                                           terms: page ORG checks them), judged from the page's layout;
 //                                           full-page screenshots for the comparison with the prototype,
 //                                           which a person makes.
+//   node fixes_browser.cjs page ORG         the page after tickets 02-06, as ta-admin in ORG: the filter bar
+//                                           and the Settings button at one height (1024, 1400, 1920 px), the
+//                                           operations card without sideways scroll over a width sweep, the
+//                                           project and annotator selectors, the terms' tooltips, the settings
+//                                           modal saving the same list, and nothing left of what they replaced.
 //
 // Environment: TA_BASE_URL, TA_SEED_PASSWORD, TA_BROWSER_BIN, TA_SCREENSHOT_DIR (required for look; keep it
 // outside the repository).
@@ -349,7 +355,7 @@ async function fullShot(page, name, width) {
     fs.writeFileSync(path.join(SHOTS, `${name}.png`), Buffer.from(data, 'base64'));
 }
 
-// the split bars of the two working-time cards and the definitions block, as laid out
+// the split bars of the two working-time cards, as laid out, and whether anything of the old definitions block is left
 const LOOK = `(() => {
     const within = (r, box) => r.left >= box.left - 1 && r.right <= box.right + 1;
     const view = document.querySelector(".cvat-team-analytics-page").getBoundingClientRect();
@@ -365,28 +371,13 @@ const LOOK = `(() => {
         const legend = [...card.querySelectorAll(".cvat-team-analytics-breakdown-legend-item")].map((e) => e.textContent.trim());
         return { kind, rows, legend, inside: within(box, view) };
     });
-    const defs = document.querySelector(".cvat-team-analytics-definitions");
-    const d = defs ? defs.getBoundingClientRect() : null;
-    const items = defs ? [...defs.querySelectorAll(".cvat-team-analytics-definition")].map((e) => e.getBoundingClientRect()) : [];
-    const details = document.querySelector(".cvat-team-analytics-details")?.getBoundingClientRect();
-    const others = [...document.querySelectorAll(".cvat-team-analytics-page .cvat-team-analytics-card")]
-        .map((c) => c.getBoundingClientRect().bottom);
     return {
         width: window.innerWidth,
         page: [Math.round(view.left), Math.round(view.right)],
         sideways: document.documentElement.scrollWidth > window.innerWidth + 1,
         app: document.documentElement.scrollWidth,
         cards,
-        definitions: d && {
-            terms: [...defs.querySelectorAll(".cvat-team-analytics-definition-term")].map((e) => e.textContent.trim()),
-            columns: new Set(items.map((r) => Math.round(r.left))).size,
-            inside_page: within(d, view),
-            inside_window: d.left >= -1 && d.right <= window.innerWidth + 1,
-            items_inside: items.every((r) => within(r, d)),
-            below_details: !!details && d.top >= details.bottom - 1,
-            last: others.every((bottom) => d.top >= bottom - 1),
-        },
-        in_full_view: !!document.querySelector(".cvat-team-analytics-full-view .cvat-team-analytics-definitions"),
+        definitions: document.querySelectorAll(".cvat-team-analytics-definitions, .cvat-team-analytics-definition").length,
     };
 })()`;
 
@@ -401,7 +392,7 @@ async function look(org, split) {
         // only administrators read Team Analytics: ta-admin with the organization selected
         const page = await signIn(browser, 'ta-admin', org);
         await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
-        await page.waitFor('!!document.querySelector(".cvat-team-analytics-annotator-row") && !document.querySelector(".cvat-team-analytics-pending") && !document.querySelector(".cvat-team-analytics-loading") && !!document.querySelector(".cvat-team-analytics-definitions")', 'the overview', 90000);
+        await overviewReady(page, 'the overview');
         // the address names no shapes: a period with shape-tagged events opens on Bounding boxes
         const pressed = await page.evaluate('[...document.querySelectorAll(".cvat-team-analytics-shape[aria-pressed=\\"true\\"]")].map((e) => e.textContent.trim())');
         check(pressed.length === 1 && pressed[0] === 'Bounding boxes', `the shape switch opens on ${JSON.stringify(pressed)}`);
@@ -417,28 +408,346 @@ async function look(org, split) {
                 check(card.rows.length > 0 && card.rows.every((r) => r.parts >= 1 && r.inside)
                     && (!split || card.rows.some((r) => r.parts >= 2)),`${card.kind} card bars at ${width} px: ${JSON.stringify(card.rows)}`);
             }
-            const d = seen.definitions;
-            check(!!d && d.terms.length === 4 && d.items_inside && d.inside_page && d.inside_window && d.below_details && d.last,
-                `definitions at ${width} px: ${JSON.stringify(d)}`);
+            check(seen.definitions === 0, `the old definitions block is still on the page at ${width} px (${seen.definitions} elements)`);
             if (width === 400) {
-                check(d.columns === 1, `definitions at 400 px in ${d.columns} columns`);
                 check(seen.page[0] >= 0 && seen.page[1] <= 400, `the page at 400 px spans ${JSON.stringify(seen.page)}`);
             } else {
-                check(d.columns >= 2, `definitions at 1400 px in ${d.columns} column(s)`);
                 check(!seen.sideways, `the page scrolls sideways at 1400 px (${seen.app} px)`);
             }
             log(`${width} px: bars split by operation in both cards (legends ${seen.cards.map((c) => c.legend.join('/')).join('; ')}; `
                 + `${seen.cards.map((c) => `${c.rows.filter((r) => r.parts >= 2).length}/${c.rows.length} rows in several parts`).join(', ')}); `
-                + `definitions ${d.terms.join(' ')} in ${d.columns} column(s), below the details table, last, inside the page's column`
-                + `${width === 400 ? ` (CVAT's own header keeps the app ${seen.app} px wide)` : ''}; screenshot look-${org}-${width}.png`);
+                + `no definitions block${width === 400 ? ` (CVAT's own header keeps the app ${seen.app} px wide)` : ''}; screenshot look-${org}-${width}.png`);
         }
-        // a full view shows no definitions
-        await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
-        await page.goto(`${BASE}/team-analytics?period=week&org=${org}&view=annotators`);
-        await page.waitFor('document.querySelectorAll(".cvat-team-analytics-full-list-row").length > 0', 'the full view', 90000);
-        const inFull = await page.evaluate('!!document.querySelector(".cvat-team-analytics-definitions")');
-        check(!inFull, 'the full view shows the definitions');
-        log('full view: no definitions');
+    } finally {
+        await browser?.close();
+        fs.rmSync(profile, { recursive: true, force: true });
+    }
+}
+
+// ---------------------------------------------------------------- the page after tickets 02-06
+
+async function overviewReady(page, what) {
+    await page.waitFor('!!document.querySelector(".cvat-team-analytics-annotator-row") && !document.querySelector(".cvat-team-analytics-pending") && !document.querySelector(".cvat-team-analytics-loading")', what, 90000);
+    await sleep(1500);
+}
+
+const setWidth = (page, width, height = 900) => page.send('Emulation.setDeviceMetricsOverride', {
+    width, height, deviceScaleFactor: 1, mobile: false,
+});
+
+// the glossary's wording, as the terms' tooltips carry it (cvat-ui/src/components/team-analytics-page/definitions.tsx)
+const TERM_TEXTS = {
+    Session: 'One uninterrupted interval of job work by one person, at most a day long. A pause longer than five minutes ends it. Seen for a single project, a session counts if it touched that project, and its length is only the time spent inside it.',
+    'Working time': 'The time the server counts as worked, the same figure Grafana reports. It is the only total: every breakdown of time adds up to it.',
+    'Time per operation': 'The time from a person\'s previous action to the end of the operation, so that finding, deciding and pointing are part of it. A pause longer than 100 seconds before an action belongs to no operation.',
+    Model: 'Created without a person drawing it: saved by a technical account or produced by the built-in detector. Model boxes have counts but no time.',
+};
+const termOf = (label) => {
+    const l = label.toLowerCase();
+    if (l === 'sessions') return 'Session';
+    if (l === 'working time') return 'Working time';
+    if (l === 'model') return 'Model';
+    if (l.startsWith('avg time')) return 'Time per operation';
+    return null;
+};
+
+const CONTROLS = ['.cvat-team-analytics-periods', '.cvat-team-analytics-shapes', '.cvat-team-analytics-step',
+    '.cvat-team-analytics-filter-project', '.cvat-team-analytics-filter-annotator'];
+const BAR = `(() => {
+    const box = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect();
+        return { height: Math.round(b.height * 10) / 10, centre: Math.round((b.top + b.height / 2) * 10) / 10 }; };
+    const header = document.querySelector(".cvat-team-analytics-header")?.getBoundingClientRect();
+    const button = document.querySelector(".cvat-team-analytics-header .cvat-team-analytics-settings-button");
+    const b = button?.getBoundingClientRect();
+    const chips = document.querySelector(".cvat-team-analytics-filter-chips");
+    return {
+        controls: Object.fromEntries(${JSON.stringify(CONTROLS)}.map((s) => [s, box(s)])),
+        freshness: box(".cvat-team-analytics-freshness"),
+        settings: b ? { height: Math.round(b.height * 10) / 10, right: Math.round(b.right), header_right: Math.round(header.right),
+            gear: !!button.querySelector(".anticon-setting"), text: button.textContent.trim() } : null,
+        chips_margin: chips ? getComputedStyle(chips).marginBottom : null,
+    };
+})()`;
+
+// 1. every filter control and the Settings button 36 px tall; controls on one line share a centre (±0.5 px)
+async function filterBar(page, org) {
+    const month = new Date().toISOString().slice(0, 7); // a month period shows the step arrows too
+    await page.goto(`${BASE}/team-analytics?period=month&month=${month}&org=${org}`);
+    await overviewReady(page, `the month ${month}`);
+    for (const width of [1024, 1400, 1920]) {
+        await setWidth(page, width);
+        await sleep(1500);
+        const bar = await page.evaluate(BAR);
+        const missing = CONTROLS.filter((s) => !bar.controls[s]);
+        check(!missing.length, `${width} px: no ${missing.join(', ')} on the month's filter bar`);
+        const heights = Object.entries(bar.controls).filter(([, c]) => Math.abs(c.height - 36) > 0.5);
+        check(!heights.length, `${width} px: controls not 36 px tall: ${JSON.stringify(heights)}`);
+        // controls whose centres lie within 20 px are on one line (a wrapped line is 36 px and a gap further down)
+        const lines = [];
+        for (const [s, c] of Object.entries(bar.controls)) {
+            const line = lines.find((l) => Math.abs(l.centre - c.centre) < 20);
+            if (line) line.items.push([s, c.centre]); else lines.push({ centre: c.centre, items: [[s, c.centre]] });
+        }
+        const off = lines.filter((l) => Math.max(...l.items.map((i) => i[1])) - Math.min(...l.items.map((i) => i[1])) > 0.5);
+        check(!off.length, `${width} px: controls on one line with different centres: ${JSON.stringify(off)}`);
+        if (width === 1920) check(lines.length === 1, `1920 px: the filter bar wraps into ${lines.length} lines: ${JSON.stringify(lines)}`);
+        check(!bar.freshness || bar.freshness.height >= 35.5, `${width} px: freshness ${JSON.stringify(bar.freshness)}, expected at least 36 px`);
+        const st = bar.settings;
+        check(!!st && Math.abs(st.height - 36) <= 0.5 && Math.abs(st.right - st.header_right) <= 1 && st.gear && st.text === 'Settings',
+            `${width} px: the Settings button ${JSON.stringify(st)}, expected "Settings" with a gear, 36 px, at the header's right end`);
+        check(bar.chips_margin === '0px', `${width} px: the filter chips' margin-bottom is ${bar.chips_margin}, expected 0px`);
+        log(`${width} px: ${CONTROLS.length} controls 36 px on ${lines.length} line(s) (centres ${lines.map((l) => l.centre).join(', ')}); `
+            + `Settings 36 px at the header's right end; freshness ${bar.freshness ? `${bar.freshness.height} px` : 'not shown'}`);
+    }
+}
+
+// 2. the operations card never scrolls sideways from 1024 to 1920 px (every 4 px, and every pixel where the card is
+// nearest 420 px wide); other tables that scroll sideways are listed, not judged
+const SWEEP = `(() => {
+    const card = document.querySelector("section.cvat-team-analytics-operations");
+    const wrap = card?.querySelector(".cvat-team-analytics-operations-scroll");
+    const others = [...document.querySelectorAll(".cvat-team-analytics-page .cvat-team-analytics-table-scroll")]
+        .filter((t) => t !== wrap && t.scrollWidth > t.clientWidth + 1)
+        .map((t) => (t.closest("section")?.className || "?").split(" ").filter((c) => c !== "cvat-team-analytics-card").join("."));
+    return { card: card ? Math.round(card.getBoundingClientRect().width * 10) / 10 : null,
+        scroll: wrap ? [wrap.scrollWidth, wrap.clientWidth] : null, others };
+})()`;
+
+async function widthSweep(page, org) {
+    await setWidth(page, 1400);
+    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await overviewReady(page, 'the week');
+    const seen = new Map();
+    const scrolling = new Map();
+    const measure = async (width) => {
+        if (seen.has(width)) return seen.get(width);
+        await setWidth(page, width);
+        await sleep(200);
+        const m = await page.evaluate(SWEEP);
+        seen.set(width, m);
+        m.others.forEach((name) => scrolling.set(name, [...(scrolling.get(name) || []), width]));
+        return m;
+    };
+    for (let width = 1024; width <= 1920; width += 4) await measure(width);
+    const nearest = [...seen.entries()].filter(([, m]) => m.card !== null)
+        .sort((a, b) => Math.abs(a[1].card - 420) - Math.abs(b[1].card - 420))[0][0];
+    for (let width = nearest - 4; width <= nearest + 4; width++) await measure(width);
+    const exact = [...seen.entries()].filter(([, m]) => m.card !== null && Math.abs(m.card - 420) < 0.5).map(([w]) => w);
+    const wrong = [...seen.entries()].filter(([, m]) => !m.scroll || m.scroll[0] > m.scroll[1]).map(([w, m]) => [w, m.scroll]);
+    log(`width sweep: ${seen.size} widths from 1024 to 1920 px; the operations card ${Math.min(...[...seen.values()].map((m) => m.card))}`
+        + `-${Math.max(...[...seen.values()].map((m) => m.card))} px wide; exactly 420 px at ${exact.length ? exact.join(', ') : 'no width'} `
+        + `(nearest: ${nearest} px, ${seen.get(nearest).card} px)`);
+    log(`other cards whose table scrolls sideways (card: widths): ${scrolling.size ? [...scrolling.entries()].map(([n, ws]) => `${n}: ${ws.length} widths, ${Math.min(...ws)}-${Math.max(...ws)} px`).join('; ') : 'none'}`);
+    check(!wrong.length, `the operations table scrolls sideways (scrollWidth > clientWidth) at ${JSON.stringify(wrong.slice(0, 10))}`);
+    check(exact.length > 0, `no window width gives a 420 px operations card (nearest ${nearest} px: ${seen.get(nearest).card} px)`);
+    await setWidth(page, 1400);
+}
+
+// the operations card's table: five columns, four operations each with its split row under it
+const OPERATIONS = `(() => {
+    const card = document.querySelector("section.cvat-team-analytics-operations");
+    const table = card?.querySelector("table.cvat-team-analytics-operations-table");
+    if (!table) return null;
+    const groups = [...table.querySelectorAll("tbody.cvat-team-analytics-operation-group")].map((g) => {
+        const th = g.querySelector("tr.cvat-team-analytics-operation-row th[scope=row]");
+        const split = g.querySelector("tr.cvat-team-analytics-input-split-row td.cvat-team-analytics-input-split");
+        return { name: th?.querySelector(".cvat-team-analytics-operation-name")?.textContent.trim(),
+            cells: g.querySelectorAll("tr.cvat-team-analytics-operation-row td").length,
+            split: split && { colspan: split.getAttribute("colspan"), headers_ok: !!th?.id && split.getAttribute("headers") === th.id,
+                text: split.textContent.trim() } };
+    });
+    return { columns: [...table.querySelectorAll("thead th[scope=col]")].map((th) => th.textContent.trim()),
+        old_table: table.classList.contains("cvat-team-analytics-table") || !!card.querySelector("table.cvat-team-analytics-table"),
+        started_by: card.textContent.includes("Started by hotkey"), groups };
+})()`;
+
+async function operationsTable(page) {
+    const t = await page.evaluate(OPERATIONS);
+    check(!!t, 'no table.cvat-team-analytics-operations-table in the operations card');
+    log(`operations table: columns ${JSON.stringify(t.columns)}; ${t.groups.map((g) => `${g.name} (${g.split?.text})`).join(', ')}`);
+    check(t.columns.length === 5 && t.columns[0] === 'Operation' && ['Boxes', 'Objects'].includes(t.columns[1])
+        && t.columns[2].startsWith('Avg time') && t.columns[3] === 'Total time' && t.columns[4] === 'Share',
+    `operations columns ${JSON.stringify(t.columns)}, expected Operation, Boxes or Objects, Avg time, Total time, Share`);
+    check(JSON.stringify(t.groups.map((g) => g.name)) === JSON.stringify(['Creation', 'Alignment', 'Class change', 'Deletion']),
+        `operation rows ${JSON.stringify(t.groups.map((g) => g.name))}`);
+    check(t.groups.every((g) => g.cells === 4 && g.split && g.split.colspan === '5' && g.split.headers_ok),
+        `each operation: 4 cells and a split row of colspan 5 pointing at its header: ${JSON.stringify(t.groups)}`);
+    check(!t.old_table && !t.started_by, 'the operations card still has the old table class or a "Started by hotkey / mouse" header');
+}
+
+// 3. the selectors: options load, a search narrows them, a pick sets the address and changes the figures, All clears
+const FIGURES = `[...document.querySelectorAll(".cvat-team-analytics-headline-value, section.cvat-team-analytics-operations tr.cvat-team-analytics-operation-row")].map((e) => e.textContent.trim()).join(" | ")`;
+
+async function openSelector(page, keys, kind) {
+    await clickSelectorIn(page, keys, `.cvat-team-analytics-filter-${kind} .cvat-team-analytics-filter-button`);
+    await page.waitFor(`(() => { const p = document.querySelector(".cvat-team-analytics-filter-popup"); const s = p?.querySelector(".cvat-team-analytics-filter-status");
+        return !!p && (!s || getComputedStyle(s).display === "none" || !s.textContent.includes("Loading")); })()`, `the ${kind} selector's options`, 60000);
+    return page.evaluate(`(() => {
+        const button = document.querySelector(".cvat-team-analytics-filter-${kind} .cvat-team-analytics-filter-button");
+        const popup = document.querySelector(".cvat-team-analytics-filter-popup");
+        const r = popup.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 40));
+        return { options: [...popup.querySelectorAll("li.cvat-team-analytics-filter-option[role=option]")].map((o) => o.textContent.trim()),
+            expanded: button.getAttribute("aria-expanded"), focused: document.activeElement?.classList.contains("cvat-team-analytics-filter-search"),
+            on_top: !!hit && popup.contains(hit), status: popup.querySelector(".cvat-team-analytics-filter-status")?.textContent.trim() || "" };
+    })()`);
+}
+
+async function clickSelectorIn(page, keys, selector, index = 0) {
+    await page.waitFor(`document.querySelectorAll(${JSON.stringify(selector)}).length > ${index}`, selector);
+    await page.evaluate(`document.querySelectorAll(${JSON.stringify(selector)})[${index}].scrollIntoView({block: "center"})`);
+    await sleep(300);
+    const r = await page.evaluate(`(() => { const b = document.querySelectorAll(${JSON.stringify(selector)})[${index}].getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`);
+    await keys.click(r.x, r.y);
+}
+
+async function pick(page, keys, kind) {
+    const before = await page.evaluate(FIGURES);
+    const opened = await openSelector(page, keys, kind);
+    const all = kind === 'project' ? 'All projects' : 'All annotators';
+    check(opened.expanded === 'true' && opened.focused && opened.on_top,
+        `the ${kind} selector opened: aria-expanded ${opened.expanded}, search focused ${opened.focused}, drawn over the cards ${opened.on_top}`);
+    check(opened.options[0] === all && opened.options.length >= 3,
+        `${kind} options ${JSON.stringify(opened.options)} (status "${opened.status}"), expected "${all}" first and at least two to pick from`);
+    // a named one: "No project" names no project to search for
+    const target = opened.options.slice(1).find((o) => o !== 'No project');
+    check(!!target, `no ${kind} with a name among ${JSON.stringify(opened.options)}`);
+    await page.send('Input.insertText', { text: target });
+    await sleep(800);
+    const narrowed = await page.evaluate('[...document.querySelectorAll(".cvat-team-analytics-filter-popup li.cvat-team-analytics-filter-option")].map((o) => o.textContent.trim())');
+    check(narrowed[0] === all && narrowed.length < opened.options.length && narrowed.slice(1).every((o) => o.toLowerCase().includes(target.toLowerCase())),
+        `a search for "${target}" left ${JSON.stringify(narrowed)} of ${opened.options.length} options`);
+    check(narrowed.includes(target), `the search for "${target}" lost the option itself: ${JSON.stringify(narrowed)}`);
+    await clickSelectorIn(page, keys, '.cvat-team-analytics-filter-popup li.cvat-team-analytics-filter-option', narrowed.indexOf(target));
+    await page.waitFor(`location.search.includes("${kind}=") && !document.querySelector(".cvat-team-analytics-filter-popup")`, `${kind}= in the address`);
+    await overviewReady(page, `the ${kind} filter`);
+    const shown = await page.evaluate(`document.querySelector(".cvat-team-analytics-filter-${kind} .cvat-team-analytics-filter-button").textContent.trim()`);
+    const after = await page.evaluate(FIGURES);
+    check(shown.includes(target), `the ${kind} button reads "${shown}", expected the picked "${target}"`);
+    check(after !== before, `the figures did not change with ${kind} "${target}": ${after}`);
+    log(`${kind}: ${opened.options.length} options, "${target}" narrows them to ${narrowed.length}; picked: ${await page.evaluate('location.search')}; `
+        + `figures ${before.slice(0, 80)} -> ${after.slice(0, 80)}`);
+    return before;
+}
+
+async function selectors(page, keys, org) {
+    await setWidth(page, 1400);
+    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await overviewReady(page, 'the week');
+    const unfiltered = await pick(page, keys, 'project');
+    await pick(page, keys, 'annotator');
+    // All in the project selector, then the annotator's clear button
+    await openSelector(page, keys, 'project');
+    await clickSelectorIn(page, keys, '.cvat-team-analytics-filter-popup .cvat-team-analytics-filter-option-all');
+    await page.waitFor('!location.search.includes("project=")', 'project= gone after All');
+    await clickSelectorIn(page, keys, '.cvat-team-analytics-filter-annotator .cvat-team-analytics-filter-clear');
+    await page.waitFor('!location.search.includes("annotator=")', 'annotator= gone after the clear button');
+    await overviewReady(page, 'no filter');
+    const cleared = await page.evaluate(FIGURES);
+    check(cleared === unfiltered, `after All and the clear button the figures are ${cleared}, before any filter ${unfiltered}`);
+    log('All and the clear button removed both filters; the figures are as before');
+}
+
+// 4. every term's tooltip: shown on hover and on keyboard focus, inside the window, with the glossary's text
+const TERMS = '[...document.querySelectorAll(".cvat-team-analytics-page button.cvat-team-analytics-term")]';
+
+async function terms(page, keys, org) {
+    await setWidth(page, 1400);
+    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await overviewReady(page, 'the week');
+    const found = await page.evaluate(`${TERMS}.map((t) => ({ label: t.textContent.trim(), id: t.getAttribute("aria-describedby"),
+        section: (t.closest("section")?.className || "").split(" ").find((c) => c !== "cvat-team-analytics-card") || "",
+        titled: (() => { let e = t; const card = t.closest(".cvat-team-analytics-card"); while (e && e !== card?.parentElement) { if (e.hasAttribute("title")) return true; e = e.parentElement; } return false; })() }))`);
+    log(`terms on the overview: ${found.map((f) => `${f.label} (${f.section})`).join(', ')}`);
+    check(found.length === 13, `${found.length} terms on the overview, expected 13`);
+    check(found.every((f) => termOf(f.label) && f.id), `terms without a known name or a tooltip id: ${JSON.stringify(found.filter((f) => !termOf(f.label) || !f.id))}`);
+    check(!found.some((f) => f.titled), `terms with a native title on them or around them in their card: ${JSON.stringify(found.filter((f) => f.titled))}`);
+    const tooltip = (id) => `(() => { const inner = document.getElementById(${JSON.stringify(id)}); const wrap = inner?.closest(".ant-tooltip");
+        if (!inner || !wrap || wrap.classList.contains("ant-tooltip-hidden") || getComputedStyle(wrap).display === "none" || !inner.checkVisibility()) return null;
+        const r = inner.getBoundingClientRect();
+        return { text: inner.textContent.trim(), inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+            rect: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)], under_body: !inner.closest(".cvat-team-analytics-page") }; })()`;
+    for (const [i, f] of found.entries()) {
+        const want = TERM_TEXTS[termOf(f.label)];
+        await page.evaluate(`${TERMS}[${i}].scrollIntoView({block: "center"})`);
+        await sleep(300);
+        const r = await page.evaluate(`(() => { const b = ${TERMS}[${i}].getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`);
+        await keys.move(r.x, r.y);
+        const hovered = await page.waitFor(tooltip(f.id), `the tooltip of "${f.label}" (${f.section}) on hover`, 5000);
+        await keys.move(5, 5);
+        await page.waitFor(`!${tooltip(f.id)}`, `the tooltip of "${f.label}" hidden after the mouse left`, 5000);
+        await page.evaluate(`${TERMS}[${i}].focus()`);
+        const focused = await page.waitFor(tooltip(f.id), `the tooltip of "${f.label}" (${f.section}) on keyboard focus`, 5000);
+        await page.evaluate(`${TERMS}[${i}].blur()`);
+        await page.waitFor(`!${tooltip(f.id)}`, `the tooltip of "${f.label}" hidden after the focus left`, 5000);
+        for (const [how, shown] of [['hover', hovered], ['focus', focused]]) {
+            check(shown.text === want && shown.inside && shown.under_body,
+                `"${f.label}" (${f.section}) on ${how}: ${JSON.stringify(shown)}, expected the ${termOf(f.label)} text inside the window, under the body`);
+        }
+    }
+    log(`${found.length} terms: each tooltip shown on hover and on focus, inside the window, with the glossary's text, hidden after`);
+    await page.goto(`${BASE}/team-analytics?period=week&org=${org}&view=annotators`);
+    await page.waitFor('document.querySelectorAll(".cvat-team-analytics-full-list-row").length > 0', 'the full view', 90000);
+    const inFull = await page.evaluate(`${TERMS}.length`);
+    check(inFull === 0, `the full view has ${inFull} terms, expected none`);
+    log('full view of annotators: no terms');
+}
+
+// 5. nothing left of what tickets 01-04 replaced
+async function gone(page, org) {
+    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await overviewReady(page, 'the week');
+    const left = await page.evaluate(`(() => {
+        const page = document.querySelector(".cvat-team-analytics-page");
+        const text = page.textContent;
+        return [".cvat-team-analytics-definitions", ".cvat-team-analytics-definition", ".cvat-team-analytics-select-organization"]
+            .filter((s) => document.querySelector(s))
+            .concat(["One uninterrupted interval of job work", "Select an organization", "No organization selected", "owners and maintainers",
+                "Started by hotkey"].filter((t) => text.includes(t)));
+    })()`);
+    check(!left.length, `still on the page: ${JSON.stringify(left)}`);
+    log('no definitions block, no organization prompt, no "Started by hotkey / mouse" header');
+}
+
+// 6. the settings modal: it opens, lists the seeded Technical accounts, and a save of the same list succeeds
+async function settingsModal(page, keys, org, seeded) {
+    await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
+    await overviewReady(page, 'the week');
+    await clickSelectorIn(page, keys, '.cvat-team-analytics-header .cvat-team-analytics-settings-button');
+    await page.waitFor('!!document.querySelector(".ant-modal.cvat-team-analytics-settings-modal") && !document.querySelector(".cvat-team-analytics-settings-loading")', 'the settings modal', 30000);
+    const modal = await page.evaluate(`(() => { const m = document.querySelector(".ant-modal.cvat-team-analytics-settings-modal");
+        return { title: m.querySelector(".ant-modal-title")?.textContent.trim(), failed: !!m.querySelector(".cvat-team-analytics-settings-load-failed"),
+            names: [...m.querySelectorAll(".cvat-team-analytics-settings-account-name")].map((e) => e.textContent.trim()) }; })()`);
+    log(`settings modal "${modal.title}": accounts ${JSON.stringify(modal.names)}`);
+    check(modal.title === 'Team Analytics settings' && !modal.failed, `the settings modal: ${JSON.stringify(modal)}`);
+    check(JSON.stringify([...modal.names].sort()) === JSON.stringify([...seeded].sort()),
+        `the modal lists ${JSON.stringify(modal.names)}, expected the seeded ${JSON.stringify(seeded)}`);
+    await clickSelectorIn(page, keys, '.cvat-team-analytics-settings-modal .cvat-team-analytics-settings-save');
+    await page.waitFor(`(() => { const m = document.querySelector(".ant-modal.cvat-team-analytics-settings-modal");
+        return !m || !m.checkVisibility() || !!m.querySelector(".cvat-team-analytics-settings-error"); })()`, 'the modal closed after Save', 30000);
+    const error = await page.evaluate('document.querySelector(".cvat-team-analytics-settings-error")?.textContent.trim() || ""');
+    check(!error, `the save failed: "${error}"`);
+    const saved = await page.evaluate('fetch("/api/team-analytics/settings").then((r) => r.json()).then((b) => b.technical_accounts.map((a) => a.user_name))');
+    check(JSON.stringify([...saved].sort()) === JSON.stringify([...seeded].sort()), `after the save the list is ${JSON.stringify(saved)}`);
+    log(`Save of the same list: the modal closed with no error; the list is still ${JSON.stringify(saved)}`);
+}
+
+async function pageChecks(org) {
+    const seeded = (process.env.TA_TECHNICAL_ACCOUNTS || '').split(/[\s,]+/).filter(Boolean);
+    const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ta-fixes-'));
+    let browser;
+    try {
+        browser = await launch(profile);
+        const page = await signIn(browser, 'ta-admin', org);
+        const keys = input(page);
+        await filterBar(page, org);
+        await widthSweep(page, org);
+        await operationsTable(page);
+        await gone(page, org);
+        await selectors(page, keys, org);
+        await terms(page, keys, org);
+        await settingsModal(page, keys, org, seeded);
+        if (SHOTS) await fullShot(page, `page-${org}-1400`, 1400);
     } finally {
         await browser?.close();
         fs.rmSync(profile, { recursive: true, force: true });
@@ -446,9 +755,9 @@ async function look(org, split) {
 }
 
 const [phase, arg, option] = process.argv.slice(2);
-const phases = { gestures, look };
+const phases = { gestures, look, page: pageChecks };
 if (!phases[phase] || !arg) {
-    process.stderr.write('usage: fixes_browser.cjs gestures STATE | look ORG [split]\n');
+    process.stderr.write('usage: fixes_browser.cjs gestures STATE | look ORG [split] | page ORG\n');
     process.exit(2);
 }
 phases[phase](arg, option === 'split').catch((error) => {

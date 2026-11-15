@@ -56,7 +56,9 @@
 #                         the same matrix's expectations against the policy engine, no server
 #   run.sh check-fixes [STEP]
 #                         the defect fixes along the path that failed (fixes_run.py, fixes_browser.cjs), each
-#                         judged: status-roles, technical-project, gestures, look, unprocessed (holds the
+#                         judged: status-roles, technical-project, gestures, look, page (the filter bar, the
+#                         operations card over a width sweep, the selectors, the terms' tooltips, the settings
+#                         modal), unprocessed (holds the
 #                         refresh lock), sessions-at-limit (a record), cutover-restart (restarts the analytics
 #                         worker); all, in this order, without STEP. Not part of up: run it on a stack up has
 #                         passed on
@@ -824,7 +826,7 @@ check_issue_policies() {
 # unprocessed holds the refresh lock and adds a marker event for at most two minutes, cutover-restart
 # scales the analytics worker to zero, empties the stored cutover and the ready mark and scales it up again. Screenshots of look go to
 # TA_SCREENSHOT_DIR, by default beside the state directory, which down leaves alone.
-FIX_STEPS=(status-roles technical-project gestures look unprocessed sessions-at-limit cutover-restart)
+FIX_STEPS=(status-roles technical-project gestures look page unprocessed sessions-at-limit cutover-restart)
 FIX_SHOTS="${TA_SCREENSHOT_DIR:-$TA_CACHE_DIR/screenshots/$TA_NAMESPACE}"
 fixes_py() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
@@ -833,7 +835,7 @@ fixes_py() {
 }
 fixes_browser() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
-        TA_SCREENSHOT_DIR="$FIX_SHOTS" nice -n19 node "$HERE/fixes_browser.cjs" "$@"
+        TA_SCREENSHOT_DIR="$FIX_SHOTS" TA_TECHNICAL_ACCOUNTS="$TA_TECHNICAL_ACCOUNTS" nice -n19 node "$HERE/fixes_browser.cjs" "$@"
 }
 check_fixes() {
     local only="${1:-}" step state="$STATE_DIR/fixes-gestures.json"
@@ -854,6 +856,9 @@ check_fixes() {
                 fixes_browser look ta-org-c split
                 fixes_browser look "${TA_VOLUME_ORG:-ta-org-v}"
                 log "screenshots: $(show_path "$FIX_SHOTS")" ;;
+            page)
+                # ta-org-c holds several projects and annotators (each final run adds projects), the seeded list
+                fixes_browser page ta-org-c ;;
             *) fixes_py "$step" ;;
         esac
     done

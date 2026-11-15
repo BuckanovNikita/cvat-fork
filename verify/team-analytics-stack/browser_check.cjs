@@ -187,6 +187,8 @@ async function refused(browser, username, linkDelayMs) {
     );
     await page.screenshot(`${username}-team-analytics`);
     check(denied.includes('Team analytics is not available'), `${username} sees "${denied}"`);
+    const extras = await page.evaluate('[".cvat-team-analytics-settings-button", ".cvat-team-analytics-filters"].filter((s) => document.querySelector(s))');
+    check(extras.length === 0, `${username}'s not-available page shows ${JSON.stringify(extras)}, expected neither the Settings button nor the filter row`);
     // the browser's own fetch sends Accept */*; CVAT's API answers 406 to a bare application/json
     const status = await page.evaluate(
         `fetch("/api/team-analytics/overview?period=week&tz=UTC&org=${ORG}").then((r) => r.status)`,
