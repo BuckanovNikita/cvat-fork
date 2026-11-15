@@ -510,6 +510,33 @@ Behavior to preserve:
   `logger.save` sends without `keepalive`, so the UI cannot deliver a summary
   on `pagehide` without changing cvat-core. Upstream loses its own queued
   events on tab close too. A summary is never written on a timer alone.
+- Known limit of what is counted as created: tags, and objects made with the
+  interactive AI tools (interactors) or with OpenCV, are not creations
+  (glossary, Creation). The UI logging adds no record for making them, so
+  they add no creation, creation method or creation time, and the time spent
+  making them is Other. A tag carried by a recorded paste or deletion of
+  several objects is described with shape type `tag` and counts with it under
+  All shapes, never under Bounding boxes.
+- Known limit of 3D jobs: only sessions and working time are measured as
+  designed (glossary, Job work). The 3D canvas is not instrumented and the
+  logging records nothing outside a 2D job, so 3D work writes no class change,
+  Model or input summary record and adds no hotkey or mouse count, and its
+  events carry no shape fields. The stock 3D canvas still logs its own draw
+  and paste events, and a deletion there is logged as in 2D; the service
+  reads such untagged events as it reads records from before the cutover, so
+  under All shapes they count as drawn or pasted creations and as deletions,
+  with their time, and under Bounding boxes not at all. This last point is
+  read from the SQL, not seen on a 3D job.
+- Known limit of session length: the glossary bounds a session at a day; the
+  service bounds it where a computation starts reading. A refresh reads the
+  events from one day before the hours it computes (the refresh window, or one
+  day of history), so a session that began earlier is cut there: it is stored
+  from its first event after that point, and the work before it belongs to no
+  session. Once a session's day is computed as history it therefore starts no
+  earlier than midnight UTC of the day before the day it ends in, and can span
+  up to two days when it ends late in its day. A cut session spans more than a
+  day less the session gap. How many stored sessions reach that span is
+  counted by the stack's `run.sh check-fixes sessions-at-limit`.
 - The model creation record is written only once the create thunk reports
   created objects (it resolves to `[]` on failure).
 - Known limit of the split by operation: Other is working time minus the time
@@ -586,8 +613,9 @@ it:
   member but one counts again. Either happens with every suite green: both
   suites hand-order the calls, and the handler declares its own detail type,
   so a renamed field is no type error either.
-  The stack run's group drag (ticket 27: a group drag made in the browser and
-  read back from the events table) is what catches it;
+  The stack's group drag (`run.sh check-fixes gestures`: a group drag and a
+  selection-box move made in the browser and read back from the events table)
+  is what catches it;
 - frame changes: the shown frame changes only through `changeFrameAsync`, and
   nothing between a navigation shortcut's handler and the start of
   `changeFrameAsync` waits for a later task (the top bar's frame search and
@@ -596,9 +624,10 @@ it:
   last shown frame stale, so the next key may be counted for a frame it did
   not move or not counted for one it did; a handler that comes to wait for a
   later task makes its key count nothing. Neither fails a suite, since the
-  harness drives the top bar over supplied searches. The stack run's
-  held-key step (ticket 27: a navigation key held on a slow frame, its count
-  compared with CVAT's `change:frame` events) is what catches it.
+  harness drives the top bar over supplied searches. The stack's held-key
+  step (`run.sh check-fixes gestures`: a navigation key held on a slow frame,
+  its count compared with the frames shown and with CVAT's `change:frame`
+  events) is what catches it.
 
 A new upstream event type, scope, call site or shortcut action needs a
 decision on whether it is an operation. A rename breaks the figures silently.
@@ -619,11 +648,16 @@ decision on whether it is an operation. A rename breaks the figures silently.
 Seams 1 to 3 run real code with the boundaries supplied: CVAT's answers to the
 service, the cvat-core transport for the logging, and the service's responses
 for the page. They do not prove delivery through Vector, the real server's
-scope list, or layout. The stack run proves those for the scenarios it drives.
-It does not cover the detector with a deployed model (its record is sent
-through the API in the shape the UI module produces), a removed member, or
-CVAT being unreachable (seam 1 only). The independent review of the access
-rules is recorded with the dated evidence.
+scope list, or layout. The stack run proves those for the scenarios it drives:
+the detector record is produced by the real UI with only the model list and
+the model's answer supplied in the browser, the current week of the volume
+goes through the events API (older weeks are inserted directly, since the API
+cannot date records back), and `run.sh check-access` runs a removed member, an
+administrator by group, a personal workspace and header credentials against
+the real CVAT. `run.sh check-fixes` drives each defect fix along the path
+that failed. The stack does not cover a deployed model function, or CVAT being
+unreachable (seam 1 only). The independent review of the access rules is
+recorded with the dated evidence.
 
 ## Acceptance scenarios
 

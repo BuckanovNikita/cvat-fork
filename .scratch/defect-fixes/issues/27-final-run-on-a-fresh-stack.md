@@ -16,3 +16,7 @@
 - [ ] One dated evidence file separates live outcomes from tests with supplied boundaries and lists what remains unverified.
 - [ ] The integrated branch gets an independent review, with the access rules and the policies reviewed on their own. Findings are fixed or recorded.
 - [ ] The stack is torn down unless the owner asks to keep it.
+
+## Comments
+
+2026-11-15: Part one done without a stack; nothing is ticked. `run.sh check-fixes` (`fixes_run.py`, `fixes_browser.cjs`) adds the fixes along the path that failed, the look at 1400 and 400 px and the count of sessions at the one-day limit; it has not run against a stack. The fork specification states the remaining limits (criterion 6 is ticked only after the run, with the rest). The plan of the run, its coverage, and what each of the ten criteria ticked on a reading must show before a tick, with its restated wording, are in `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`.
