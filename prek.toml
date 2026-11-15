@@ -108,7 +108,7 @@ require_serial = true
 [[repos.hooks]]
 id = "task-progress"
 name = "suite: task progress"
-entry = "tools/gate/node-suite.sh verify/task_progress.cjs"
+entry = "tools/gate/node-suite.sh --may-start-browser verify/task_progress.cjs"
 language = "system"
 pass_filenames = false
 always_run = true
