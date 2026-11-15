@@ -71,8 +71,8 @@ Technical accounts
 
 The page
 
-9. As an administrator, every filter-bar control and the Settings button are 36px tall on one
-   centre line.
+9. As an administrator, every filter-bar control is 36px tall on one centre line, and the
+   Settings button, in the header row at the right, is 36px tall.
 10. As an administrator, I pick a project or an annotator from a searchable list that starts
     with "All" and includes the "No project" bucket; at Instance scope projects show their names.
 11. As an administrator, the operations card never scrolls sideways at 1024px and wider.

@@ -16,6 +16,6 @@ Project names: at Instance scope CVAT's own projects API returns only personal-w
 - [ ] Clicking a card row still sets the project or annotator filter (existing tests pass, `projects-filters.test.cjs` updated).
 - [ ] Project names come from the `project-names` action, and an id that is not returned still reads "Project #N".
 - [ ] Keyboard use works: the selector opens, moves through options and closes with the keyboard, and has combobox and listbox roles.
-- [ ] On the live stack (browser step of ticket 08): every filter-bar control and the Settings button measure 36px with one shared centre line, and a project and an annotator can be picked through the selectors.
+- [ ] On the live stack (browser step of ticket 08): every filter-bar control measures 36px on one shared centre line, the Settings button (in the header row at the right, not on the filter row) measures 36px, and a project and an annotator can be picked through the selectors.
 
 ## Comments

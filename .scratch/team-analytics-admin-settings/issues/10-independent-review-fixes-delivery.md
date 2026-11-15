@@ -20,3 +20,5 @@
 - [ ] The final report states what each check established, what stayed unverified, and every card other than the operations card that still scrolls sideways.
 
 ## Comments
+
+2026-11-16: The independent review ran with three reviewers who wrote none of the code (backend and access, the page, and delivery: the image build, the stack checks and the documents), where this ticket planned two. None of their findings was rated high. Each finding, its fix or the reason it stays, and what the fixes were checked with are recorded in the dated evidence record (to be written).

@@ -5,7 +5,7 @@
 - A model `TechnicalAccount` (`user_id` primary key with no foreign key, `user_name` as the last known name, `updated_date`) in a new `models.py` of `cvat/apps/team_analytics/`, with `migrations/0001_initial.py`. One list for the instance; a deleted user stays listed until removed.
 - `GET` and `PUT settings`, `GET settings/users` and `GET project-names` on `TeamAnalyticsViewSet`, answered by the API process from Postgres, never through the read queue, with `Cache-Control: no-store`, and kept out of the OpenAPI schema. DRF's views already have a `settings` attribute, so the method gets another name and `url_path="settings"`. `PUT` replaces the list in one transaction, then advances the totals generation after the commit, and logs who added and removed which ids. A new `serializers.py` holds the validation rules.
 - Permission: an `update` scope in `permissions.py` and policy rows for the new actions; the rego stays one administrators rule.
-- The worker's read job reads the list after it reads the generation and passes the ids to `Engine.answer(...)` as a value; the core stays free of Django. The 31 predicates in 14 files under `sql/read/` match on `user_id` (`{technical_accounts:Array(UInt64)}`). The `technical_accounts` count in the answers stays. The variable leaves `default_settings.py` and `core/config.py`.
+- The worker's read job reads the list after it reads the generation and passes the ids to `Engine.answer(...)` as a value; the core stays free of Django. The 31 predicates in 14 files under `sql/read/` match on `user_id` (`{technical_accounts:Array(UInt64)}`). The `technical_accounts` count in the answers stays. The variable no longer gives the list and leaves `core/config.py`; `default_settings.py` still looks at it once at start, only to warn that it is ignored.
 
 **Blocked by:** 01.
 
@@ -17,6 +17,6 @@
 - [ ] `settings/users` returns at most 20 users of the whole instance, matching username, first or last name case-insensitively, ordered by username; a `search` over 150 characters gives 400.
 - [ ] `project-names` returns the names of existing projects of any organization, leaves unknown ids out, and refuses more than 500 ids or a non-positive id with 400.
 - [ ] Every new action is refused to non-administrators (403) and to signed-out callers (401) in the policy tests and the view tests; `makemigrations --check` passes; `test_api_side.py`'s module list includes the new modules.
-- [ ] No trace of `TEAM_ANALYTICS_TECHNICAL_ACCOUNTS` remains in the app; docs handoff recorded: TA-1's settings table, the Technical account entry of `GLOSSARY.md`, and an upgrade step in `docs/upstream-upgrade.md` (the list starts empty and is filled in the settings modal).
+- [ ] `TEAM_ANALYTICS_TECHNICAL_ACCOUNTS` no longer gives the list: the app looks at it only once at start, to warn that it is ignored; docs handoff recorded: TA-1's settings table, the Technical account entry of `GLOSSARY.md`, and an upgrade step in `docs/upstream-upgrade.md` (the list starts empty and is filled in the settings modal).
 
 ## Comments

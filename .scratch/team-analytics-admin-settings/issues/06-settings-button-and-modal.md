@@ -12,9 +12,9 @@
 
 - [ ] New `verify/team-analytics-page/settings.test.cjs`: the Settings button opens the modal, which lists the accounts from `GET settings`, including a deleted one as "deleted account, id N".
 - [ ] Typing in the picker calls `settings/users` with the text, and choosing a user adds it to the list shown.
-- [ ] Saving sends `PUT settings` with the whole list of user ids, shows the saved list from the answer, and a 400 answer shows its `detail` sentence without closing the modal.
+- [ ] Saving sends `PUT settings` with the whole list of user ids; after a successful save the modal closes and the page reloads its data; a 400 answer shows its `detail` sentence without closing the modal.
 - [ ] Removing an account (including a deleted one) and saving sends the list without it.
 - [ ] The modal states that a change applies to all past periods on the next page load.
-- [ ] On the live stack (ticket 08): the Settings button is 36px on the filter bar's centre line, and the modal saves a change that the next page load reflects.
+- [ ] On the live stack (ticket 08): the Settings button is 36px tall in the header row at the right (it is not on the filter row's centre line), and the modal saves a change that the next page load reflects.
 
 ## Comments

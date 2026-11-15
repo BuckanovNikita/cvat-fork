@@ -6,7 +6,8 @@
 - `check-cross-org` becomes: an administrator's answer for one organization is not served for another organization or for Instance scope.
 - Seeding sets the list through the API (`set_technical_accounts`); `run.sh` no longer sets `TEAM_ANALYTICS_TECHNICAL_ACCOUNTS`.
 - A new `run.sh check-settings`.
-- Browser steps in `fixes_browser.cjs`: the filter bar's heights and centre line, the operations card's width sweep, the two selectors and a tooltip.
+- The access case `removed-member` is replaced by `revoked-admin` (`access_cases.py`): an administrator taken out of the admin group is refused on its very next request, in its old session and in a fresh one.
+- Browser step `page` in `fixes_browser.cjs` (`run.sh check-fixes page`): the filter bar's heights and centre line, the Settings button's height, the operations card's width sweep, the two selectors and a tooltip.
 
 Stacks for verification use their own namespace and port (`TA_RUN_ID`, port 8491) and the work images, never the owner's stack.
 
@@ -18,8 +19,8 @@ Stacks for verification use their own namespace and port (`TA_RUN_ID`, port 8491
 - [ ] `check-cross-org` passes in its new form.
 - [ ] `check-settings` passes: a non-administrator is refused on read and on write; a save moves the generation by exactly one; adding an account changes last week's figures and removing it restores them; a deleted user stays listed.
 - [ ] Seeding sets the technical accounts through `PUT settings`, and nothing in the stack sets the removed variable.
-- [ ] Browser step: every filter-bar control and the Settings button measure 36px with one shared centre line.
-- [ ] Browser step: a width sweep from 1024px to 1920px (including the width that gives a 420px card) finds no sideways scroll in the operations card and prints the other cards that scroll.
-- [ ] Browser step: a project and an annotator are picked through the selectors, and a term's tooltip shows on hover.
+- [ ] Browser step `page`: every filter-bar control measures 36px on one shared centre line, and the Settings button, in the header row at the right, measures 36px.
+- [ ] Browser step `page`: a width sweep from 1024px to 1920px (including the width that gives a 420px card) finds no sideways scroll in the operations card and prints the other cards that scroll.
+- [ ] Browser step `page`: a project and an annotator are picked through the selectors, and a term's tooltip shows on hover.
 
 ## Comments
