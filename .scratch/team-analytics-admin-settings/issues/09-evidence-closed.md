@@ -12,7 +12,7 @@ Ruled out with the reason: a cluster of more than one node, upstream's Compose f
 
 **Status:** ready-for-agent
 
-- [ ] A new dated record exists under `docs/evidence/`, and the two 2026-11-15 records and the independent review point to it.
+- [ ] A new dated record exists under `docs/evidence/`, and the two 2026-11-15 records and the independent review's record of the same date (`docs/evidence/2026-11-15-independent-review.md`, for its "Not established" lines) point to it. The one-time image comparison of ticket 07 is kept beside it.
 - [ ] Every open line of the two records is listed in the new record as verified (with the command and what it showed) or ruled out (with the reason); none is left open.
 - [ ] On the live stack: `check-review` and `check-isolation clickhouse-down` pass on the final image; the Redis failure gives 503 and the schedule is restored after it.
 - [ ] On the live stack: a killed worker's read job is queued again and answered; the generation does not move over idle minutes; a failed liveness probe restarts the worker; two replicas serve reads.
