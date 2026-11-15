@@ -280,6 +280,22 @@ def kill_rq(pod: str, registered: list[str]) -> tuple[str, list[int], float]:
     return how, pids, killed_at
 
 
+def container_logs(pod: str, since: str) -> list[str]:
+    """The worker container's log lines since `since`: the container before the current one first (killing every rq
+    process can fail the liveness probe and restart the container inside the window; its lines would be lost
+    otherwise), then the current one. A container ends before the next starts, so the two read one after the
+    other are in time order. No container before the current one is no lines."""
+    lines = []
+    for previous in (True, False):
+        out = kubectl("logs", pod, "-c", "cvat-backend", f"--since-time={since}", "--tail=-1",
+                      *(["--previous"] if previous else []), check=False)
+        part = out.splitlines()
+        if previous and part:
+            log(f"{pod}'s container was restarted in the window: {len(part)} lines of the container before it read too")
+        lines += part
+    return lines
+
+
 def started_reads() -> list[str]:
     out = redis("ZRANGE", f"rq:wip:{QUEUE}", "0", "-1")
     return [line.split(")", 1)[-1].strip().strip('"') for line in out.splitlines() if "team-analytics-read-" in line]
@@ -324,14 +340,14 @@ def killed_worker() -> str:
         need(time.monotonic() - killed_at < limit_s + 120,
              f"still 429 {time.monotonic() - killed_at:.0f} s after the kill; the abandoned limit is {limit_s} s")
         time.sleep(float(headers.get("retry-after") or 3))
-    after_s = time.monotonic() - killed_at
+    answered_at = time.monotonic()  # the moment the answer arrived, before anything else is read
+    after_s, since_queued = answered_at - killed_at, answered_at - queued_at
     log("after the kill (seconds, status, the job's record): " + ", ".join(f"{t} {st} {j}" for t, st, j in timeline))
-    lines = [line for line in worker_log(since) if job in line]
+    lines = [line for line in container_logs(pod, since) if job in line]
     log(f"the worker's log lines naming {job}:")
     for line in lines[-30:]:
         print(f"    {line}", flush=True)
     others = [t for t in timeline[:-1] if t[1] != 429]
-    since_queued = time.monotonic() - queued_at
     # the job ran twice: the run that was killed, and the run after it was queued again
     runs = [line for line in lines if "Preparing for execution" in line]
     need(status == 200 and not others, f"expected 429 until the job was queued again, then 200; saw {timeline}")
@@ -501,10 +517,16 @@ def two_replicas() -> str:
     need(len(by_pod) == 2 and all(n > 0 for n in reads_by_pod.values()),
          f"expected logs and read jobs of both pods, saw read jobs by pod {reads_by_pod}")
     need(not problems, f"refresh runs not read whole from the logs: {problems}")
-    need(len(spans) >= TWO_REPLICAS_MIN_WROTE and len(wrote_by_pod) == 2 and all(n > 0 for n in wrote_by_pod.values()),
-         f"expected at least {TWO_REPLICAS_MIN_WROTE} refresh runs that wrote in {TWO_REPLICAS_WINDOW_S} s, at least one "
-         f"from each pod; saw {len(spans)}, by pod {wrote_by_pod}")
     need(not overlaps, f"refresh runs that wrote overlapped across the replicas: {overlaps}")
+    need(len(spans) >= TWO_REPLICAS_MIN_WROTE,
+         f"expected at least {TWO_REPLICAS_MIN_WROTE} refresh runs that wrote in {TWO_REPLICAS_WINDOW_S} s; saw "
+         f"{len(spans)}, by pod {wrote_by_pod}")
+    # everything else held: both pods ready and serving reads, every run read, enough runs, none overlapping
+    need(all(n > 0 for n in wrote_by_pod.values()),
+         f"every one of the {len(spans)} refresh runs that wrote ran on one pod ({wrote_by_pod}), while both pods were "
+         f"ready, both served reads ({reads_by_pod}) and no runs overlapped. The step's own odds allow this (about one "
+         "chance in thirty-two when only every second run writes): run check-evidence two-replicas again before "
+         "looking for a defect; the same outcome twice is one to look into")
     return (f"2 ready replicas; 12 uncached reads 200; {len(spans)} refresh runs that wrote, none overlapping; read "
             f"jobs by pod {[(p, sum(1 for line in ls if READ_LINE.search(line))) for p, ls in by_pod.items()]}")
 

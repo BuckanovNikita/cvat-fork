@@ -740,10 +740,29 @@ const POPUP_FIT = `(() => {
     const p = page.getBoundingClientRect();
     const right = p.left + (page.clientWidth || p.width);
     const s = document.scrollingElement;
+    const longest = popup.querySelector("li.cvat-team-analytics-filter-option.cvat-ta-longest-option");
+    const l = longest?.getBoundingClientRect();
     return { document: [s.scrollWidth, s.clientWidth], page: [page.scrollWidth, page.clientWidth],
         popup: [Math.round(r.left * 10) / 10, Math.round(r.right * 10) / 10], container: [Math.round(p.left * 10) / 10, Math.round(right * 10) / 10],
         inside: r.left >= p.left - 0.5 && r.right <= right + 0.5,
+        longest: longest ? { text: longest.textContent.trim(), box: [Math.round(l.left), Math.round(l.right)] } : null,
+        longest_inside: !!longest && l.left >= p.left - 0.5 && l.right <= right + 0.5,
         side: [...popup.classList].find((c) => c.startsWith("cvat-team-analytics-filter-popup-")) || "" };
+})()`;
+// the options are in: the status line is gone, empty or hidden, and a named option (not "All ...") is listed
+const OPTIONS_LOADED = `(() => {
+    const popup = document.querySelector(".cvat-team-analytics-filter-popup");
+    if (!popup) return false;
+    const s = popup.querySelector(".cvat-team-analytics-filter-status");
+    const quiet = !s || getComputedStyle(s).display === "none" || !s.checkVisibility() || s.textContent.trim() === "";
+    return quiet && popup.querySelectorAll("li.cvat-team-analytics-filter-option[role=option]:not(.cvat-team-analytics-filter-option-all)").length > 0;
+})()`;
+// the option with the longest name is scrolled into view and marked (a class of this check only) for POPUP_FIT
+const SHOW_LONGEST = `(() => {
+    const options = [...document.querySelectorAll(".cvat-team-analytics-filter-popup li.cvat-team-analytics-filter-option[role=option]")];
+    const longest = options.reduce((a, b) => (b.scrollWidth > a.scrollWidth || (b.scrollWidth === a.scrollWidth && b.textContent.length > a.textContent.length) ? b : a));
+    longest.classList.add("cvat-ta-longest-option");
+    longest.scrollIntoView({ block: "nearest" });
 })()`;
 const ANNOTATOR_GAP = `(() => {
     const box = document.querySelector(".cvat-team-analytics-filter-annotator")?.getBoundingClientRect();
@@ -772,9 +791,15 @@ async function popupFit(page, keys, org) {
         await sleep(800);
         for (const kind of ['project', 'annotator']) {
             await openSelector(page, keys, kind);
+            // measured once the names are in: while "Loading…" shows the popup is at its narrowest
+            await page.waitFor(OPTIONS_LOADED, `the ${kind} selector's options loaded (status line empty or hidden, a named option)`, 60000);
+            await page.evaluate(SHOW_LONGEST);
+            await sleep(300);
             const fit = await page.evaluate(POPUP_FIT);
             log(`${width} px, ${kind} selector open: ${JSON.stringify(fit)}`);
-            if (!fit || fit.document[0] > fit.document[1] || fit.page[0] > fit.page[1] || !fit.inside) wrong.push([width, kind, fit]);
+            if (!fit || fit.document[0] > fit.document[1] || fit.page[0] > fit.page[1] || !fit.inside || !fit.longest_inside) {
+                wrong.push([width, kind, fit]);
+            }
             await keys.press('Escape');
             await page.waitFor('!document.querySelector(".cvat-team-analytics-filter-popup")', 'the popup closed by Escape', 5000);
         }
