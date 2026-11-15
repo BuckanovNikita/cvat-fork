@@ -248,7 +248,9 @@ default one minute), so a runaway test fails its suite instead of exhausting
 the machine. Node's test runner has neither limit by default. Run a suite by
 hand through the same wrapper, as the commands below do. The browser check of
 the task legend (`BROWSER_BIN`) is not part of the pipeline and keeps its own
-command.
+command. A browser does not start inside an address-space limit, so with
+`BROWSER_BIN` set the wrapper leaves the memory limit off, says so in one
+line, and keeps the time limit.
 
 Prerequisites on a fresh checkout:
 

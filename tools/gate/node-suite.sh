@@ -9,6 +9,10 @@
 # - Every test has NODE_SUITE_TEST_TIMEOUT_MS to finish (default one minute; a test of these
 #   suites takes milliseconds to a few seconds).
 #
+# With BROWSER_BIN set, the task progress suite starts a real browser, and a browser does not start
+# inside such an address-space limit (it reserves far more than it uses). The memory limit is then
+# left off, with a line saying so; the time limit stays.
+#
 # Why: Node's test runner has neither limit by default, and the limit of the JavaScript heap does
 # not bound a process. On 2026-11-16 one failing assertion that compared a mounted DOM element
 # (which Node then tried to print, walking React's internal graph) took 49.5 GB in two minutes and
@@ -21,5 +25,9 @@ if [ "$#" -eq 0 ]; then
     exit 2
 fi
 
-ulimit -v "${NODE_SUITE_MEMORY_KB:-8388608}"
+if [ -n "${BROWSER_BIN:-}" ]; then
+    echo "tools/gate/node-suite.sh: BROWSER_BIN is set, so the memory limit is off for this run" >&2
+else
+    ulimit -v "${NODE_SUITE_MEMORY_KB:-8388608}"
+fi
 exec node --test --test-timeout="${NODE_SUITE_TEST_TIMEOUT_MS:-60000}" "$@"
