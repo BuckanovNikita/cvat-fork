@@ -162,9 +162,10 @@ upstream's `COPY` gains is copied by its own `COPY` line and added to the list
 of copied paths in `build-server.sh` (`COPIED`), which makes the build
 context. Check the pinned bases against the change: a Python version upstream
 moves to, or a Rust or Go version its stages name, needs a new base, pinned by
-digest: the Python and Rust images as the defaults of `Dockerfile.server`'s
-`ARG`s (the script refuses one that is not pinned), the Go image as
-`GOLANG_TAG` and `GOLANG_IMAGE` in `build-server.sh`. Then record the hash of the
+digest. All three bases are the defaults of `Dockerfile.server`'s `ARG`s:
+`BASE_IMAGE` (Python), `RUST_IMAGE` and `GOLANG_IMAGE` (the Go image of
+upstream's smokescreen stage, whose `FROM` names that `ARG`); the script
+refuses one that is not pinned. Then record the hash of the
 target's `Dockerfile` in `build-server.sh` as `PORTED_FROM_SHA256`:
 
 ```bash
@@ -186,9 +187,14 @@ IMAGE="cvat/server:${TARGET}-fork" ./build-server.sh
 
 It tags the image only when its six checks pass (BUILD-1): the bundle holds
 the merged policies and, with analytics enabled, the Team Analytics policy;
-the programs CVAT starts run on the venv's Python 3.12 and supervisord runs;
-no shared library is missing; Django sets up with analytics on and off; and no
-model change lacks a migration. Before it builds, it refuses the unported
+the programs CVAT starts run on the venv's Python 3.12, supervisord runs and
+`nginx -t` accepts the shipped nginx configuration; no shared library is
+missing (judged by `ldd`'s output: any "not found" fails); Django sets up with
+analytics on and off; and no model change lacks a migration. The checks build
+and test the default configuration only: the `CLAM_AV=yes` and
+`CVAT_DEBUG_ENABLED=yes` builds have never been built. A ported package from
+Debian's non-free component goes in while that component is enabled, as
+`unrar` does; the final image's apt sources have the main component only. Before it builds, it refuses the unported
 `Dockerfile` above, a base not pinned by digest, and a tree with an untracked
 file, or a tracked file missing, under the copied paths; an untracked file is
 added or removed before building again. Check
@@ -235,6 +241,15 @@ them, for undefined names and unused imports. black and isort check
 upstream's settings (the root `pyproject.toml`). Run the pipeline by its
 command; do not install it as git hooks.
 
+The three frontend suites run through `tools/gate/node-suite.sh`, which gives
+every process of the run a memory limit (address space, `NODE_SUITE_MEMORY_KB`,
+default 8 GiB) and every test a time limit (`NODE_SUITE_TEST_TIMEOUT_MS`,
+default one minute), so a runaway test fails its suite instead of exhausting
+the machine. Node's test runner has neither limit by default. Run a suite by
+hand through the same wrapper, as the commands below do; the browser check of
+the task legend (`BROWSER_BIN`) is the exception, kept as its own command
+because it starts a browser.
+
 Prerequisites on a fresh checkout:
 
 - `prek`, `uv`, `python3`, Node and Docker on the path; network on the first
@@ -265,7 +280,7 @@ With the toolchain required by upstream's package configuration:
 ```bash
 DISABLE_HUSKY=1 yarn install --immutable
 npm ci --prefix verify
-node --test verify/task_progress.cjs
+tools/gate/node-suite.sh verify/task_progress.cjs
 SOURCE_MAPS_ENABLED=false yarn run build:cvat-ui
 ```
 
@@ -462,8 +477,8 @@ do not skip tests:
 
 ```bash
 SERVER_IMAGE="cvat/server:${TARGET}-fork" verify/team_analytics_backend.sh   # calculation tests against a real ClickHouse
-node --test verify/team_analytics_logging.cjs  # events the UI logging sends
-node --test verify/team_analytics_page.cjs     # page with supplied responses
+tools/gate/node-suite.sh verify/team_analytics_logging.cjs  # events the UI logging sends
+tools/gate/node-suite.sh verify/team_analytics_page.cjs     # page with supplied responses
 ```
 
 The calculation tests (`verify/team-analytics-backend/`) run the app's code in
@@ -493,10 +508,21 @@ backend path are not part of `up`; run them on a stack brought up with
 ```bash
 verify/team-analytics-stack/run.sh check-cross-org
 verify/team-analytics-stack/run.sh check-fixes page   # the page in a browser: filter bar, selectors, operations card, tooltips, settings
-verify/team-analytics-stack/run.sh check-isolation   # or one part: worker-down, clickhouse-down, totals-dropped
+verify/team-analytics-stack/run.sh check-isolation   # or one part: worker-down, clickhouse-down, totals-dropped, redis-down
 verify/team-analytics-stack/run.sh check-load          # needs the volume data (see the README)
 verify/team-analytics-stack/run.sh check-analytics-off   # last: it leaves the stack with analytics disabled
 ```
+
+`check-isolation` without a part runs all four, `redis-down` (the in-memory
+Redis at zero: reads answer 503, then the refresh schedule and the figures come
+back) last, because it restarts what depends on Redis.
+
+`run.sh check-evidence STEP` (steps `rq-start-race`, `liveness`,
+`killed-worker`, `idle-generation`, `two-replicas`, `off-then-on`) is the
+one-off evidence run of the Team Analytics delivery, not part of every
+upgrade: several steps upgrade the release in place, and each puts the
+stack's own values back when it ends, also on a failure or an interrupt. The
+stack's README says what each step judges.
 
 Inspect the screenshots as well as the exit status.
 Record what ran and what stayed unverified in dated evidence.
@@ -506,7 +532,7 @@ Record what ran and what stayed unverified in dated evidence.
 The two images are built by their scripts (BUILD-1): `./build-ui.sh` with the
 chosen `IMAGE`/`NODE_IMAGE` overrides, and `./build-server.sh` with
 `IMAGE`/`MAKE_JOBS`. Both need network access; `build-server.sh` pulls only the
-bases `Dockerfile.server` and the script pin, and no `cvat/` image. Use
+three bases `Dockerfile.server` pins, and no `cvat/` image. Use
 `SAVE=1` only if an archive is needed, for example to carry an image to an
 installation without network access. Inspect served assets in the built UI image and
 check the fork server image's bundle (under "Policies"). Without touching the
@@ -519,8 +545,10 @@ off (no worker); the stack's README has the full list.
 All live verification runs on the test stack under "Team Analytics", in the
 project's own namespace with a quota and its own teardown (`down`, or `cycle`).
 It needs no shared deployment and creates nothing in the cluster outside its
-namespace; `down` also stops only its own port-forward. Clean up only what a
-run created.
+namespace; `down` also stops only its own port-forward. Every subcommand that
+talks to the stack over HTTP first checks that the host port is served by the
+port-forward of the namespace it acts on, and refuses a port that does not
+belong to that namespace. Clean up only what a run created.
 
 ## 5. Record and hand off
 
