@@ -290,6 +290,15 @@ Behavior to preserve:
   A cap needs a worker count nobody has chosen; a NetworkPolicy needs the
   deployment's ingress controller, which the fork does not know, and a local
   cluster may not enforce one.
+- Known limits of the service's reach into ClickHouse: it uses the chart's own
+  account from `cvat-analytics-secret`, the account CVAT writes its events
+  with, so it could write to or drop CVAT's `events` table, not only its own
+  database. A dedicated account (read on the events database, write on the
+  totals database) is a deployment decision. Its reads run without a time or
+  memory limit; only the cutover search has limits, which the owner decided.
+  A limit on reads could fail a legitimate read at scale. The container runs
+  as user 1000 without privilege escalation, with every capability dropped and
+  the runtime's default seccomp profile; its root filesystem is writable.
 - Its routes are under `/team-analytics-api/v1/`. Every request is checked
   against CVAT with the caller's own cookie or token: `/api/users/self`,
   `/api/organizations`, `/api/memberships`. Admins (the `admin` group) see any
@@ -429,6 +438,27 @@ Behavior to preserve:
   logs each time. The events table records only when an event happened, not
   when it arrived, so the search cannot be narrowed to the records added since
   the last one.
+- Trust model: every figure is reported by the browser of the person it
+  describes. The service checks who may read figures, not whether the events
+  behind them are true. An account that can send client events can add figures
+  for itself: working time, sessions, operations, creations, Model creations,
+  class changes and hotkey counts, at any past hour and under any project or
+  task id, inside each organization it belongs to; it cannot write under
+  another person's name. Any account, with no organization and no global role,
+  can move the instance's cutover earlier with one shape-tagged event dated
+  early: at the next daily check or start that hour is the cutover for every
+  organization, and the periods after it read as not legacy. The correction is
+  the one above (remove the event, then the stored value). How this is known:
+  the service's half was run on its test harness (a forged event from an
+  account outside every organization moved the cutover and changed another
+  organization's figures); the CVAT half was read, not run (stock CVAT allows
+  every authenticated caller to send events, sets the user and organization of
+  a client event from the request, and takes the job, task and project ids,
+  counts, durations, payload and time from the client). Whether to bound
+  the cutover search (for example by a configured earliest date, or by an
+  administrator's setting) is open for the owner: the search is the owner's
+  decision (ticket 17 of the defect fixes), and the question is filed as
+  `.scratch/team-analytics/issues/19-any-account-can-move-the-cutover-and-add-its-own-figures.md`.
 - New measurements travel inside existing client event types (ADR 0002):
   payload fields on draw, paste, propagate, drag, resize and delete, plus three
   `debug:info` records (`team_analytics:class_change`,
