@@ -10,9 +10,9 @@
 #   byte (a copy to a directory the server does not read fails here);
 # - the base image's bundle holds the four policy files the import carries exactly as the
 #   import tag STOCK_TAG has them (a base of another release fails here).
-# If either fails, no image is left under IMAGE: an earlier image under that tag is removed
-# (only the tag, when the image has another one), the new build is removed unless another tag
-# names it, and no archive is saved. The build cache stays.
+# If either fails, the script removes only what this run built (unless a tag names it), tags
+# nothing, saves nothing and exits non-zero. An earlier image under IMAGE is left as it is: the
+# failure names its ID and says that this run did not check it. The build cache stays.
 set -euo pipefail
 
 IMAGE="${IMAGE:-cvat/server:v2.82.0-fork-policies}"
@@ -37,6 +37,8 @@ fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# The image under IMAGE before this run, if any; a failed check leaves it in place.
+earlier="$(docker image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null || true)"
 
 DOCKER_BUILDKIT=1 docker build \
     --pull=false \
@@ -55,15 +57,18 @@ echo "checking the bundle of $BASE_IMAGE against the four policy files of $STOCK
 { "$BUNDLE" from-image "$BASE_IMAGE" >"$work/base.tar.gz" && "$BUNDLE" check-stock "$STOCK_TAG" <"$work/base.tar.gz"; } || status=1
 
 if [ "$status" != 0 ]; then
-    if docker image inspect "$IMAGE" >/dev/null 2>&1; then
-        docker image rm "$IMAGE" >/dev/null || { echo "could not remove the earlier image under $IMAGE; remove it before use" >&2; exit 1; }
-        echo "removed the earlier image under $IMAGE" >&2
-    fi
-    # Removed only while untagged: an identical build may be another tag's image.
+    # Removed only while untagged: an identical build may be another tag's image, or the earlier one.
     if [ "$(docker image inspect --format '{{len .RepoTags}}' "$built" 2>/dev/null)" = 0 ]; then
         docker image rm "$built" >/dev/null || echo "could not remove the untagged build $built" >&2
     fi
-    echo "policy check failed: no image is left under $IMAGE and nothing was saved" >&2
+    echo "policy check failed: this run's build $built was not tagged and nothing was saved" >&2
+    if [ -z "$earlier" ]; then
+        echo "no image is under $IMAGE" >&2
+    elif [ "$earlier" = "$built" ]; then
+        echo "$IMAGE still names $earlier, which is identical to this run's build and failed its checks" >&2
+    else
+        echo "$IMAGE still names the earlier build $earlier; this run did not check that build" >&2
+    fi
     exit 1
 fi
 
