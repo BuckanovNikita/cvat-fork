@@ -1,8 +1,9 @@
 """Acceptance of Team Analytics on the backend path (ticket 11 of .scratch/standard-fork), driven by run.sh. Each
 command judges itself (non-zero exit on a failure) and prints the numbers it measured.
 
-    acceptance.py cross-org             an overview organization A's maintainer loaded is not served to organization
-                                        B's maintainer asking the same parameters, nor an administrator's status to
+    acceptance.py cross-org             an overview an administrator loaded for organization A is not served for
+                                        organization B nor for instance scope with the same parameters, the instance
+                                        answer is not served for an organization, and no cached answer is served to
                                         a maintainer
     acceptance.py isolation [PART]      CVAT's core operations (sign-in, the task list, opening a job's data and
                                         annotations, saving annotations) and the analytics endpoints' answer times:
@@ -53,9 +54,10 @@ from stack_api import (  # noqa: E402
     check,
     expected_rows,
     figures,
-    get_json,
     not_ready,
     raw_get,
+    reader,
+    refusal,
     upload_images,
 )
 from stack_ops import (  # noqa: E402
@@ -110,7 +112,6 @@ CORE_ORG = "ta-org-c"
 CORE_OWNER = "ta-owner-c"
 CORE_USER = "ta-worker-c"
 CORE_PROJECT = "ta-isolation"
-ADMIN_ONLY_HISTORY = {"first_day", "days_ready", "days_total"}  # status keys only administrators get
 
 
 def log(message: str) -> None:
@@ -143,7 +144,7 @@ def analytics(endpoint: str, **params: str) -> str:
 
 def wait_answered(timeout_s: int = 300) -> float:
     """Waits until ta-admin's status is answered with its sections (200, refresh known); the seconds it took."""
-    admin = Session("ta-admin")
+    admin = reader("")
     started = time.monotonic()
     while True:
         status, body = admin.call(analytics("status", org=""))
@@ -269,10 +270,11 @@ def show_operations(ops: list[tuple[str, int, float]]) -> str:
     return ", ".join(f"{name} {status} {ms:.0f} ms" for name, status, ms in ops)
 
 
-def probe(session: Session, endpoint: str, **params: str) -> tuple[int, float, object]:
-    """One analytics request, not retried: (status, seconds, body)."""
+def probe(session, endpoint: str, **params: str) -> tuple[int, float, object]:
+    """One analytics request of an administrator's reader (stack_api.reader), not retried: (status, seconds,
+    body)."""
     started = time.monotonic()
-    status, body, _ = raw_get(session.opener, analytics(endpoint, **params))
+    status, body, _ = raw_get(session.opener, session.bind(analytics(endpoint, **params)))
     return status, time.monotonic() - started, body
 
 
@@ -281,7 +283,7 @@ def probe(session: Session, endpoint: str, **params: str) -> tuple[int, float, o
 
 def worker_down(ids: dict) -> bool:
     """(a) The analytics worker at zero and twelve analytics requests left waiting; meanwhile the core operations."""
-    maintainer = Session("ta-maintainer")
+    in_org = reader("ta-org-a")
     log(django_cache("advance"))  # no answer of the twelve is cached
     worker_replicas(0)
     attempts: list[tuple[int, int, float, object]] = []  # (request, status, seconds, body)
@@ -293,7 +295,7 @@ def worker_down(ids: dict) -> bool:
         path = analytics("overview", org="ta-org-a", period="week", annotator=str(900_001 + i))
         while not stop.is_set():
             started = time.monotonic()
-            status, body, _ = raw_get(maintainer.opener, path)
+            status, body, _ = raw_get(in_org.opener, in_org.bind(path))
             attempts.append((i, status, time.monotonic() - started, body))
             if status != 429:
                 return
@@ -333,12 +335,12 @@ def clickhouse_down(ids: dict) -> bool:
     """(b) ClickHouse at zero: the core operations, and the analytics endpoints answer (503 or 429) within the wait.
     Also: a refresh run that fails before any write (every run while ClickHouse is down) does not advance the
     generation, so an answer cached before the outage is still served from the cache, while one never cached is 503."""
-    maintainer, admin = Session("ta-maintainer"), Session("ta-admin")
+    in_org, admin = reader("ta-org-a"), reader("")
     cached = {"org": "ta-org-a", "period": "week", "project": "999001"}  # parameters the overview reads, nobody else asks
     never = {"org": "ta-org-a", "period": "week", "project": "999002"}
-    status, body = get_json(maintainer.opener, analytics("overview", **cached))
+    status, body = in_org.call(analytics("overview", **cached))
     check(status == 200, f"the overview to keep cached: {status} {body}")
-    warm_before = probe(maintainer, "overview", **cached)
+    warm_before = probe(in_org, "overview", **cached)
     generation_before = generation()
     log(f"before the outage: overview {cached} cached ({warm_before[0]} in {warm_before[1]:.3f} s); generation "
         f"{generation_before}")
@@ -351,15 +353,15 @@ def clickhouse_down(ids: dict) -> bool:
         # two refresh runs fail while ClickHouse is down; neither may advance the generation
         runs = wait_refresh_runs(2, since)
         generation_during = generation()
-        still = probe(maintainer, "overview", **cached)
-        fresh = probe(maintainer, "overview", **never)
+        still = probe(in_org, "overview", **cached)
+        fresh = probe(in_org, "overview", **never)
         kept = {"runs": runs, "generation": generation_during, "cached": still, "never": fresh}
         log(f"with ClickHouse down, after {runs} refresh runs: generation {generation_before} -> {generation_during}; "
             f"the cached overview {still[0]} in {still[1]:.3f} s; one never cached {fresh[0]} in {fresh[1]:.2f} s {fresh[2]}")
         log(django_cache("advance"))  # nothing cached: every read goes to the worker
         ok, ops = core_operations(ids)
         for round_ in range(3):
-            for session, endpoint, params in ((maintainer, "overview", {"org": "ta-org-a", "period": "week"}),
+            for session, endpoint, params in ((in_org, "overview", {"org": "ta-org-a", "period": "week"}),
                                               (admin, "status", {"org": ""}),
                                               (admin, "trends", {"org": "", "step": "week"})):
                 status, s, body = probe(session, endpoint, **params)
@@ -391,7 +393,7 @@ def clickhouse_down(ids: dict) -> bool:
                   f"{kept.get('runs')} failed runs and the cached answer served, one never cached 503: {cache_kept}")
 
 
-def overview_rows(session: Session, org: str) -> list | None:
+def overview_rows(session, org: str) -> list | None:
     status, body = session.call(analytics("overview", org=org, period="week"))
     if status != 200 or not body.get("processed"):
         return None
@@ -401,8 +403,8 @@ def overview_rows(session: Session, org: str) -> list | None:
 def totals_dropped(ids: dict) -> bool:
     """(c) The totals database dropped: the core operations, the analytics endpoints' answers within the wait, and
     the figures back by themselves once a refresh run has recreated the schema and history is recomputed."""
-    maintainer, admin, volume_owner = Session("ta-maintainer"), Session("ta-admin"), Session("ta-owner-v")
-    before = {"ta-org-a": overview_rows(maintainer, "ta-org-a"), VOLUME_ORG: overview_rows(volume_owner, VOLUME_ORG)}
+    in_org, admin, in_volume = reader("ta-org-a"), reader(""), reader(VOLUME_ORG)
+    before = {"ta-org-a": overview_rows(in_org, "ta-org-a"), VOLUME_ORG: overview_rows(in_volume, VOLUME_ORG)}
     status, body = admin.call(analytics("status", org=""))
     cutover_before = (body.get("cutover") or {}).get("at") if status == 200 else None
     check(all(v is not None for v in before.values()), f"figures before the drop: {before}")
@@ -413,7 +415,7 @@ def totals_dropped(ids: dict) -> bool:
     log(django_cache("advance"))  # nothing cached: the reads meet the missing database
     ok, ops = core_operations(ids)
     answers = []
-    for endpoint, session, params in (("overview", maintainer, {"org": "ta-org-a", "period": "week"}),
+    for endpoint, session, params in (("overview", in_org, {"org": "ta-org-a", "period": "week"}),
                                       ("status", admin, {"org": ""})):
         status, s, body = probe(session, endpoint, **params)
         answers.append((endpoint, status, round(s, 2), body))
@@ -440,7 +442,7 @@ def totals_dropped(ids: dict) -> bool:
             if "complete" not in marks and (body.get("history") or {}).get("complete"):
                 marks["complete"] = elapsed
                 log(f"history complete again after {elapsed:.0f} s; cutover {cutover_after}")
-        for org, session in (("ta-org-a", maintainer), (VOLUME_ORG, volume_owner)):
+        for org, session in (("ta-org-a", in_org), (VOLUME_ORG, in_volume)):
             if f"figures {org}" not in marks and "schema" in marks:
                 rows = overview_rows(session, org)
                 if rows is not None and rows == before[org]:
@@ -482,35 +484,47 @@ def isolation(part: str | None) -> None:
 
 
 def cross_org() -> None:
-    a, b = Session("ta-maintainer"), Session("ta-maintainer-b")
-    admin = Session("ta-admin")
+    """Only administrators read, so the cache is shared by administrators reading different scopes: an answer cached
+    for one scope must never be served for another. With a new generation before each order (the first read is a
+    miss), the administrator asks the same parameters for ta-org-a, ta-org-b and instance scope, in two orders;
+    each scope must get its own figures (the tracer's, stack_api.WORK; instance scope leads with both
+    organizations' annotators and lists more). Then a maintainer asking parameters the administrator has just
+    cached is still refused: the refusal is decided before the cache."""
+    readers = {"ta-org-a": reader("ta-org-a"), "ta-org-b": reader("ta-org-b"), "": reader("")}
+    want_org = {"ta-org-a": expected_rows("ta-org-a"), "ta-org-b": expected_rows("ta-org-b")}
+    lead = expected_rows("ta-org-a", "ta-org-b")
     problems = []
-    for order, params in ((("a", "b"), {"period": "week", "shapes": "all"}),
-                          (("b", "a"), {"period": "week", "shapes": "bounding_boxes"})):
-        log(django_cache("advance"))  # the first request of each pair is a miss
+    for order, params in ((("ta-org-a", "ta-org-b", ""), {"period": "week", "shapes": "all"}),
+                          (("", "ta-org-b", "ta-org-a"), {"period": "week", "shapes": "bounding_boxes"})):
+        log(django_cache("advance"))  # the first request of each order is a miss
         got = {}
-        for side in order:
-            session, org = (a, "ta-org-a") if side == "a" else (b, "ta-org-b")
-            status, body = session.call(analytics("overview", org=org, **params))
-            got[side] = figures(body) if status == 200 else (status, body)
-        want = {"a": expected_rows("ta-org-a"), "b": expected_rows("ta-org-b")}
-        log(f"{' then '.join(order)} {params}: ta-org-a {got['a']}, ta-org-b {got['b']}")
-        if got != want:
-            problems.append(f"{order} {params}: {got}, expected {want}")
-    for order in (("admin", "maintainer"), ("maintainer", "admin")):
-        log(django_cache("advance"))
-        keys = {}
-        for who in order:
-            session = admin if who == "admin" else a
-            status, body = session.call(analytics("status", org="ta-org-a"))
-            keys[who] = sorted(ADMIN_ONLY_HISTORY & set((body.get("history") or {}) if status == 200 else {}))
-        log(f"status org=ta-org-a, {' then '.join(order)}: administrator-only history keys {keys}")
-        if keys != {"admin": sorted(ADMIN_ONLY_HISTORY), "maintainer": []}:
-            problems.append(f"status {order}: {keys}")
+        for org in order:
+            status, body = readers[org].call(analytics("overview", org=org, **params))
+            got[org] = figures(body) if status == 200 else (status, str(body)[:200])
+        log(f"{' then '.join(o or 'instance' for o in order)} {params}: "
+            + "; ".join(f"{o or 'instance'} {got[o]}" for o in order))
+        for org, rows in want_org.items():
+            if got[org] != rows:
+                problems.append(f"{order} {params}: {org} got {got[org]}, expected {rows}")
+        instance = got[""]
+        # instance scope holds every organization: the two tracer organizations' annotators lead (they work the
+        # most, stack_api.py check-tracer) and more rows follow, so it equals neither organization's answer
+        if not (isinstance(instance, list) and instance[: len(lead)] == lead
+                and len(instance) > len(lead) and instance not in want_org.values()):
+            problems.append(f"{order} {params}: instance scope got {instance}, expected to lead with {lead} and "
+                            f"list more")
+    # the maintainer of ta-org-a asks exactly what the administrator has just cached for ta-org-a
+    params = {"org": "ta-org-a", "period": "week", "shapes": "all"}
+    status, body = readers["ta-org-a"].call(analytics("overview", **params))
+    status_m, body_m = Session("ta-maintainer").call(analytics("overview", **params))
+    log(f"administrator, then ta-maintainer, overview {params}: {status}, then {status_m} {str(body_m)[:120]}")
+    if status != 200 or (status_m, refusal(status_m, body_m)) != (403, "forbidden"):
+        problems.append(f"after the administrator's {status}, ta-maintainer got {status_m} {str(body_m)[:200]}, "
+                        f"expected 403 forbidden")
     if problems:
         raise SystemExit(f"[acceptance] FAIL cross-org: {problems}")
-    result("cross-org", True, "each organization's maintainer got its own figures in either order; the administrator's "
-                              "status was not served to the maintainer, nor the maintainer's to the administrator")
+    result("cross-org", True, "each scope (ta-org-a, ta-org-b, instance) got its own figures in either order with the "
+                              "same parameters; an answer the administrator cached was not served to a maintainer")
 
 
 # ---------------------------------------------------------------- load
@@ -548,10 +562,11 @@ class Sampler:
             self.once("annotations")
 
 
-def overview_client(session: Session, params: dict, out: list) -> None:
-    """One reader: asks for an overview until it has figures, after each 429 waiting its Retry-After, within the
-    client's budget; records (params, status, total seconds, attempts, processed)."""
-    path = analytics("overview", org=VOLUME_ORG, **params)
+def overview_client(session, params: dict, out: list) -> None:
+    """One reader (an administrator's, stack_api.reader): asks for an overview until it has figures, after each 429
+    waiting its Retry-After, within the client's budget; records (params, status, total seconds, attempts,
+    processed)."""
+    path = session.bind(analytics("overview", org=VOLUME_ORG, **params))
     started, attempts = time.monotonic(), 0
     while True:
         attempts += 1
@@ -567,7 +582,7 @@ def overview_client(session: Session, params: dict, out: list) -> None:
     out.append((params, status, elapsed, attempts, processed))
 
 
-def burst(owner: Session, sampler: Sampler, param_sets: list[dict], memory: list) -> tuple[list, dict]:
+def burst(owner, sampler: Sampler, param_sets: list[dict], memory: list) -> tuple[list, dict]:
     """Twelve overview clients at once while the sampler reads the core endpoints and the refresh lock and the
     memory of the worker and of ClickHouse are watched."""
     readers: list = []
@@ -623,8 +638,9 @@ def mark_history_pending(older_than_days: int) -> int:
 
 
 def load() -> None:
-    owner = Session("ta-owner-v")
-    client = Client("ta-owner-v")
+    owner = Session("ta-owner-v")  # lists the volume's jobs, projects and members through CVAT
+    client = Client("ta-owner-v")  # the core endpoints' sampler
+    in_volume = reader(VOLUME_ORG)  # the overview bursts
     jobs = owner.request("GET", f"/api/jobs?org={VOLUME_ORG}&page_size=100")["results"]
     check(jobs, f"{VOLUME_ORG} has no jobs (run.sh load-volume first)")
     job = jobs[0]["id"]
@@ -670,7 +686,7 @@ def load() -> None:
             pending_start = pending_days()
             generation_start = generation()
             since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 1))
-            readers, held = burst(owner, sampler, sets, memory)
+            readers, held = burst(in_volume, sampler, sets, memory)
             readers_all += readers
             times = sorted(round(r[2], 1) for r in readers)
             log(f"{name} burst {i + 1}: {len(readers)} overviews, statuses {sorted({r[1] for r in readers})}, "
@@ -823,8 +839,10 @@ def wait_refresh_runs(n: int, since: str, timeout_s: int = 300) -> int:
 
 
 def timed_get(session, path: str) -> tuple[int, float, object, dict]:
+    """One GET, not retried, timed; an administrator's reader (stack_api.reader) sends it in its own scope."""
+    bind = getattr(session, "bind", None)
     started = time.monotonic()
-    status, body, headers = raw_get(session.opener, path)
+    status, body, headers = raw_get(session.opener, bind(path) if bind else path)
     return status, time.monotonic() - started, body, headers
 
 
@@ -833,18 +851,18 @@ def review() -> None:
     over their length are refused by the API, every refusal and 429 carries no-store, the generation is a counter
     that moves once per refresh run, copies of the refresh job piled up while no worker ran are removed."""
     oks: list[bool] = []
-    maintainer, worker = Session("ta-maintainer"), Session("ta-worker")
+    in_org, maintainer, worker = reader("ta-org-a"), Session("ta-maintainer"), Session("ta-worker")
     anonymous = type("Anonymous", (), {"opener": urllib.request.build_opener()})()
 
     # 1. a parameter the overview does not read changes neither the key nor the job
     base = {"org": "ta-org-a", "period": "week", "shapes": "all"}
-    get_json(maintainer.opener, analytics("overview", **base))  # cached now
+    in_org.call(analytics("overview", **base))  # cached now
     since = utc_now()
-    warm = timed_get(maintainer, analytics("overview", **base))
+    warm = timed_get(in_org, analytics("overview", **base))
     times = []
     for name in ("search", "cachebust"):
         for v in range(5):
-            status, s, body, _ = timed_get(maintainer, analytics("overview", **base, **{name: f"x{v}-{name}"}))
+            status, s, body, _ = timed_get(in_org, analytics("overview", **base, **{name: f"x{v}-{name}"}))
             times.append((name, v, status, round(s, 3)))
     time.sleep(2)
     jobs = read_jobs_since(since)
@@ -857,11 +875,11 @@ def review() -> None:
     since = utc_now()
     cases = []
     for params in ({"tz": "A" * 65}, {"month": "2026-111"}):
-        status, s, body, _ = timed_get(maintainer, analytics("overview", org="ta-org-a", period="week", **params))
+        status, s, body, _ = timed_get(in_org, analytics("overview", org="ta-org-a", period="week", **params))
         cases.append((list(params)[0], status, round(s, 3), body))
     time.sleep(2)
     api_jobs = read_jobs_since(since)
-    status, s, body, _ = timed_get(maintainer, analytics("overview", org="ta-org-a", period="fortnight"))
+    status, s, body, _ = timed_get(in_org, analytics("overview", org="ta-org-a", period="fortnight"))
     time.sleep(2)
     worker_jobs = [j for j in read_jobs_since(since) if "fortnight" in j]
     ok = (all(st == 400 and t < 1.0 and isinstance(b, dict) and b.get("error") == "bad_request"
@@ -874,10 +892,10 @@ def review() -> None:
 
     # 3 (without the 429, which part 6 checks): no-store on every refusal
     refusals = {
-        "403 forbidden": timed_get(worker, analytics("status", org="ta-org-a")),
-        "403 organization_required": timed_get(maintainer, analytics("status", org="")),
+        "403 worker": timed_get(worker, analytics("status", org="ta-org-a")),
+        "403 maintainer without an organization": timed_get(maintainer, analytics("status", org="")),
         "401": timed_get(anonymous, analytics("status", org="ta-org-a")),
-        "404 unknown organization": timed_get(maintainer, analytics("status", org="ta-no-such-org")),
+        "404 unknown organization (administrator)": timed_get(reader("ta-no-such-org"), analytics("status", org="ta-no-such-org")),
     }
     seen = {k: (v[0], v[3].get("cache-control"), v[2]) for k, v in refusals.items()}
     ok = all(v[1] == "no-store" for v in seen.values()) and [v[0] for v in seen.values()] == [403, 403, 401, 404]
@@ -917,7 +935,7 @@ def review() -> None:
         time.sleep(180)
         queued = redis("LRANGE", "rq:queue:team_analytics", "0", "-1")
         copies = queued.count("team_analytics_refresh")
-        status, s, body, headers = timed_get(maintainer, analytics("overview", org="ta-org-a", period="month"))
+        status, s, body, headers = timed_get(in_org, analytics("overview", org="ta-org-a", period="month"))
         log(f"6. after 180 s at zero: {copies} copies of team_analytics_refresh in rq:queue:team_analytics; an overview "
             f"meanwhile: {status} after {s:.2f} s, Retry-After {headers.get('retry-after')}, Cache-Control "
             f"{headers.get('cache-control')}")
@@ -932,7 +950,7 @@ def review() -> None:
         if any("Job OK (team_analytics_refresh)" in line for line in worker_log(since)) and left == 0:
             break
         time.sleep(3)
-    status_after, body_after = get_json(maintainer.opener, analytics("overview", org="ta-org-a", period="month"))
+    status_after, body_after = in_org.call(analytics("overview", org="ta-org-a", period="month"))
     log(f"6. after the worker came back: copies left {left} after {time.monotonic() - waited:.0f} s; the overview "
         f"{status_after}")
     ok = copies >= 2 and refused_429 and left == 0 and status_after == 200

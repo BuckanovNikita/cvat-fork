@@ -7,7 +7,8 @@
 #                         port-forward, seed, checks
 #   run.sh down           remove everything up created (succeeds when nothing exists)
 #   run.sh cycle          up, then down (also when up fails)
-#   run.sh seed           (re)load the synthetic accounts into a running stack
+#   run.sh seed           (re)load the synthetic accounts into a running stack and set the Technical
+#                         accounts list to TA_TECHNICAL_ACCOUNTS through the settings API
 #   run.sh check-worker   the analytics worker: its processes registered (the liveness probe's own
 #                         command), its restarts, its log since start
 #   run.sh check-event    send a client event through the API and find it in ClickHouse
@@ -56,8 +57,8 @@
 #                         worker); all, in this order, without STEP. Not part of up: run it on a stack up has
 #                         passed on
 #   Acceptance of the backend path (acceptance.py), not part of up, each judged and printing its numbers:
-#   run.sh check-cross-org  no cached answer is served across organizations, or from an administrator to a
-#                         maintainer
+#   run.sh check-cross-org  an administrator's cached answer is not served for another organization or for
+#                         instance scope (nor the instance answer for an organization), nor to a maintainer
 #   run.sh check-isolation [PART]
 #                         CVAT's core operations with the analytics worker at zero (twelve analytics requests
 #                         waiting), with ClickHouse at zero, and with the totals database dropped (parts
@@ -200,10 +201,11 @@ build_chart() {
 }
 
 # The Team Analytics app's settings on every backend pod (cvat/apps/team_analytics/default_settings.py),
-# as the chart's additionalEnv. JSON, because --set would split the accounts' list at its commas.
+# as the chart's additionalEnv (JSON, so a value is passed as it is). The Technical accounts list is no
+# setting: the seed sets it through the settings API (stack_api.py seed, TA_TECHNICAL_ACCOUNTS).
 analytics_env() {
     python3 -I -c 'import json, sys; a = sys.argv[1:]; print(json.dumps([{"name": n, "value": v} for n, v in zip(a[::2], a[1::2])]))' \
-        TEAM_ANALYTICS_REFRESH_INTERVAL_S "$TA_REFRESH_INTERVAL_S" TEAM_ANALYTICS_TECHNICAL_ACCOUNTS "$TA_TECHNICAL_ACCOUNTS"
+        TEAM_ANALYTICS_REFRESH_INTERVAL_S "$TA_REFRESH_INTERVAL_S"
 }
 
 # TA_ANALYTICS=off: the same release with analytics disabled (check-analytics-off and its render check).
@@ -463,10 +465,13 @@ print(base64.b64encode(json.dumps(values).encode()).decode())')"
         "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- python manage.py shell
 }
 
+# The accounts of accounts.json, read back through the API; then the Technical accounts list set to
+# TA_TECHNICAL_ACCOUNTS through the settings API as the administrator (unchanged when it already is).
 seed() {
     log "loading synthetic accounts"
     backend_shell "$HERE/seed_users.py" "$(cat "$HERE/accounts.json")" >&2
-    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I "$HERE/stack_api.py" seed
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_TECHNICAL_ACCOUNTS="$TA_TECHNICAL_ACCOUNTS" \
+        python3 -I "$HERE/stack_api.py" seed
 }
 
 clickhouse_query() {

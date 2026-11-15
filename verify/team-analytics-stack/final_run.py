@@ -39,12 +39,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # run with python3 -I, which leaves it out
 
-from stack_api import API, Session, check, get_json, refusal, upload_images
+from stack_api import ADMIN, API, Session, check, get_json, reader, refusal, upload_images
 
 UI_ORG = "ta-org-c"
 # The volume organization; another one serves a stack that already holds a volume load.
 VOLUME_ORG = os.environ.get("TA_VOLUME_ORG") or "ta-org-v"
-TECHNICAL_ACCOUNT = "ta-bot"  # run.sh sets TEAM_ANALYTICS_TECHNICAL_ACCOUNTS to it
+TECHNICAL_ACCOUNT = "ta-bot"  # on the Technical accounts list: the seed sets it (stack.env TA_TECHNICAL_ACCOUNTS)
 UI_IMAGES = 4
 BOT_BOXES = 3
 
@@ -421,7 +421,7 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
     state = json.loads(Path(state_file).read_text())
     ui, did = state["ui"], state["did"]
     project = ui["project_id"]
-    owner = Session("ta-owner-c")
+    admin = reader(UI_ORG)  # only administrators read figures
     rows = events_of(project)
     working_ms = sum(
         payload(r).get("working_time", 0)
@@ -447,7 +447,7 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
             and sum(r["working_time_ms"] for r in body["by_annotator"]["rows"]) == working_ms
         )
 
-    body = wait_figures(owner, "overview", query, ready, f"figures of project {project}", timeout_s)
+    body = wait_figures(admin, "overview", query, ready, f"figures of project {project}", timeout_s)
     ops = by_key(body["operations"]["rows"], "operation")
     methods = by_key(body["creation_methods"]["rows"], "method")
     expected_methods = {"drawn": did["drawn"], "pasted": did["pasted_objects"], "propagated": did["propagated"]}
@@ -489,7 +489,7 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
         len(top) == min(7, len(did["hotkeys"])) and body["input"]["rest"]["count"] == len(did["hotkeys"]) - len(top),
         f"top hotkeys {top}, rest {body['input']['rest']}",
     )
-    listed = ok(owner, "list", org=UI_ORG, period="week", project=project, by="hotkeys")
+    listed = ok(admin, "list", org=UI_ORG, period="week", project=project, by="hotkeys")
     every = {r["action"]: r["actions"] for r in listed["rows"]}
     check(every == did["hotkeys"], f"hotkeys in the full list {every}, pressed {did['hotkeys']}")
     inputs = {r["operation"]: (r.get("hotkey_objects"), r.get("mouse_objects")) for r in body["operations"]["rows"]}
@@ -499,7 +499,7 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
         f"started by hotkey/mouse {inputs}"
     )
 
-    boxes = ok(owner, "overview", **{**query, "shapes": "bounding_boxes"})
+    boxes = ok(admin, "overview", **{**query, "shapes": "bounding_boxes"})
     check(
         boxes["creation_methods"]["model"]["objects"] == BOT_BOXES + detector["rectangles"],
         f"Model under bounding boxes {boxes['creation_methods']['model']}",
@@ -512,7 +512,7 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
         overview = body if shapes == "all" else boxes
         model = overview["creation_methods"]["model"]
         check(set(model) == {"objects", "share"}, f"Model ({shapes}) carries {sorted(model)}")
-        details = ok(owner, "details", org=UI_ORG, period="week", project=project, by="annotators", shapes=shapes)
+        details = ok(admin, "details", org=UI_ORG, period="week", project=project, by="annotators", shapes=shapes)
         worker = [r for r in details["rows"] if r["user_name"] == "ta-worker-c"]
         check(
             len(worker) == 1 and worker[0]["model"] == want,
@@ -526,7 +526,7 @@ def check_ui_figures(state_file: str, timeout_s: int) -> None:
             f"Model ({shapes}): overview {model}, ta-worker-c in the details {worker[0]['model']} = the detector's {want}"
         )
 
-    trends = ok(owner, "trends", org=UI_ORG, project=project, step="week")
+    trends = ok(admin, "trends", org=UI_ORG, project=project, step="week")
     last = trends["lines"][0]["points"][-1]
     check(last["working_time_ms"] == working_ms, f"trends current week {last}, working time {working_ms}")
     log(f"trends: current week {last['working_time_ms']} ms, boxes {last['boxes']}")
@@ -959,7 +959,8 @@ def week_span(today: date) -> tuple[date, date]:
 
 
 def check_volume(timeout_s: int) -> None:
-    owner = Session("ta-owner-v")
+    owner = Session("ta-owner-v")  # lists the organization's projects, jobs and members through CVAT
+    admin = reader(VOLUME_ORG)  # reads the figures
     projects = volume_projects(owner)
     anchor = volume_anchor()
     check(anchor is not None, "no volume events loaded")
@@ -978,7 +979,7 @@ def check_volume(timeout_s: int) -> None:
 
     # history: every older day processed before the trends are read
     wait_figures(
-        owner,
+        admin,
         "status",
         {"org": VOLUME_ORG},
         lambda b: (b.get("history") or {}).get("complete"),
@@ -987,7 +988,7 @@ def check_volume(timeout_s: int) -> None:
     )
     query = {"org": VOLUME_ORG, "period": "week", "shapes": "all"}
     body = wait_figures(
-        owner,
+        admin,
         "overview",
         query,
         lambda b: b["processed"] and b["sessions"]["sessions"] == len(sessions),
@@ -1028,14 +1029,14 @@ def check_volume(timeout_s: int) -> None:
         f"week: {len(active)} annotators, {len(projects_active)} projects, {len(sessions)} sessions, {work} ms, "
         f"{draws} drawn, saved {draws - polygons}, hotkeys {hotkeys}, mouse {mouse}, canvas {canvas}"
     )
-    boxes = ok(owner, "overview", **{**query, "shapes": "bounding_boxes"})
+    boxes = ok(admin, "overview", **{**query, "shapes": "bounding_boxes"})
     check(
         by_key(boxes["operations"]["rows"], "operation")["creation"]["objects"] == draws - polygons,
         "bounding boxes creation",
     )
 
     # trends: weekly working time per Monday week, the scope and two annotators compared
-    trends = ok(owner, "trends", org=VOLUME_ORG, step="week")
+    trends = ok(admin, "trends", org=VOLUME_ORG, step="week")
     expected = defaultdict(int)
     for s in plan(anchor):
         expected[(s["day"] - timedelta(days=s["day"].weekday())).isoformat()] += s["k"] * GAP_S * 1000
@@ -1048,7 +1049,7 @@ def check_volume(timeout_s: int) -> None:
     )
     members = volume_members(owner)
     ids = [members[volume_user(1)], members[volume_user(2)]]
-    pair = ok(owner, "trends", org=VOLUME_ORG, step="week", compare="annotators", ids=",".join(map(str, ids)))
+    pair = ok(admin, "trends", org=VOLUME_ORG, step="week", compare="annotators", ids=",".join(map(str, ids)))
     for line, i in zip(pair["lines"], (1, 2)):
         want = defaultdict(int)
         for s in plan(anchor):
@@ -1061,9 +1062,9 @@ def check_volume(timeout_s: int) -> None:
     )
 
     # details table and full view hold everyone
-    listed = ok(owner, "list", org=VOLUME_ORG, period="week", by="annotators")
+    listed = ok(admin, "list", org=VOLUME_ORG, period="week", by="annotators")
     check(len([r for r in listed["rows"] if r["working_time_ms"] > 0]) == len(active), "full list of annotators")
-    details = ok(owner, "details", org=VOLUME_ORG, period="week", by="projects")
+    details = ok(admin, "details", org=VOLUME_ORG, period="week", by="projects")
     check(details["total"] == len(projects_active), f"details total {details['total']}")
     log(f"list: {len(listed['rows'])} annotators; details by project: {details['total']} rows")
 
@@ -1080,27 +1081,33 @@ ENDPOINTS = [
 
 
 def check_access() -> None:
-    # (account, organization slug or "", expected status, expected error)
+    # (account, organization slug or "", expected status, expected error): only administrators read, in the
+    # organization they name or, naming none, instance scope; everyone else gets DRF's plain 403
     cases = [
-        ("ta-admin", "", 200, None),
-        ("ta-admin", "ta-org-a", 200, None),
-        ("ta-admin", VOLUME_ORG, 200, None),
-        ("ta-owner", "ta-org-a", 200, None),
-        ("ta-maintainer", "ta-org-a", 200, None),
+        (ADMIN, "", 200, None),
+        (ADMIN, "ta-org-a", 200, None),
+        (ADMIN, VOLUME_ORG, 200, None),
+        (ADMIN, UI_ORG, 200, None),
+        ("ta-owner", "ta-org-a", 403, "forbidden"),
+        ("ta-owner", "", 403, "forbidden"),
+        ("ta-maintainer", "ta-org-a", 403, "forbidden"),
         ("ta-supervisor", "ta-org-a", 403, "forbidden"),
         ("ta-worker", "ta-org-a", 403, "forbidden"),
         ("ta-outsider", "ta-org-a", 403, "forbidden"),
         ("ta-outsider", "", 403, "forbidden"),
         ("ta-maintainer-b", "ta-org-a", 403, "forbidden"),
         ("ta-owner-b", "ta-org-a", 403, "forbidden"),
-        ("ta-maintainer-b", "ta-org-b", 200, None),
-        ("ta-maintainer", "", 403, "organization_required"),
+        ("ta-maintainer-b", "ta-org-b", 403, "forbidden"),
+        ("ta-maintainer", "", 403, "forbidden"),
         ("ta-worker", "", 403, "forbidden"),
-        ("ta-bot", UI_ORG, 200, None),
+        ("ta-owner-v", VOLUME_ORG, 403, "forbidden"),
+        # the technical account is a maintainer of ta-org-c: refused like any other maintainer
+        (TECHNICAL_ACCOUNT, UI_ORG, 403, "forbidden"),
+        ("ta-owner-c", UI_ORG, 403, "forbidden"),
         ("ta-worker-c", UI_ORG, 403, "forbidden"),
     ]
     for username, org, want_status, want_error in cases:
-        session = Session(username)
+        session = reader(org) if username == ADMIN else Session(username)
         seen = []
         for path, query in ENDPOINTS:
             status, body = service(session, path, org=org, **query)
@@ -1115,7 +1122,7 @@ def check_access() -> None:
     check(status == 401, f"anonymous: {status}")
     log("anonymous: 401")
     # the organization the admin names decides the scope: org a's figures only
-    a = ok(Session("ta-admin"), "overview", org="ta-org-a", period="week")
+    a = ok(reader("ta-org-a"), "overview", org="ta-org-a", period="week")
     names = {r["user_name"] for r in a["by_annotator"]["rows"]}
     check(names == {"ta-worker", "ta-supervisor"}, f"admin with ta-org-a sees {names}")
     log(f"ta-admin, org=ta-org-a: rows {sorted(names)}")

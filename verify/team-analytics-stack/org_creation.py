@@ -9,9 +9,9 @@ check-org-creation, part of up; judges itself and exits non-zero on a failure.
    matrix gives it), and an owner and a maintainer of an organization (ta-owner, ta-maintainer of ta-org-a) each send
    POST /api/organizations with a slug of their own: 403, and no organization with that slug exists afterwards.
 2. An administrator (ta-admin) creates one: 201; it is deleted again by the check, also when a later step fails.
-3. The seeded organizations still work for their maintainers: GET /api/team-analytics/status as ta-maintainer in
-   ta-org-a and as ta-maintainer-b in ta-org-b answers 200. The seed creates organizations through the ORM
-   (seed_users.py), so the rule does not reach it; this asserts it.
+3. The seeded organizations still work: GET /api/team-analytics/status as the administrator in ta-org-a and in
+   ta-org-b answers 200 (Team Analytics answers only administrators). The seed creates organizations through the
+   ORM (seed_users.py), so the rule does not reach it; this asserts it.
 
 Environment: TA_BASE_URL, TA_SEED_PASSWORD. Standard library only.
 """
@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # run with python3 -I, which leaves it out
 
-from stack_api import API, BASE_URL, Session, get_json  # noqa: E402
+from stack_api import API, BASE_URL, Session, reader  # noqa: E402
 
 ADMIN = "ta-admin"
 # (account, the global role it must have, the organization it must own or maintain, or None)
@@ -37,7 +37,7 @@ REFUSED = [
     ("ta-owner", "user", ("ta-org-a", "owner")),
     ("ta-maintainer", "user", ("ta-org-a", "maintainer")),
 ]
-MAINTAINERS = [("ta-maintainer", "ta-org-a"), ("ta-maintainer-b", "ta-org-b")]
+SEEDED = ["ta-org-a", "ta-org-b"]
 
 
 def send(session: Session, method: str, path: str, body: object = None) -> tuple[int, object]:
@@ -123,17 +123,18 @@ def check() -> None:
         if left:
             problems.append(f"the administrator's organization {value} could not be deleted")
 
-    # 3. the seeded organizations still work for their maintainers
-    for username, org in MAINTAINERS:
-        status, body = get_json(Session(username).opener, API + f"status?tz=UTC&org={org}")
-        print(f"  {username}, org={org}: GET {API}status -> {status}", flush=True)
+    # 3. the seeded organizations still work: the administrator reads each
+    for org in SEEDED:
+        session = reader(org)
+        status, body = session.call(API + f"status?tz=UTC&org={org}")
+        print(f"  {session.username}: GET {API}status -> {status}", flush=True)
         if status != 200:
-            problems.append(f"{username} in {org}: status {status} {str(body)[:200]}")
+            problems.append(f"{session.username}: status {status} {str(body)[:200]}, expected 200")
 
     if problems:
         raise SystemExit("[org-creation] FAIL: " + "; ".join(problems))
     print(f"[org-creation] PASS: {len(REFUSED)} non-administrators refused (403, nothing created), the administrator "
-          f"created one (201, deleted again), {len(MAINTAINERS)} seeded organizations answer their maintainers", flush=True)
+          f"created one (201, deleted again) and reads the {len(SEEDED)} seeded organizations", flush=True)
 
 
 if __name__ == "__main__":

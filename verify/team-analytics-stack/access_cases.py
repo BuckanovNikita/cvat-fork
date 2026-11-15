@@ -1,17 +1,19 @@
 """Four access cases of Team Analytics against the stack's real CVAT (`/api/team-analytics/`).
 Driven by run.sh; each command judges its own case and exits non-zero on a failure.
 
-    access_cases.py removed-member       a maintainer removed from ta-org-r is refused on the next
-                                         request, with no wait
+    access_cases.py removed-member       a maintainer of ta-org-r is refused (Team Analytics answers only
+                                         administrators), and still refused right after its owner removed
+                                         it; the administrator reads ta-org-r before and after
     access_cases.py group-admin          an administrator by group who is not a superuser reads
-                                         instance scope and a named organization
+                                         instance scope and a named organization, as ta-admin does
     access_cases.py personal-workspace SECS
                                          job work in ta-solo's personal workspace appears under
                                          instance scope and under no organization (waits up to SECS
                                          for the scheduled refresh)
     access_cases.py header-credentials   credentials sent as an Authorization header (Basic, and a
                                          personal access token as Bearer) get the decisions a
-                                         session cookie gets
+                                         session cookie gets: administrators 200 (404 for an unknown
+                                         organization), every other account 403
 
 Accounts: access_accounts.json (seed_access.py) and accounts.json. Environment: TA_BASE_URL,
 TA_SEED_PASSWORD. Standard library only.
@@ -30,13 +32,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # run with python3 -I, which leaves it out
 
-from stack_api import API, PASSWORD, Session, get_json, refusal, send_work, upload_images
+from stack_api import ADMIN, API, PASSWORD, Session, get_json, reader, refusal, send_work, upload_images
 
 HERE = Path(__file__).resolve().parent
 ACCESS_ACCOUNTS = json.loads((HERE / "access_accounts.json").read_text())
 ADMIN_ONLY_HISTORY = {"first_day", "days_ready", "days_total"}  # status keys only administrators get (ticket 15)
 
 
+ANY = object()  # an expected error that is not judged (a 404 of an unknown organization)
 REMOVED_ORG = "ta-org-r"
 LEAVER = "ta-leaver"
 GROUP_ADMIN = "ta-group-admin"
@@ -75,44 +78,57 @@ def overview_names(body: object) -> list[str] | None:
 
 
 def error_of(status: int, body: object) -> str | None:
-    """forbidden, not_authenticated, organization_required, ... by the exact body (stack_api.refusal)."""
+    """forbidden, not_authenticated, bad_request, ... by the exact body (stack_api.refusal)."""
     return refusal(status, body)
 
 
 # ---------------------------------------------------------------- a removed member
 
 
-def removed_member() -> None:
-    """CVAT's permission system decides on every request, and nothing caches who the caller is: the request
-    right after the removal is refused, with and without the organization."""
-    case = "removed-member"
-    owner = Session(next(u for u, r in ACCESS_ACCOUNTS["organizations"][REMOVED_ORG]["members"].items() if r == "owner"))
-    leaver = Session(LEAVER)  # one session throughout
-    path = query("status", org=REMOVED_ORG)
-    status, body = leaver.call(path)
-    if status != 200:
-        fail(case, f"{LEAVER} before the removal: {status} {body}, expected 200 (run.sh seed-access first)")
-    log(f"{LEAVER}, org={REMOVED_ORG}, a maintainer: 200")
-
-    rows = owner.request("GET", f"/api/memberships?org={REMOVED_ORG}&user={LEAVER}&page_size=100")["results"]
-    if len(rows) != 1:
-        fail(case, f"{REMOVED_ORG} has {len(rows)} memberships of {LEAVER}, expected 1")
-    owner.request("DELETE", f"/api/memberships/{rows[0]['id']}?org={REMOVED_ORG}")
-    removed_at = time.monotonic()
-    log(f"{LEAVER} removed from {REMOVED_ORG} by its owner through CVAT's API")
-    # judged at once: the first request after the removal, no wait in between
+def leaver_refused(case: str, leaver: Session, when: str) -> None:
     for org in (REMOVED_ORG, ""):
         for endpoint in ("status", "overview"):
             status, body = leaver.call(endpoint_query(endpoint, org))
             if (status, error_of(status, body)) != (403, "forbidden"):
-                fail(case, f"{LEAVER}, org={org or '-'} {endpoint} right after the removal: {status} {body}, expected 403 forbidden")
-            log(f"{LEAVER}, org={org or '-'} {endpoint}: 403 {body}")
+                fail(case, f"{LEAVER}, org={org or '-'} {endpoint} {when}: {status} {body}, expected 403 forbidden")
+            log(f"{LEAVER}, org={org or '-'} {endpoint} {when}: 403 {body}")
+
+
+def admin_reads(case: str, when: str) -> None:
+    status, body = reader(REMOVED_ORG).call(query("status", org=REMOVED_ORG))
+    if status != 200:
+        fail(case, f"{ADMIN}, org={REMOVED_ORG} status {when}: {status} {body}, expected 200")
+    log(f"{ADMIN}, org={REMOVED_ORG} status {when}: 200")
+
+
+def removed_member() -> None:
+    """Team Analytics answers only administrators: a maintainer is refused as a member and after its removal, and
+    CVAT's permission system decides on every request (nothing caches who the caller is), so the request right
+    after the removal is refused the same way, with and without the organization. The administrator reads the
+    organization before and after."""
+    case = "removed-member"
+    owner = Session(next(u for u, r in ACCESS_ACCOUNTS["organizations"][REMOVED_ORG]["members"].items() if r == "owner"))
+    leaver = Session(LEAVER)  # one session throughout
+    rows = owner.request("GET", f"/api/memberships?org={REMOVED_ORG}&user={LEAVER}&page_size=100")["results"]
+    if [r["role"] for r in rows] != ["maintainer"]:
+        fail(case, f"{REMOVED_ORG} memberships of {LEAVER}: {[r['role'] for r in rows]}, expected one maintainer "
+                   "(run.sh seed-access first)")
+    leaver_refused(case, leaver, "as a maintainer")
+    admin_reads(case, "before the removal")
+
+    owner.request("DELETE", f"/api/memberships/{rows[0]['id']}?org={REMOVED_ORG}")
+    removed_at = time.monotonic()
+    log(f"{LEAVER} removed from {REMOVED_ORG} by its owner through CVAT's API")
+    # judged at once: the first request after the removal, no wait in between
+    leaver_refused(case, leaver, "right after the removal")
     elapsed = time.monotonic() - removed_at
+    admin_reads(case, "after the removal")
     left = owner.request("GET", f"/api/memberships?org={REMOVED_ORG}&user={LEAVER}&page_size=100")["results"]
     if left:
         fail(case, f"the membership is still listed after the owner deleted it: {left}")
-    passed(case, f"{LEAVER} removed from {REMOVED_ORG}: 403 forbidden with and without the organization on the "
-                 f"next requests (all four within {elapsed:.1f} s of the removal)")
+    passed(case, f"{LEAVER}, a maintainer of {REMOVED_ORG}: 403 forbidden as a member and on the next requests after "
+                 f"its removal (all four within {elapsed:.1f} s), with and without the organization; the administrator "
+                 f"reads {REMOVED_ORG} before and after")
 
 
 # ---------------------------------------------------------------- an administrator by group
@@ -154,18 +170,20 @@ def group_admin() -> None:
                    f"is_staff={me.get('is_staff')}, expected the admin group without either flag")
     log(f"{GROUP_ADMIN}: groups={me['groups']}, is_superuser=False, is_staff=False")
     for org in ("", "ta-org-a"):
-        status, body = admin.call(query("status", org=org))
+        status, body = reader(org, GROUP_ADMIN).call(query("status", org=org))
         history = body.get("history") if isinstance(body, dict) else None
         if status != 200 or not isinstance(history, dict) or not ADMIN_ONLY_HISTORY <= set(history):
             fail(case, f"status org={org or '-'}: {status} {str(body)[:300]}, expected 200 with the administrator's history")
         log(f"{GROUP_ADMIN}, org={org or '-'} status: 200 with {sorted(ADMIN_ONLY_HISTORY)}")
-    named, owners_view = same_reads(lambda: annotators(admin, "ta-org-a"), lambda: annotators(Session("ta-owner"), "ta-org-a"))
-    if not named or named != owners_view:
-        fail(case, f"overview org=ta-org-a: {named}, expected the owner's view {owners_view}")
-    instance, superusers_view = same_reads(lambda: annotators(admin, ""), lambda: annotators(Session("ta-admin"), ""))
+    named, superusers_org = same_reads(lambda: annotators(reader("ta-org-a", GROUP_ADMIN), "ta-org-a"),
+                                       lambda: annotators(reader("ta-org-a"), "ta-org-a"))
+    if not named or named != superusers_org:
+        fail(case, f"overview org=ta-org-a: {named}, expected the superuser's view {superusers_org}")
+    instance, superusers_view = same_reads(lambda: annotators(reader("", GROUP_ADMIN), ""),
+                                           lambda: annotators(reader(""), ""))
     if instance != superusers_view or instance == named:
         fail(case, f"overview org=-: {instance}, expected the superuser's instance scope {superusers_view}")
-    log(f"{GROUP_ADMIN}, org=ta-org-a overview: {named}, as its owner sees it")
+    log(f"{GROUP_ADMIN}, org=ta-org-a overview: {named}, as the superuser ta-admin sees it")
     log(f"{GROUP_ADMIN}, org=- overview: {len(instance)} annotators, as the superuser ta-admin sees instance scope")
     passed(case, f"{GROUP_ADMIN} (admin group, not a superuser) reads instance scope and ta-org-a")
 
@@ -218,7 +236,7 @@ def personal_workspace(timeout_s: int) -> None:
         send_work(SOLO, "", ids, SOLO_MINUTES)
     want_ms = SOLO_MINUTES * 60_000
 
-    admin = Session("ta-admin")
+    admin = reader("")
     started = time.monotonic()
     while True:
         body = details(admin, "", search=SOLO)
@@ -234,12 +252,12 @@ def personal_workspace(timeout_s: int) -> None:
         fail(case, f"instance scope details by project {ids['project_id']}: {projects}")
     log(f"ta-admin, org=- details by project {ids['project_id']}: listed")
 
-    orgs = [o["slug"] for o in admin.request("GET", "/api/organizations?page_size=100")["results"]]
+    orgs = [o["slug"] for o in admin.session.request("GET", "/api/organizations?page_size=100")["results"]]
     if not orgs:
         fail(case, "ta-admin lists no organization")
     for org in orgs:
-        body = details(admin, org, search=SOLO)
-        by_project = details(admin, org, by="projects", ids=str(ids["project_id"]))
+        body = details(reader(org), org, search=SOLO)
+        by_project = details(reader(org), org, by="projects", ids=str(ids["project_id"]))
         if body is None or by_project is None:
             fail(case, f"org={org}: the week is not processed, so absence shows nothing")
         if body["rows"] or by_project["rows"]:
@@ -250,13 +268,23 @@ def personal_workspace(timeout_s: int) -> None:
 
 # ---------------------------------------------------------------- credentials as a header
 
+UNKNOWN_ORG = "ta-no-such-org"
 HEADER_CASES = [
-    # (account, organization slug or "", expected status, expected error)
-    ("ta-maintainer", "ta-org-a", 200, None),
+    # (account, organization slug or "", expected status, expected error): administrators, by group or as the
+    # superuser, read with and without an organization (an unknown one is 404, whatever its body); every other
+    # account is refused with DRF's plain 403, with or without its organization
+    (GROUP_ADMIN, "", 200, None),
+    (GROUP_ADMIN, "ta-org-a", 200, None),
+    (GROUP_ADMIN, UNKNOWN_ORG, 404, ANY),
+    (ADMIN, "", 200, None),
+    (ADMIN, "ta-org-a", 200, None),
+    ("ta-owner", "ta-org-a", 403, "forbidden"),
+    ("ta-maintainer", "ta-org-a", 403, "forbidden"),
+    ("ta-supervisor", "ta-org-a", 403, "forbidden"),
     ("ta-worker", "ta-org-a", 403, "forbidden"),
     ("ta-outsider", "ta-org-a", 403, "forbidden"),
-    ("ta-maintainer", "", 403, "organization_required"),
-    (GROUP_ADMIN, "", 200, None),
+    ("ta-maintainer", "", 403, "forbidden"),
+    ("ta-owner-r", REMOVED_ORG, 403, "forbidden"),
 ]
 HEADER_ENDPOINTS = ("status", "overview")
 TOKEN_NAME = "ta-stack-access-case"
@@ -301,7 +329,7 @@ def compare_scheme(scheme: str) -> str | None:
                 cookie, got = same_reads(lambda: decision(*session.call(path), endpoint),
                                          lambda: decision(*header_get(authorization, path), endpoint))
                 unprocessed = endpoint == "overview" and want_status == 200 and cookie[2] is None
-                if cookie[:2] != (want_status, want_error) or unprocessed:
+                if cookie[0] != want_status or (want_error is not ANY and cookie[1] != want_error) or unprocessed:
                     return f"{username}, org={org or '-'} {endpoint} with the cookie: {cookie}, expected {want_status} {want_error}"
                 if got != cookie:
                     return f"{username}, org={org or '-'} {endpoint} with {scheme}: {got}, the cookie got {cookie}"

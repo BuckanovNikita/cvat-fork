@@ -11,7 +11,8 @@
 //                                           the last frame (typed into the frame field) presses F once;
 //                                           presses the slider near its start; leaves the job. Writes what it
 //                                           did into STATE ("did") for fixes_run.py check-gestures.
-//   node fixes_browser.cjs look ORG [split] the overview of ORG at 1400 px and at 400 px: the split bars of the
+//   node fixes_browser.cjs look ORG [split] the overview of ORG (read by ta-admin, the only readers being
+//                                           administrators) at 1400 px and at 400 px: the split bars of the
 //                                           two working-time cards (with split, some row of each in several
 //                                           parts) and the definitions block, judged from the page's layout;
 //                                           full-page screenshots for the comparison with the prototype,
@@ -397,8 +398,8 @@ async function look(org, split) {
     let browser;
     try {
         browser = await launch(profile);
-        const owner = org === 'ta-org-c' ? 'ta-owner-c' : 'ta-owner-v'; // the volume's owner (final_run.py VOLUME_OWNER)
-        const page = await signIn(browser, owner, org);
+        // only administrators read Team Analytics: ta-admin with the organization selected
+        const page = await signIn(browser, 'ta-admin', org);
         await page.goto(`${BASE}/team-analytics?period=week&org=${org}`);
         await page.waitFor('!!document.querySelector(".cvat-team-analytics-annotator-row") && !document.querySelector(".cvat-team-analytics-pending") && !document.querySelector(".cvat-team-analytics-loading") && !!document.querySelector(".cvat-team-analytics-definitions")', 'the overview', 90000);
         // the address names no shapes: a period with shape-tagged events opens on Bounding boxes
