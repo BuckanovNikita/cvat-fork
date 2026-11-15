@@ -191,27 +191,34 @@ class TeamAnalyticsViewSet(viewsets.ViewSet):
         return Response(_settings_answer())
 
     def _save_settings(self, request):
-        # a body that is not JSON is told in the app's own form, not DRF's
+        # a body that is not JSON, or not sent as JSON, is told in the app's own form, not DRF's
         try:
             data = request.data
-        except exceptions.ParseError as error:
+        except (exceptions.ParseError, exceptions.UnsupportedMediaType) as error:
             return self._refuse(f"the body could not be read: {error.detail}")
         body = TechnicalAccountsWriteSerializer(data=data)
         if not body.is_valid():
             return self._refuse(first_error(body.errors))
         ids = body.validated_data["technical_accounts"]
-        retired: list[bool] = []
+        # what the callback after the commit did: None while it has not run
+        advanced: dict[str, bool | None] = {"advanced": None}
         try:
             with transaction.atomic():
                 added, removed = _replace_technical_accounts(ids)
                 # after the commit, never before: a read that starts in between must not store an
                 # answer computed on the old list under the new generation
                 transaction.on_commit(
-                    lambda: retired.append(_after_save(request.user, added, removed))
+                    lambda: advanced.update(advanced=_after_save(request.user, added, removed))
                 )
         except rules.Refused as error:
             return self._refuse(str(error))
-        if not all(retired):
+        outcome = rules.save_outcome(advanced["advanced"])
+        if outcome == rules.SAVE_NOT_ANNOUNCED:
+            log.error(
+                "the Technical accounts list was saved, but nothing ran after the commit: the answer "
+                "generation was not advanced"
+            )
+        if outcome != rules.SAVE_DONE:
             return self._json(status.HTTP_503_SERVICE_UNAVAILABLE, {"error": "unavailable"})
         return Response(_settings_answer())
 

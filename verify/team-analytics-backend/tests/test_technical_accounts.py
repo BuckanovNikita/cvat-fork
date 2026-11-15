@@ -61,6 +61,22 @@ class SavingTest(unittest.TestCase):
         self.assertEqual(names, {12: "ta-bot", 40: "gone-bot", 41: "new-bot"})
 
 
+class SaveOutcomeTest(unittest.TestCase):
+    """A committed save answers 200 only when the step after the commit ran and advanced the generation."""
+
+    def test_advanced(self):
+        self.assertEqual(rules.save_outcome(True), rules.SAVE_DONE)
+
+    def test_the_advance_failed(self):
+        self.assertEqual(rules.save_outcome(False), rules.SAVE_NOT_ADVANCED)
+
+    def test_the_step_after_the_commit_never_ran(self):
+        self.assertEqual(rules.save_outcome(None), rules.SAVE_NOT_ANNOUNCED)
+
+    def test_only_an_advanced_save_is_done(self):
+        self.assertEqual({rules.save_outcome(v) == rules.SAVE_DONE for v in (False, None)}, {False})
+
+
 class ListingTest(unittest.TestCase):
     def test_ordered_by_name_then_id_with_live_names_and_deleted_users_marked(self):
         rows = rules.listing(stored={12: "ta-bot-old", 40: "importer", 41: "importer", 7: "zeta"},

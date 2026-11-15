@@ -65,6 +65,21 @@ def changes(before: Iterable[int], after: Iterable[int]) -> tuple[list[int], lis
     return sorted(after - before), sorted(before - after)
 
 
+# How a committed save ended: the answer generation advanced; the advance failed; or the step after
+# the commit never ran. Only the first answers 200: in the other two the list is saved, but answers
+# computed on the old list are still used, and the caller is told so (503; a repeat save repairs it).
+SAVE_DONE = "done"
+SAVE_NOT_ADVANCED = "not_advanced"
+SAVE_NOT_ANNOUNCED = "not_announced"
+
+
+def save_outcome(advanced: bool | None) -> str:
+    """`advanced`: what the step after the commit returned, None when it did not run."""
+    if advanced is None:
+        return SAVE_NOT_ANNOUNCED
+    return SAVE_DONE if advanced else SAVE_NOT_ADVANCED
+
+
 def names_to_store(
     ids: Iterable[int], stored: Mapping[int, str], live: Mapping[int, str]
 ) -> dict[int, str]:
