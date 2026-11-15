@@ -10,7 +10,8 @@ Query `by` = `annotators` | `projects` | `hotkeys`, plus everything the overview
 Like the overview, `processed` says whether the whole period is processed. When it is not, the answer keeps
 `period`, `processed`, `by` and the legacy flags, and every figure (`total`, `rows`, `hotkey_actions`) is null
 (withheld.py). The hotkeys are then not read; the rows by annotator or project are, since the legacy flags come
-from that read.
+from that read. The filters and the shape switch are judged first either way: a bad value is 400 whether or not the
+period is processed.
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ def handle(request: Request) -> dict:
     if by not in KINDS:
         raise BadRequest(f"by must be one of {', '.join(KINDS)}")
     span = request.span()
+    request.scope_params()  # a bad annotator, project or shapes value is refused before the processed branch
     # read before any figure (service.Request.history)
     processed = request.history().covers(span.start, span.end)
     if by == "hotkeys":
