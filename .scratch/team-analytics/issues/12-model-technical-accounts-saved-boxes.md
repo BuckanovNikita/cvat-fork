@@ -10,7 +10,7 @@
 - [x] A technical account is absent from annotator lists, sessions and working time.
 - [x] Every single-frame rectangle a technical account saves counts as Model for the project it was saved in.
 - [x] A re-upload by a technical account counts again, and the page says so next to the figure.
-- [x] Boxes made with the built-in detector in the annotation view are recorded by the UI, inside an event type the stock server accepts, and count as Model for the annotator who ran it and for the project.
+- [x] Boxes made with the built-in detector in the annotation view, with the model list and the model's answer supplied in the browser, are recorded by the real UI inside `debug:info`, accepted by the stock server, and count as Model for the annotator who ran it and for the project. A deployed model function is not exercised.
 - [x] Model appears as a fourth creation method with a count and a share and no time, and is never part of the Creation operation or its average.
 - [x] The headline figure for boxes created shows Model boxes beside it, not inside it.
 - [x] Saved boxes are counted per annotator and per project from what the server recorded when jobs were saved.
@@ -22,3 +22,5 @@
 2026-11-14: Resolved on `feat/team-analytics-page` by merge `f3f1691`. Review fixes that followed are in merge `401576e`. Live results, review outcomes and what remains unverified: `docs/evidence/2026-11-14-team-analytics-final-run.md`.
 
 2026-11-14: Note on the detector record: on the live stack it was sent through the real CVAT API in the shape the UI produces, not by the real UI, because the stack has no model function. The UI call site is covered by tests with the real cvat-core logger and a recording transport.
+
+2026-11-15: Ticket 27 of the defect fixes restated the detector criterion, ticked on a reading when a script sent the record (decisions ledger, V11), as what the fresh stack showed. Original wording: "Boxes made with the built-in detector in the annotation view are recorded by the UI, inside an event type the stock server accepts, and count as Model for the annotator who ran it and for the project." Evidence: `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`.

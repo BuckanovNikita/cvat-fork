@@ -11,6 +11,7 @@ Environment: TA_BASE_URL, TA_SEED_PASSWORD. Standard library only.
 import http.cookiejar
 import json
 import os
+import re
 import struct
 import sys
 import time
@@ -31,6 +32,18 @@ ACCOUNTS = json.loads((Path(__file__).parent / "accounts.json").read_text())
 EXTRA_PAYLOAD = {"shape_type": "rectangle"}
 
 
+THROTTLE_WAIT_S = 300
+
+
+def _retry_after(error: urllib.error.HTTPError, detail: str) -> int | None:
+    """The seconds a 429 asks for: its Retry-After header, else the number in DRF's detail text."""
+    header = error.headers.get("Retry-After") if error.headers else None
+    if header and header.strip().isdigit():
+        return int(header.strip()) + 1
+    found = re.search(r"available in (\d+) second", detail)
+    return int(found.group(1)) + 1 if found else None
+
+
 class Session:
     def __init__(self, username: str) -> None:
         self.jar = http.cookiejar.CookieJar()
@@ -49,11 +62,22 @@ class Session:
         if method != "GET":
             req.add_header("Origin", BASE_URL)
             req.add_header("X-CSRFTOKEN", self._csrf())
-        try:
-            with self.opener.open(req, timeout=60) as resp:
-                text = resp.read().decode()
-        except urllib.error.HTTPError as e:
-            raise SystemExit(f"{self.username}: {method} {path} -> {e.code} {e.read().decode()[:300]}") from None
+        # CVAT throttles requests (the login above all, after the volume's hundred sign-ins) with a 429 that
+        # names the wait; the request is sent again after it, within THROTTLE_WAIT_S in all
+        waited = 0
+        while True:
+            try:
+                with self.opener.open(req, timeout=60) as resp:
+                    text = resp.read().decode()
+                break
+            except urllib.error.HTTPError as e:
+                detail = e.read().decode()[:300]
+                wait = _retry_after(e, detail) if e.code == 429 else None
+                if wait is None or waited + wait > THROTTLE_WAIT_S:
+                    raise SystemExit(f"{self.username}: {method} {path} -> {e.code} {detail}") from None
+                print(f"  {self.username}: {method} {path} throttled, again in {wait} s", file=sys.stderr, flush=True)
+                time.sleep(wait)
+                waited += wait
         return json.loads(text) if text.strip() else None
 
     def call(self, path: str) -> tuple[int, object]:
@@ -86,11 +110,20 @@ def seed_check() -> None:
         print(f"  {username}: groups={groups}")
     for slug, spec in ACCOUNTS["organizations"].items():
         owner = next(u for u, r in spec["members"].items() if r == "owner")
-        page = Session(owner).request("GET", f"/api/memberships?org={slug}&page_size=100")
-        found = {m["user"]["username"]: (m["role"], m["is_active"]) for m in page["results"]}
+        session, found, n = Session(owner), {}, 1
+        while True:  # every page: the volume's organization holds more than one
+            page = session.request("GET", f"/api/memberships?org={slug}&page_size=100&page={n}")
+            found.update({m["user"]["username"]: (m["role"], m["is_active"]) for m in page["results"]})
+            if not page.get("next"):
+                break
+            n += 1
         expected = {u: (r, True) for u, r in spec["members"].items()}
-        check(found == expected, f"{slug} memberships {found}")
-        print(f"  {slug}: {found}")
+        # on a rerun the final run's volume annotators are members too (final_run.py, VOLUME_MARK); nothing else
+        others = {u: m for u, m in found.items() if u not in expected}
+        volume = {u for u, m in others.items() if u.startswith("ta-volume-annotator-") and m == ("worker", True)}
+        check({u: found.get(u) for u in expected} == expected and set(others) == volume,
+              f"{slug} memberships {found}")
+        print(f"  {slug}: {expected}" + (f" and {len(volume)} volume annotators" if volume else ""))
     for username in ACCOUNTS["users"]:
         if any(username in o["members"] for o in ACCOUNTS["organizations"].values()):
             continue
@@ -138,24 +171,32 @@ def owner_of(org: str) -> str:
     return next(u for u, r in ACCOUNTS["organizations"][org]["members"].items() if r == "owner")
 
 
-def tiny_png(shade: int) -> bytes:
+def tiny_png(shade: int, side: int = 8) -> bytes:
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
 
-    width = height = 8
+    width = height = side
     raw = b"".join(b"\x00" + bytes([shade, shade, shade]) * width for _ in range(height))
     header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
-def upload_images(session: Session, task_id: int, org: str, count: int) -> None:
+def upload_images(
+    session: Session, task_id: int, org: str, count: int, chunk_size: int | None = None, side: int = 8
+) -> None:
+    """`count` generated square images of `side` pixels as the task's data; `chunk_size` frames per chunk
+    (CVAT's default when None)."""
     boundary = uuid.uuid4().hex
-    parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="image_quality"\r\n\r\n70\r\n'.encode()]
+    fields = {"image_quality": 70, **({"chunk_size": chunk_size} if chunk_size else {})}
+    parts = [
+        f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode()
+        for name, value in fields.items()
+    ]
     for i in range(count):
         parts.append(
             f'--{boundary}\r\nContent-Disposition: form-data; name="client_files[{i}]"; filename="frame{i}.png"\r\n'
             "Content-Type: image/png\r\n\r\n".encode()
-            + tiny_png(40 + 60 * i)
+            + tiny_png((40 + 60 * i) % 256, side)
             + b"\r\n"
         )
     parts.append(f"--{boundary}--\r\n".encode())

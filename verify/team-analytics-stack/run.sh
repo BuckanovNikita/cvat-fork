@@ -47,6 +47,11 @@
 #                         (issue_accounts.json, one without a global role), judged pass or fail
 #   run.sh check-issue-policies [patched|stock]
 #                         the same matrix's expectations against the policy engine, no server
+#   run.sh check-fixes [STEP]
+#                         the defect fixes along the path that failed (fixes_run.py, fixes_browser.cjs), each
+#                         judged: status-roles, technical-project, gestures, look, unprocessed,
+#                         sessions-at-limit (a record), cutover-restart (restarts the service); all, in this
+#                         order, without STEP. Not part of up: run it on a stack up has passed on
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -768,6 +773,49 @@ check_issue_policies() {
     [ "$rc" = 0 ] || die "issue matrix expectations differ from the $mode policies"
 }
 
+# ---------------------------------------------------------------- defect fixes
+
+# Each fix of the defect-fixes spec along the path that failed (ticket 27), on a stack up has passed on (it
+# needs the final run's tagged work and volume). Steps that change the stack's own state come last:
+# unprocessed holds the refresh lease and adds a marker event for at most two minutes, cutover-restart
+# stops the service, empties its stored cutover and starts it again. Screenshots of look go to
+# TA_SCREENSHOT_DIR, by default beside the state directory, which down leaves alone.
+FIX_STEPS=(status-roles technical-project gestures look unprocessed sessions-at-limit cutover-restart)
+FIX_SHOTS="${TA_SCREENSHOT_DIR:-$TA_CACHE_DIR/screenshots/$TA_NAMESPACE}"
+fixes_py() {
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
+        TA_NAMESPACE="$TA_NAMESPACE" TA_RELEASE="$TA_RELEASE" TA_REFRESH_INTERVAL_S="$TA_REFRESH_INTERVAL_S" \
+        python3 -I -B "$HERE/fixes_run.py" "$@"
+}
+fixes_browser() {
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
+        TA_SCREENSHOT_DIR="$FIX_SHOTS" nice -n19 node "$HERE/fixes_browser.cjs" "$@"
+}
+check_fixes() {
+    local only="${1:-}" step state="$STATE_DIR/fixes-gestures.json"
+    [ -z "$only" ] || [[ " ${FIX_STEPS[*]} " == *" $only "* ]] || die "unknown step $only (${FIX_STEPS[*]})"
+    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    mkdir -p "$STATE_DIR"
+    for step in "${FIX_STEPS[@]}"; do
+        [ -z "$only" ] || [ "$step" = "$only" ] || continue
+        log "defect fixes: $step"
+        case "$step" in
+            gestures)
+                fixes_py prepare-gestures >"$state"
+                fixes_browser gestures "$state"
+                fixes_py check-gestures "$state" ;;
+            look)
+                # ta-org-c's rows hold every operation (the bars must show several parts); the volume's
+                # organization fills both cards with eight rows and long names
+                fixes_browser look ta-org-c split
+                fixes_browser look "${TA_VOLUME_ORG:-ta-org-v}"
+                log "screenshots: $(show_path "$FIX_SHOTS")" ;;
+            *) fixes_py "$step" ;;
+        esac
+    done
+    log "defect fixes: ${only:-all steps} passed"
+}
+
 # ---------------------------------------------------------------- teardown
 
 teardown() {
@@ -875,5 +923,6 @@ case "${1:-}" in
     seed-access) seed_access ;;
     check-access) check_access_cases "${2:-}" ;;
     check-ingress-gone) check_ingress_gone ;;
+    check-fixes) check_fixes "${2:-}" ;;
     *) sed -n '5,/^set -euo/p' "$0" | sed '$d' >&2; exit 2 ;;
 esac

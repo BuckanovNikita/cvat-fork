@@ -4,12 +4,12 @@
 
 **Blocked by:** 05 (First lint run on the fork's UI code).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Test first, on the page with supplied answers: the overview ends with a definitions block that covers the terms the design names.
 - [x] Each definition is worded from `GLOSSARY.md`; where the prototype's wording differs, the glossary wins.
 - [x] The block is part of the overview and is not shown in a full view.
-- [ ] It stays inside the page's column in a narrow window.
+- [x] It stays inside the page's column in a narrow window: on the stack at 400 px the block is one column inside the page's column and the window; at 1400 px it is four columns below the details table, after every card.
 - [x] No service change is needed.
 
 ## Comments
@@ -29,3 +29,7 @@
 2026-11-14: Merged into `feat/team-analytics-page` in `7ce5a449`. On the merged tree: ESLint, stylelint and the UI type check pass; `definitions.scss` compiles with the UI's Sass against `base` (the stylesheet the evidence file lists as not compiled); seam 3 and UI logging pass with nothing skipped. Outstanding: criterion 4, the narrow window, needs a browser and is left for ticket 27, so the ticket stays open.
 
 2026-11-15: Follow-up to the independent review of tickets 23 and 24 (branch `fix/page-review`; the review is in `docs/evidence/2026-11-14-overview-bars-split-by-operation.md`, "Independent review, 2026-11-15", and this ticket's evidence points to it). The definitions held. One finding is recorded and nothing changed: when a row's operation time exceeds its working time, Other is clamped at zero and the parts fill the bar, in the full view as before and now in the overview's bars, so for such a row the parts shown add up to more than its working time, while the definitions block says of working time that every breakdown of time adds up to it. That is the service's rule, and the owner was not asked about the wording beside it. Written into `docs/fork-specification.md` ("Known limit of the split by operation"). The glossary and the block are not reworded; that is an open decision for the owner. Criterion 4 stays with ticket 27.
+
+2026-11-15: The narrow-window criterion, restated as what was shown, is ticked from ticket 27's final run (evidence: `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`): at 400 px the definitions are one column, inside the page's column and the window, after every card and below the details table; at 1400 px they are four columns there; a full view shows none. The page itself fits the window at 400 px; the document still scrolls sideways because CVAT's own header keeps the app 1025 px wide, as before.
+
+2026-11-15: Resolved on `feat/team-analytics-page` by merge `ba33aeb4` (ticket 27's final run); the narrow window on the stack is in `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`.
