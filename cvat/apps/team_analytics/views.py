@@ -191,7 +191,12 @@ class TeamAnalyticsViewSet(viewsets.ViewSet):
         return Response(_settings_answer())
 
     def _save_settings(self, request):
-        body = TechnicalAccountsWriteSerializer(data=request.data)
+        # a body that is not JSON is told in the app's own form, not DRF's
+        try:
+            data = request.data
+        except exceptions.ParseError as error:
+            return self._refuse(f"the body could not be read: {error.detail}")
+        body = TechnicalAccountsWriteSerializer(data=data)
         if not body.is_valid():
             return self._refuse(first_error(body.errors))
         ids = body.validated_data["technical_accounts"]
