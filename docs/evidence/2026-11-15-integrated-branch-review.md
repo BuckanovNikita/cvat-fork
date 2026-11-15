@@ -88,6 +88,14 @@ processed and the current one not, the week not processed, then complete after t
 step. Every other test of ticket 18 and the refresh review's midnight and two-clock tests pass
 unchanged.
 
+The fix first broke one thing, found by reading after the full run: the trend candidates sum
+working time from the first processed bucket up to now, which was sound only while processed
+buckets always ran up to now. During the waiting hour they would have summed the current,
+unprocessed bucket. An assertion added to the same test (Alice's candidate `working_time_ms` is
+null meanwhile) failed on `f276c3a9`: it was 7 minutes, the 1 minute of the current week
+included. The fix (`fecba133`) counts the
+candidates only from buckets processed up to now, as before.
+
 Left as it was, and written into the fork specification's short-window limit: status still
 counts `earliest_month`, `complete_weeks`, `ready_from` and `ready_from_day` from `ready_from`.
 So for that hour no month is offered and no complete week is counted, and the page hides
@@ -109,8 +117,9 @@ measurement in `2026-11-14-cutover-search-cost.md` stands as the size at which t
 ### Finding 3: true; fixed
 
 Checked by a probe that counted the SQL files each read sends (a month not processed, after
-one refresh, tree `b16aa045`): the overview sent ten figure reads (`list_rows.sql` twice,
-headline, sessions, time series, input, creation methods, saved boxes, operations), the
+one refresh, on `b16aa045`, which changes only the status section): the overview sent nine
+figure reads (`list_rows.sql` twice, headline, sessions, time series, input, creation methods,
+saved boxes, operations), the
 hotkeys list `list_hotkeys.sql`, and the details table `details.sql` beside
 `details_scope.sql`. The fix (`0346b65a`) decides `processed` first. The same probe on the fixed
 tree: the overview sends only `overview_operations.sql`, whose own read gives the legacy flags.
@@ -160,7 +169,8 @@ second probe ran the statement over a million raw events: the server's summary r
 timestamp come from table metadata, so "the same scan twice" overstates it. The fix
 (`11465f99`) is small anyway: the worker takes the lease and then runs `process_next`, which
 reads the next day once. If there is no day, the daily check runs when it is due, in the same
-lease. The day found is the day computed, and a day another replica computed meanwhile is
+lease (`History.next_day`, left without a caller, went in `6b43e581`). The day found is the day
+computed, and a day another replica computed meanwhile is
 found done, as before. The probe counts one run per step on the fixed tree. One cost moved: a
 step with nothing to do now claims the lease to find that out, about once per refresh
 interval. The fork specification says so. Guards, all passing unchanged: ticket 18's step
@@ -192,16 +202,21 @@ the history step. Shown on frozen copies of `e2108aa2`, each with one file broke
 
 `lock_claim.sql` and `lock_release.sql` now take the expression once, as `stamp`, through
 `INSERT ... SELECT` (`e2108aa2`). `lock_holder.sql` uses it once and is unchanged. Behaviour is
-unchanged: `tests.test_lease` passed on 23.11 (11 tests) and in the full run on the default
-image. Each of the six rule-guarding tests that ticket 20 named still fails when its rule is
+unchanged: `tests.test_lease` passed on 23.11 and in the full run on the default image, and
+`tests.test_refresh` and `tests.test_shutdown`, which take the lease on ClickHouse's own clock
+(no supplied clock), passed on 23.11 on `6b43e581`. Each of the six rule-guarding tests that ticket 20 named still fails when its rule is
 broken in a frozen copy of `e2108aa2`: claim not released on failure, release not retried, no
 renewal, lease always held, expired claim revived, unbounded renewal join.
 
 ### The whole suite
 
-Seam 1, all of it, on tree `e2108aa2` (the branch head before these documents) on the default
-image: 318 tests, OK. On 23.11 only `tests.test_lease` ran; the orchestrator reruns the whole
-suite on both images after the merge.
+- Seam 1, all of it, on `e2108aa2` on the default image: 318 tests, OK.
+- After the candidates fix, on `6b43e581`: `tests.test_history tests.test_trends tests.test_status
+  tests.test_isolation tests.test_full_view tests.test_details_table tests.test_cutover` on the
+  default image, 123 tests, OK; `tests.test_lease tests.test_refresh tests.test_shutdown
+  tests.test_history` on 23.11, 44 tests, OK.
+- The whole suite did not run on 23.11; the orchestrator reruns it on both images after the
+  merge. The merge of the integration branch that followed changed no service file.
 
 ## What the review did not look at
 
