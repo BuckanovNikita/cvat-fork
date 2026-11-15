@@ -274,11 +274,31 @@ approved() {
     return 1
 }
 
-# The fork server image (ADR 0004, build-server.sh) is in no registry: without it locally the
-# release could not start, so up stops here, before anything is built, pulled or created.
+# The fork server image (ADR 0007, build-server.sh: a full build from public bases) is in no
+# registry: without it locally the release could not start, so up stops here, before anything is
+# built, pulled or created. Then, each in a one-off container without network: the image is
+# Debian 12 and the python3 on its PATH is 3.12 (Debian's own 3.11 serves supervisord only), and
+# the policy bundle its server builds carries the tree's issue and comment policies, and with
+# analytics also the Team Analytics policy (verify/policy_bundle.sh, as build-server.sh checks).
 check_server_image() {
+    local os py work rc=0
     image_local "$TA_SERVER_IMAGE" \
         || die "fork server image $TA_SERVER_IMAGE is not local (IMAGE=$TA_SERVER_IMAGE ./build-server.sh); it is never pulled"
+    os="$(docker run --rm --pull=never --network none --cpus=1 --entrypoint sh "$TA_SERVER_IMAGE" -c '. /etc/os-release && echo "$ID $VERSION_ID"')" \
+        || die "could not read /etc/os-release in $TA_SERVER_IMAGE"
+    [ "$os" = "debian 12" ] || die "$TA_SERVER_IMAGE is '$os', expected 'debian 12' (ADR 0007)"
+    py="$(docker run --rm --pull=never --network none --cpus=1 --entrypoint sh "$TA_SERVER_IMAGE" -c 'python3 -c "import sys; print(\"%d.%d\" % sys.version_info[:2])"')" \
+        || die "could not run python3 in $TA_SERVER_IMAGE"
+    [ "$py" = "3.12" ] || die "python3 on the PATH of $TA_SERVER_IMAGE is $py, expected 3.12"
+    log "server image $TA_SERVER_IMAGE: $os, python3 $py"
+    work="$(mktemp -d)"
+    { "$ROOT/verify/policy_bundle.sh" from-image "$TA_SERVER_IMAGE" >"$work/fork.tar.gz" \
+        && "$ROOT/verify/policy_bundle.sh" check <"$work/fork.tar.gz" >&2; } || rc=1
+    { "$ROOT/verify/policy_bundle.sh" from-image "$TA_SERVER_IMAGE" analytics >"$work/analytics.tar.gz" \
+        && "$ROOT/verify/policy_bundle.sh" check-analytics <"$work/analytics.tar.gz" >&2; } || rc=1
+    rm -rf "$work"
+    [ "$rc" = 0 ] || die "the policy bundle of $TA_SERVER_IMAGE differs from the tree's policies (build it again from this tree)"
+    log "server image $TA_SERVER_IMAGE: its policy bundles, with and without analytics, carry the tree's policies"
 }
 
 # Pulls the render's missing images one at a time, at low priority, when they are approved

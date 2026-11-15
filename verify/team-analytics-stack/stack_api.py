@@ -111,8 +111,21 @@ def send(
     opener: urllib.request.OpenerDirector, method: str, path: str, body: object = None, csrf: str | None = None
 ) -> tuple[int, object]:
     """One request, not retried: (status, JSON body or text). `csrf` None sends no CSRF header (signed out)."""
+    status, answer, _ = send_full(opener, method, path, body, csrf)
+    return status, answer
+
+
+def send_full(
+    opener: urllib.request.OpenerDirector,
+    method: str,
+    path: str,
+    body: object = None,
+    csrf: str | None = None,
+    headers: dict | None = None,
+) -> tuple[int, object, dict]:
+    """send() with extra request headers, answering the response headers too (lower-case names)."""
     data = None if body is None else json.dumps(body).encode()
-    req = urllib.request.Request(BASE_URL + path, data=data, method=method)
+    req = urllib.request.Request(BASE_URL + path, data=data, method=method, headers=headers or {})
     if data is not None:
         req.add_header("Content-Type", "application/json")
     if method != "GET" and csrf is not None:
@@ -120,13 +133,14 @@ def send(
         req.add_header("X-CSRFTOKEN", csrf)
     try:
         with opener.open(req, timeout=60) as resp:
-            status, text = resp.status, resp.read().decode()
+            status, text, got = resp.status, resp.read().decode(), resp.headers
     except urllib.error.HTTPError as e:
-        status, text = e.code, e.read().decode()
+        status, text, got = e.code, e.read().decode(), e.headers or {}
+    got = {name.lower(): value for name, value in got.items()}
     try:
-        return status, json.loads(text) if text.strip() else None
+        return status, (json.loads(text) if text.strip() else None), got
     except ValueError:
-        return status, text[:200]
+        return status, text[:200], got
 
 
 def raw_get(opener: urllib.request.OpenerDirector, path: str, headers: dict | None = None) -> tuple[int, object, dict]:

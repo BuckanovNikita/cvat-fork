@@ -39,12 +39,14 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # run with python3 -I, which leaves it out
 
 from stack_api import (  # noqa: E402
     API,
+    BASE_URL,
     SETTINGS,
     USER_SEARCH,
     Session,
@@ -56,12 +58,14 @@ from stack_api import (  # noqa: E402
     reader,
     refusal,
     send,
+    send_full,
     send_work,
     technical_accounts,
 )
-from stack_ops import WORKER, WORKER_SELECTOR, generation, scale  # noqa: E402
+from stack_ops import RELEASE, WORKER, WORKER_SELECTOR, generation, kubectl, scale  # noqa: E402
 
 PROJECT_NAMES = API + "project-names"
+SERVER_SELECTOR = f"app.kubernetes.io/instance={RELEASE},tier=backend,component=server"
 PROBE_ORG = "ta-org-s"
 PROBE = "ta-worker-s"  # joins the list and leaves it again
 PROBE_PEER = "ta-worker-s2"  # stays an annotator, so the figures do not drop to nothing
@@ -71,6 +75,9 @@ PROBE_PROJECT = "ta-settings-probe"
 UNKNOWN_ID = 2_000_000_000  # no user and no project has it
 SEARCH_LIMIT = 20
 SEARCH_MAX = 150
+# the sentence of cvat/apps/team_analytics/technical_accounts.py clean_account_ids
+NEGATIVE_DETAIL = "every technical account must be a user id: a positive integer"
+TOKEN_NAME = "ta-stack-settings-read-only"
 
 
 class Failed(Exception):
@@ -186,11 +193,75 @@ def bad_bodies(admin: Session, base: list[int]) -> str:
             need(status == 400 and refusal(status, answer) == "bad_request",
                  f"PUT settings with {what} {body}: {status} {str(answer)[:200]}, expected 400 bad_request")
             log(f"{what}: 400 {answer.get('detail') if isinstance(answer, dict) else answer}")
+            if what == "a negative id":
+                need(answer.get("detail") == NEGATIVE_DETAIL,
+                     f"a negative id: detail {answer.get('detail')!r}, expected {NEGATIVE_DETAIL!r}")
         after = generation()
     listed = ids_of(technical_accounts(admin))
     need(listed == sorted(base), f"the list after the refused saves is {listed}, expected {sorted(base)}")
     need(after == before, f"the answer generation moved from {before} to {after} over refused saves")
     return f"{len(bodies)} bad bodies refused 400 bad_request; the list {listed} and the generation {before} unchanged"
+
+
+def writes(admin: Session, base: list[int]) -> str:
+    """How the settings answer and what a write needs: `Cache-Control: no-store` on every settings answer (200,
+    400 and 403 alike); a PUT with the session cookie and its X-CSRFToken saves, one without the token is refused
+    by CSRF under session authentication; an administrator's read-only access token reads the settings and is
+    refused on PUT. The server's log has no warning about TEAM_ANALYTICS_TECHNICAL_ACCOUNTS, which the stack no
+    longer sets (the app warns only when it is set)."""
+    answers = {
+        "GET settings": send_full(admin.opener, "GET", SETTINGS),
+        "PUT settings (cookie and X-CSRFToken)": send_full(admin.opener, "PUT", SETTINGS, {"technical_accounts": base},
+                                                           admin._csrf()),
+        "GET settings/users": send_full(admin.opener, "GET", USER_SEARCH + "?search=ta-"),
+        "GET project-names": send_full(admin.opener, "GET", PROJECT_NAMES + "?ids=1"),
+        "PUT settings refused (400)": send_full(admin.opener, "PUT", SETTINGS, {"technical_accounts": [-5]},
+                                                admin._csrf()),
+        "GET settings by a maintainer (403)": send_full(Session("ta-maintainer").opener, "GET", SETTINGS),
+    }
+    want = {name: (400 if "400" in name else 403 if "403" in name else 200) for name in answers}
+    seen = {name: (status, headers.get("cache-control")) for name, (status, _, headers) in answers.items()}
+    log(f"(status, Cache-Control): {seen}")
+    need(all(seen[n] == (want[n], "no-store") for n in answers),
+         f"settings answers (status, Cache-Control) {seen}, expected each status {want} with no-store")
+    need(ids_of(answers["PUT settings (cookie and X-CSRFToken)"][1]["technical_accounts"]) == sorted(base),
+         "the PUT with the CSRF token answered another list")
+
+    # the session cookie without its CSRF token: Origin sent, X-CSRFToken not
+    status, answer, _ = send_full(admin.opener, "PUT", SETTINGS, {"technical_accounts": base},
+                                  headers={"Origin": BASE_URL})
+    detail = answer.get("detail", "") if isinstance(answer, dict) else str(answer)
+    need(status == 403 and "csrf" in str(detail).lower(),
+         f"PUT with the session cookie and no X-CSRFToken: {status} {str(answer)[:200]}, expected 403 CSRF Failed")
+    log(f"PUT without X-CSRFToken: {status} {detail}")
+
+    # a read-only personal access token of the administrator, sent as Bearer without the cookie
+    for token in admin.request("GET", "/api/auth/access_tokens?page_size=100")["results"]:
+        if token["name"] == TOKEN_NAME:  # left by an interrupted run
+            admin.request("DELETE", f"/api/auth/access_tokens/{token['id']}")
+    expiry = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    token = admin.request("POST", "/api/auth/access_tokens", {"name": TOKEN_NAME, "read_only": True,
+                                                              "expiry_date": expiry})
+    try:
+        bare = urllib.request.build_opener()
+        bearer = {"Authorization": f"Bearer {token['value']}"}
+        read_status, read_body, _ = send_full(bare, "GET", SETTINGS, headers=bearer)
+        put_status, put_body, _ = send_full(bare, "PUT", SETTINGS, {"technical_accounts": base}, headers=bearer)
+    finally:
+        admin.request("DELETE", f"/api/auth/access_tokens/{token['id']}")
+    log(f"read-only token: GET settings {read_status}, PUT settings {put_status} {str(put_body)[:120]}")
+    need(read_status == 200, f"GET settings with the administrator's read-only token: {read_status} {str(read_body)[:200]}")
+    need(put_status == 403, f"PUT settings with the administrator's read-only token: {put_status} {str(put_body)[:200]}, "
+                            "expected 403")
+    need(ids_of(technical_accounts(admin)) == sorted(base), "a refused PUT changed the list")
+
+    warned = [line for line in kubectl("logs", "-l", SERVER_SELECTOR, "-c", "cvat-backend", "--tail=-1", "--max-log-requests=10",
+                                       check=False).splitlines() if "TEAM_ANALYTICS_TECHNICAL_ACCOUNTS" in line]
+    need(not warned, f"the server's log names TEAM_ANALYTICS_TECHNICAL_ACCOUNTS although the stack no longer sets it: "
+                     f"{warned[:3]}")
+    return ("no-store on 200, 400 and 403 of the settings; PUT with the cookie and X-CSRFToken 200, without the token "
+            f"403 CSRF; the read-only token reads (200) and is refused on PUT ({put_status}); no warning about the "
+            "removed variable in the server's log")
 
 
 def generation_steps(admin: Session, base: list[int]) -> str:
@@ -442,6 +513,7 @@ def check(timeout_s: int, gone: str) -> None:
     log(f"the seeded Technical accounts list: {base}")
     parts = [
         ("refusals", lambda: refusals(admin, base)),
+        ("writes", lambda: writes(admin, base)),
         ("bad-bodies", lambda: bad_bodies(admin, base)),
         ("generation", lambda: generation_steps(admin, base)),
         ("user-search", lambda: user_search(admin)),
