@@ -119,7 +119,7 @@ test('the search narrows the options by name, ignoring case; All stays first', a
         await click(button(view.container, 'annotator'));
         await view.settle();
         const input = selector(view.container, 'annotator').querySelector('input[role="combobox"]');
-        assert.equal(document.activeElement, input, 'the search field takes focus');
+        assert.equal(document.activeElement === input, true, 'the search field takes focus');
         await type(input, 'ZO');
         assert.deepEqual(options(view.container, 'annotator'), ['All annotators', 'zoe']);
         await type(input, 'nobody');
@@ -140,9 +140,9 @@ test('picking an option sets the filter in the address as a card row does; All c
         assert.equal(history.location.search, '?project=2&org=team-org&period=week');
         assert.equal(new URL(requests.filter((sent) => sent.endpoint === 'overview').at(-1).url, 'http://localhost')
             .searchParams.get('project'), '2');
-        assert.equal(selector(view.container, 'project').querySelector('[role="listbox"]'), null, 'the dropdown closes');
+        assert.equal(selector(view.container, 'project').querySelector('[role="listbox"]') === null, true, 'the dropdown closes');
         assert.match(button(view.container, 'project').textContent, /Retail shelves/);
-        assert.equal(document.activeElement, button(view.container, 'project'), 'focus returns to the button');
+        assert.equal(document.activeElement === button(view.container, 'project'), true, 'focus returns to the button');
 
         // the selected option is marked; All removes the filter
         await click(button(view.container, 'project'));
@@ -161,7 +161,7 @@ test('the clear button stays beside an active filter, outside the dropdown butto
         const clear = selector(view.container, 'annotator').querySelector('.cvat-team-analytics-filter-clear');
         assert.ok(clear);
         assert.equal(button(view.container, 'annotator').contains(clear), false);
-        assert.equal(selector(view.container, 'project').querySelector('.cvat-team-analytics-filter-clear'), null);
+        assert.equal(selector(view.container, 'project').querySelector('.cvat-team-analytics-filter-clear') === null, true);
         await click(clear);
         await view.settle();
         assert.equal(history.location.search, '?period=week');
@@ -254,7 +254,7 @@ test('keyboard: ArrowDown opens, arrows move the active option, Enter picks, Esc
         await press(trigger, 'ArrowDown');
         await view.settle();
         const input = selector(view.container, 'annotator').querySelector('input[role="combobox"]');
-        assert.equal(document.activeElement, input);
+        assert.equal(document.activeElement === input, true);
         const listbox = selector(view.container, 'annotator').querySelector('[role="listbox"]');
         assert.equal(input.getAttribute('aria-controls'), listbox.id);
         assert.equal(trigger.getAttribute('aria-controls'), listbox.id);
@@ -266,9 +266,9 @@ test('keyboard: ArrowDown opens, arrows move the active option, Enter picks, Esc
         await press(input, 'ArrowUp');
         assert.equal(activeName(), 'bob');
         await press(input, 'Escape');
-        assert.equal(selector(view.container, 'annotator').querySelector('[role="listbox"]'), null);
+        assert.equal(selector(view.container, 'annotator').querySelector('[role="listbox"]') === null, true);
         assert.equal(trigger.getAttribute('aria-expanded'), 'false');
-        assert.equal(document.activeElement, trigger);
+        assert.equal(document.activeElement === trigger, true);
         assert.equal(history.location.search, '', 'Escape picks nothing');
 
         await press(trigger, 'ArrowDown');
@@ -280,7 +280,7 @@ test('keyboard: ArrowDown opens, arrows move the active option, Enter picks, Esc
         await press(again, 'Enter');
         await view.settle();
         assert.equal(history.location.search, '?annotator=40&org=team-org&period=week');
-        assert.equal(document.activeElement, button(view.container, 'annotator'));
+        assert.equal(document.activeElement === button(view.container, 'annotator'), true);
     });
 });
 
@@ -293,7 +293,7 @@ test('clicking outside closes the dropdown', async () => {
         await act(async () => {
             document.body.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
         });
-        assert.equal(selector(view.container, 'project').querySelector('[role="listbox"]'), null);
+        assert.equal(selector(view.container, 'project').querySelector('[role="listbox"]') === null, true);
     });
 });
 
@@ -352,8 +352,8 @@ test('the clear button gives the focus to the selector\'s button', async () => {
         clear.focus();
         await click(clear);
         await view.settle();
-        assert.equal(selector(view.container, 'annotator').querySelector('.cvat-team-analytics-filter-clear'), null);
-        assert.equal(document.activeElement, button(view.container, 'annotator'));
+        assert.equal(selector(view.container, 'annotator').querySelector('.cvat-team-analytics-filter-clear') === null, true);
+        assert.equal(document.activeElement === button(view.container, 'annotator'), true);
     });
 });
 
@@ -365,9 +365,9 @@ test('an open dropdown closes when the period or the organization changes under 
         assert.ok(selector(view.container, 'annotator').querySelector('[role="listbox"]'));
         await act(async () => { history.push('/team-analytics?period=two_weeks&org=team-org'); });
         await view.settle();
-        assert.equal(selector(view.container, 'annotator').querySelector('[role="listbox"]'), null, 'closed');
+        assert.equal(selector(view.container, 'annotator').querySelector('[role="listbox"]') === null, true, 'closed');
         assert.equal(button(view.container, 'annotator').getAttribute('aria-expanded'), 'false');
-        assert.equal(document.activeElement, button(view.container, 'annotator'), 'the focus was in it: back to the button');
+        assert.equal(document.activeElement === button(view.container, 'annotator'), true, 'the focus was in it: back to the button');
         // a filter change keeps the options: an open dropdown stays open
         await click(button(view.container, 'annotator'));
         await view.settle();

@@ -132,7 +132,7 @@ async function wait(ms) {
 test('there is no block of definitions at the end of the overview', async () => {
     await opened('?period=week', (container) => {
         assert.ok(container.querySelector('.cvat-team-analytics-cards'), 'the overview is shown');
-        assert.equal(container.querySelector('.cvat-team-analytics-definitions'), null);
+        assert.equal(container.querySelector('.cvat-team-analytics-definitions') === null, true);
         assert.doesNotMatch(container.textContent, /One uninterrupted interval of job work/);
     });
 });
@@ -227,7 +227,7 @@ test('focusing a term shows its definition; Escape hides it', async () => {
             '.cvat-team-analytics-term');
         await act(async () => { term.focus(); });
         await wait(50);
-        assert.equal(document.activeElement, term);
+        assert.equal(document.activeElement === term, true);
         assert.equal(isShown(tooltipOf(term)), true);
         assert.equal(tooltipOf(term).textContent, WORDING.Model);
         await act(async () => {
@@ -235,7 +235,7 @@ test('focusing a term shows its definition; Escape hides it', async () => {
         });
         await wait(300);
         assert.equal(isShown(tooltipOf(term)), false);
-        assert.equal(document.activeElement, term, 'focus stays on the term');
+        assert.equal(document.activeElement === term, true, 'focus stays on the term');
     });
 });
 

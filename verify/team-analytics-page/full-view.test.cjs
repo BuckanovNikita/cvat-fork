@@ -288,8 +288,8 @@ test('a full view replaces the overview, keeps the header and filters, and is pa
         await view.settle();
 
         assert.equal(search(history).get('view'), 'annotators');
-        assert.equal(view.container.querySelector('.cvat-team-analytics-cards'), null, 'the overview is replaced');
-        assert.equal(view.container.querySelector('.cvat-team-analytics-details'), null,
+        assert.equal(view.container.querySelector('.cvat-team-analytics-cards') === null, true, 'the overview is replaced');
+        assert.equal(view.container.querySelector('.cvat-team-analytics-details') === null, true,
             'the details table stays on the overview');
         assert.ok(view.container.querySelector('.cvat-team-analytics-header'));
         assert.ok(view.container.querySelector('.cvat-team-analytics-filters'));
@@ -523,7 +523,7 @@ test('a trend: a large chart, a legend with whole names and latest values on top
         // eslint-disable-next-line no-bitwise
         assert.ok(legend.compareDocumentPosition(chart.querySelector('svg')) & window.Node.DOCUMENT_POSITION_FOLLOWING,
             'the legend is above the chart');
-        assert.equal(chart.querySelector('details'), null, 'the values are not folded away');
+        assert.equal(chart.querySelector('details') === null, true, 'the values are not folded away');
         assert.equal(chart.querySelectorAll('tbody tr').length, 12);
         await click(button(view.container, 'Back to overview'));
         await view.settle();

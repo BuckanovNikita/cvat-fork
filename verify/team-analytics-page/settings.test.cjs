@@ -131,7 +131,7 @@ test('the page loads nothing of the settings until the button is used; opening l
     const { settings, Page } = openPage();
     await opened(Page, async (view) => {
         assert.equal(settings.length, 0);
-        assert.equal(modal(), null);
+        assert.equal(modal() === null, true);
         await openSettings(view);
         assert.deepEqual(settings, [{ method: 'GET', body: undefined }]);
         assert.ok(modal(), 'the modal is open');
@@ -246,7 +246,7 @@ test('while a save is on its way the modal stays open and a second Save sends no
         const before = figures.length;
         await act(async () => { finish(); });
         await view.settle();
-        assert.equal(modal(), null, 'closed once the save is answered');
+        assert.equal(modal() === null, true, 'closed once the save is answered');
         assert.ok(endpoints(figures.slice(before)).includes('overview'), 'and the figures reload');
     });
 });
@@ -280,7 +280,7 @@ test('a save answered after its modal was closed and opened again changes nothin
         await view.settle();
         await act(async () => { finish[0]({ status: 400, body: null, message: 'An old failure.' }); });
         await view.settle();
-        assert.equal(document.body.querySelector('.cvat-team-analytics-settings-error'), null, 'no old error');
+        assert.equal(document.body.querySelector('.cvat-team-analytics-settings-error') === null, true, 'no old error');
         assert.equal(document.body.querySelector('.cvat-team-analytics-settings-save').classList.contains('ant-btn-loading'),
             false, 'not saving');
         // the new opening saves on its own
@@ -318,7 +318,7 @@ test('removing and adding, then Save, sends the whole list of ids; the modal clo
         await click(document.body.querySelector('.cvat-team-analytics-settings-save'));
         await view.settle();
         assert.deepEqual(settings.at(-1), { method: 'PUT', body: { technical_accounts: [40, 51] } });
-        assert.equal(modal(), null, 'the modal closes');
+        assert.equal(modal() === null, true, 'the modal closes');
         const reloaded = endpoints(figures.slice(before));
         for (const endpoint of ['overview', 'details', 'trends']) {
             assert.ok(reloaded.includes(endpoint), `${endpoint} is asked again: ${reloaded}`);
@@ -375,7 +375,7 @@ test('Cancel sends nothing and leaves the list as it was', async () => {
         await click(modal().querySelector('[aria-label="Remove ta-bot"]'));
         await click(document.body.querySelector('.cvat-team-analytics-settings-cancel'));
         await view.settle();
-        assert.equal(modal(), null);
+        assert.equal(modal() === null, true);
         assert.deepEqual(settings.map((sent) => sent.method), ['GET']);
         await openSettings(view);
         assert.deepEqual(rows(), ['ta-bot', 'deleted account, id 40'], 'opened again from the server\'s list');
@@ -386,7 +386,7 @@ test('a refusal while the modal is open closes it: a 401 on the settings, a 403 
     const signedOut = openPage({ settings: () => ({ status: 401, body: null }) });
     await opened(signedOut.Page, async (view) => {
         await openSettings(view);
-        assert.equal(modal(), null, 'closed');
+        assert.equal(modal() === null, true, 'closed');
         assert.ok(view.container.querySelector('.cvat-team-analytics-signed-out'));
     });
     const refused = openPage({ users: () => ({ status: 403, body: null }) });
@@ -394,7 +394,7 @@ test('a refusal while the modal is open closes it: a 401 on the settings, a 403 
         await openSettings(view);
         assert.ok(modal(), 'open with its list');
         await searchFor(view, 'ta');
-        assert.equal(modal(), null, 'closed');
+        assert.equal(modal() === null, true, 'closed');
         assert.ok(view.container.querySelector('.cvat-team-analytics-denied'));
     });
 });
