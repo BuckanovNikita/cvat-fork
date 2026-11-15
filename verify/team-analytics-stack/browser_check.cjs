@@ -5,7 +5,8 @@
 //   the administrator, with ta-org-a selected, sees the header link, opens the page and reads the
 //   organization's figures (Team Analytics answers only administrators);
 //   the owner, the maintainer and the worker of ta-org-a see no link, get "not available" on a direct
-//   visit and a refusal from the API when the browser calls it with their session.
+//   visit while their pages send no request to /api/team-analytics/ at all, and a refusal from the API
+//   when the browser calls it with their session.
 //
 // Environment: TA_BASE_URL, TA_SEED_PASSWORD, TA_BROWSER_BIN (google-chrome),
 // TA_SCREENSHOT_DIR (optional: PNGs of what each account saw).
@@ -181,6 +182,18 @@ async function administrator(browser) {
 // visit and CVAT's refusal from the API.
 async function refused(browser, username, linkDelayMs) {
     const page = await signIn(browser, username, username === 'ta-outsider' ? '' : ORG);
+    // from here until the browser's own call below, the page itself must send nothing to /api/team-analytics/: not
+    // with the header on CVAT's start page, not on a direct visit that ends in the not-available state
+    const analyticsRequests = [];
+    const watch = (message) => {
+        if (message.sessionId !== page.sessionId || message.method !== 'Network.requestWillBeSent') return;
+        const { request } = message.params;
+        if (new URL(request.url).pathname.startsWith('/api/team-analytics/')) {
+            analyticsRequests.push(`${request.method} ${new URL(request.url).pathname}`);
+        }
+    };
+    browser.listeners.add(watch);
+    await page.send('Network.enable', {});
     // the administrator's link appeared linkDelayMs after the organization showed; wait well past it
     await sleep(Math.max(5000, 3 * linkDelayMs));
     check(!(await page.evaluate(`!!(${LINK})`)), `${username} sees the Team Analytics link`);
@@ -189,6 +202,10 @@ async function refused(browser, username, linkDelayMs) {
     const denied = await page.waitFor(
         'document.querySelector(".cvat-team-analytics-denied")?.textContent.trim()', `the not-available state for ${username}`,
     );
+    await sleep(3000); // anything the page would send after it settled
+    browser.listeners.delete(watch);
+    check(analyticsRequests.length === 0, `${username}'s pages sent ${JSON.stringify(analyticsRequests)} to /api/team-analytics/, `
+        + 'expected no request at all (the header of the start page, then a direct visit to /team-analytics)');
     await page.screenshot(`${username}-team-analytics`);
     check(denied.includes('Team analytics is not available') && denied.includes(DENIED_TEXT),
         `${username} sees "${denied}", expected "Team analytics is not available" and "${DENIED_TEXT}"`);
@@ -199,7 +216,8 @@ async function refused(browser, username, linkDelayMs) {
         `fetch("/api/team-analytics/overview?period=week&tz=UTC&org=${ORG}").then((r) => r.status)`,
     );
     check(status === 403, `CVAT's analytics API answered ${username} with ${status}, expected 403`);
-    log(`${username}: no header link, direct visit shows "${denied.slice(0, 60)}", API call ${status}`);
+    log(`${username}: no header link, direct visit shows "${denied.slice(0, 60)}" with no request to /api/team-analytics/, `
+        + `the browser's own API call ${status}`);
 }
 
 async function main() {
