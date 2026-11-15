@@ -226,8 +226,12 @@ test('while a save is on its way the modal stays open and a second Save sends no
     await opened(Page, async (view) => {
         await openSettings(view);
         const save = () => document.body.querySelector('.cvat-team-analytics-settings-save');
-        await click(save());
-        await click(save());
+        // a double click: both before the button can render its loading state, so only the modal's own guard
+        // can stop the second
+        await act(async () => {
+            save().dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+            save().dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+        });
         await view.settle();
         await click(document.body.querySelector('.cvat-team-analytics-settings-cancel'));
         await click(document.body.querySelector('.ant-modal-close'));
@@ -264,8 +268,12 @@ test('a save answered after its modal was closed and opened again changes nothin
     const view = await mount(React.createElement(Host));
     try {
         await view.settle();
-        await click(document.body.querySelector('.cvat-team-analytics-settings-save'));
-        await click(document.body.querySelector('.cvat-team-analytics-settings-save'));
+        await act(async () => {
+            const save = document.body.querySelector('.cvat-team-analytics-settings-save');
+            save.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+            save.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+        });
+        assert.equal(finish.length, 1, 'a double click saves once');
         // closed from outside (a refusal of another request) and opened again
         await act(async () => { setOpen(false); });
         await act(async () => { setOpen(true); });
