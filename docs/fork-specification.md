@@ -807,7 +807,8 @@ outside the home directory in `INFRA_MIGRATION.md`, the platform's own notice
 text. Older evidence is not rewritten. The seed password
 reaches the backend pod through the seed script's standard input, not a
 command line. One more of upstream's chart defaults matters for a real
-deployment, not for the stack: with analytics enabled, the chart's Grafana
+deployment, not for the stack (read in the chart's values and in CVAT's
+analytics policy, not tried): with analytics enabled, the chart's Grafana
 gives every visitor the Admin role without a sign-in. The stack reaches it
 only through the loopback port-forward, after CVAT's own analytics access
 check, but any pod in the cluster can reach its Service directly. The check pipeline's output is not redacted: a failing hook

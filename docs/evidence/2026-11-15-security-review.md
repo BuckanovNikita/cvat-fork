@@ -400,8 +400,9 @@ cluster and built no image.
    stack's README now name these forms as not judged, so that neither says more than the
    guard checks. A later change to the guard should refuse a claim or claim template with a
    selector, a data source or a storage class other than unset.
-8. **Note, not a defect of the fork: the chart's Grafana is anonymous Admin.** With analytics
-   enabled, upstream's chart deploys Grafana with anonymous access in the Admin role and the
+8. **Note, not a defect of the fork: the chart's Grafana is anonymous Admin.** Read in the
+   import's chart and in CVAT's analytics policy in the local server image; not tried on a
+   stack. With analytics enabled, upstream's chart deploys Grafana with anonymous access in the Admin role and the
    sign-in form off. Through the stack it is reachable only on the loopback port-forward and
    only after the proxy has asked CVAT, which grants it to accounts with analytics access.
    Any pod in the cluster can reach its Service directly. There is no default password to
