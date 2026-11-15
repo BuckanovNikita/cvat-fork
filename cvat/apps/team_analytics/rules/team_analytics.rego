@@ -3,10 +3,12 @@ package team_analytics
 import rego.v1
 
 import data.utils
-import data.organizations
 
+# Team Analytics (its figures and its settings) is read and changed by administrators only, with or
+# without an organization selected. No organization role allows it, an owner's included.
+#
 # input: {
-#     "scope": <"view"> or null,
+#     "scope": <"view"|"update"> or null,
 #     "auth": {
 #         "user": {
 #             "id": <num>,
@@ -29,11 +31,4 @@ default allow := false
 
 allow if {
     utils.is_admin
-}
-
-# No global privilege floor: the organization role alone decides.
-allow if {
-    input.scope == utils.VIEW
-    utils.is_organization
-    organizations.has_perm(organizations.MAINTAINER)
 }

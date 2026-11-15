@@ -135,7 +135,7 @@ def _read_answer(cache, endpoint: str, scope: dict, query: dict, key: str) -> No
         generation = cache.get(GENERATION_KEY, 0)
         body = engine.answer(
             endpoint,
-            Scope(org_id=scope["org_id"], user_id=0, username="", admin=bool(scope["admin"])),
+            Scope(org_id=scope["org_id"], user_id=0, username=""),
             query,
         )
         stored = {"status": 200, "body": json.dumps(body)}

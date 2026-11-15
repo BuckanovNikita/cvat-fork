@@ -24,16 +24,12 @@ from rest_framework.response import Response
 from rq.job import JobStatus
 from rq.utils import utcnow
 
-from cvat.apps.organizations.models import Membership
-
 from . import QUEUE, reads
 from .permissions import TeamAnalyticsPermission
 
 log = logging.getLogger(__name__)
 
 READ_JOB = "cvat.apps.team_analytics.jobs.read_answer"
-# Roles that read their organization's figures (rules/team_analytics.rego).
-READING_ROLES = (Membership.OWNER, Membership.MAINTAINER)
 # States of a job that is still going to produce its answer.
 _PENDING = (JobStatus.QUEUED, JobStatus.STARTED, JobStatus.DEFERRED, JobStatus.SCHEDULED)
 # Beyond the time a job may wait (its time to live) and the time it may run (its timeout): the minute
@@ -45,17 +41,13 @@ _ABANDONED_MARGIN_S = 120
 def scope_of(request) -> dict:
     """Whose figures the caller reads, once the permission check has let them in.
 
-    In an organization: that organization's. With no organization only an administrator gets this
-    far, and reads instance scope: every organization and personal workspaces together. CVAT itself
-    reads "no organization" as the caller's personal workspace; Team Analytics has no figures of
-    one workspace, and this is the place where the two differ.
+    Only administrators get this far (rules/team_analytics.rego). With an organization selected they
+    read that organization's figures; with none, instance scope: every organization and personal
+    workspaces together. CVAT itself reads "no organization" as the caller's personal workspace;
+    Team Analytics has no figures of one workspace, and this is the place where the two differ.
     """
-    context = request.iam_context
-    organization = context["organization"]
-    return {
-        "org_id": None if organization is None else organization.id,
-        "admin": context["privilege"] == settings.IAM_ADMIN_ROLE,
-    }
+    organization = request.iam_context["organization"]
+    return {"org_id": None if organization is None else organization.id}
 
 
 def enqueue_read(job_id: str, endpoint: str, scope: dict, query: dict, key: str) -> bool:
@@ -110,17 +102,9 @@ class TeamAnalyticsViewSet(viewsets.ViewSet):
     iam_permission_class = TeamAnalyticsPermission
 
     def permission_denied(self, request, message=None, code=None):
-        """A refusal says why in one case: an owner or maintainer who named no organization is told to
-        select one. The policy only allows or refuses, so that case is told apart here."""
+        """A caller who is not signed in is told so (401); every other refusal is the plain 403."""
         if request.authenticators and not request.successful_authenticator:
             raise exceptions.NotAuthenticated()
-        if (
-            request.iam_context["organization"] is None
-            and Membership.objects.filter(
-                user=request.user, is_active=True, role__in=READING_ROLES
-            ).exists()
-        ):
-            raise exceptions.PermissionDenied({"error": "organization_required"})
         raise exceptions.PermissionDenied(detail=message, code=code)
 
     def finalize_response(self, request, response, *args, **kwargs):

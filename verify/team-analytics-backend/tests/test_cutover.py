@@ -29,8 +29,8 @@ class CutoverCase(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
         callers = self.stack.callers
-        callers.add_user("lead-a", FakeUser(2, "lead-a", memberships={"org-a": (ORG_A, "maintainer", True)}))
-        callers.add_user("lead-b", FakeUser(3, "lead-b", memberships={"org-b": (ORG_B, "maintainer", True)}))
+        callers.add_user("lead-a", FakeUser(2, "lead-a", groups=["admin"], memberships={"org-a": (ORG_A, "maintainer", True)}))
+        callers.add_user("lead-b", FakeUser(3, "lead-b", groups=["admin"], memberships={"org-b": (ORG_B, "maintainer", True)}))
 
     def get(self, endpoint: str, session: str = "lead-a", **query) -> dict:
         query.setdefault("org", "org-a" if session == "lead-a" else "org-b")
@@ -295,7 +295,7 @@ class AtStartTest(CutoverCase):
         def each_replica_reports_the_cutover(when: str) -> None:
             for number, replica in enumerate(replicas):
                 with self.subTest(when=when, replica=number):
-                    status, body = self.stack.answer("status", Scope(ORG_A, 0, "", admin=False), {}, replica.now)
+                    status, body = self.stack.answer("status", Scope(ORG_A, 0, ""), {}, replica.now)
                     self.assertEqual(status, 200, body)
                     self.assertEqual(body["cutover"], {"at": CUTOVER})
 

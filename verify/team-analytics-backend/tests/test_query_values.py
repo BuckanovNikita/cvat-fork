@@ -11,7 +11,7 @@ NOT_ASCII = ("²", "٣", "1٣")
 class QueryValuesTest(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (7, "maintainer", True)}))
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (7, "maintainer", True)}))
 
     def assertBadRequest(self, endpoint: str, **query) -> None:
         status, body = self.stack.get(API + endpoint, "lead", org="org7", **query)

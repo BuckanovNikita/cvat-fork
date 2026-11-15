@@ -7,13 +7,12 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Scope:
-    """`org_id` None means instance scope (every organization and personal workspaces). `admin`: the caller
-    is in CVAT's admin group, whether or not an organization is named."""
+    """`org_id` None means instance scope (every organization and personal workspaces). Only
+    administrators read Team Analytics, so every caller sees the same answer for the same scope."""
 
     org_id: int | None
     user_id: int
     username: str
-    admin: bool = False
 
     @property
     def instance(self) -> bool:

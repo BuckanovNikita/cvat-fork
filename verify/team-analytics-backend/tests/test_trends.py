@@ -26,7 +26,7 @@ class TrendsCase(StackTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "maintainer", True)}))
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (ORG, "maintainer", True)}))
 
     def trends_response(self, **query) -> tuple[int, dict]:
         query.setdefault("org", "org7")

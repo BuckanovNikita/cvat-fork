@@ -14,7 +14,7 @@ ALICE = (11, "alice")
 class RefreshTest(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "owner", True)}))
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (ORG, "owner", True)}))
 
     def alice_ms(self) -> int | None:
         status, body = self.stack.overview("lead", org="org7")
@@ -170,7 +170,7 @@ class LostLockTest(StackTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "owner", True)}))
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (ORG, "owner", True)}))
         self.inside, self.go_on = threading.Event(), threading.Event()
         self.addCleanup(self.go_on.set)
 

@@ -8,8 +8,8 @@ from cvat.apps.iam.permissions import OpenPolicyAgentPermission
 
 
 class TeamAnalyticsPermission(OpenPolicyAgentPermission):
-    """Who may read Team Analytics (rules/team_analytics.rego): administrators anywhere, owners and
-    maintainers inside their organization, nobody else."""
+    """Who may use Team Analytics (rules/team_analytics.rego): administrators, with or without an
+    organization selected; nobody else."""
 
     class Scopes(StrEnum):
         VIEW = "view"

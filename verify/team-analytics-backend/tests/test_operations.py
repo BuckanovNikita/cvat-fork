@@ -39,7 +39,7 @@ def seconds(text: str, offset: float) -> datetime:
 class OperationsCase(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "maintainer", True)}))
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (ORG, "maintainer", True)}))
 
     def operations(self, **query) -> dict:
         self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))

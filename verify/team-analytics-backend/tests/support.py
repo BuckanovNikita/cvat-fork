@@ -136,8 +136,9 @@ class NotAllowed(Exception):
 class PermissionStandIn:
     """A stand-in for CVAT's permission check (rules/team_analytics.rego and views.scope_of), so that tests can
     name their callers. It hands over the scope the backend would: a member of the admin group reads the named
-    organization, or instance scope when none is named; an active owner or maintainer reads the named
-    organization. Anything else raises `NotAllowed`. Test scaffolding, not product code."""
+    organization, or instance scope when none is named. Anyone else raises `NotAllowed`: only administrators read
+    Team Analytics. A user's memberships only make the organizations' slugs known. Test scaffolding, not product
+    code."""
 
     def __init__(self) -> None:
         self.users: dict[str, FakeUser] = {}  # session -> user
@@ -153,13 +154,9 @@ class PermissionStandIn:
         user = self.users.get(session or "")
         if user is None or (org_slug and org_slug not in self.organizations):
             raise NotAllowed(session, org_slug)
-        org_id = self.organizations[org_slug] if org_slug else None
-        if "admin" in user.groups:
-            return Scope(org_id=org_id, user_id=0, username="", admin=True)
-        membership = user.memberships.get(org_slug) if org_slug else None
-        if membership and membership[0] == org_id and membership[2] and membership[1] in ("owner", "maintainer"):
-            return Scope(org_id=org_id, user_id=0, username="", admin=False)
-        raise NotAllowed(session, org_slug)
+        if "admin" not in user.groups:
+            raise NotAllowed(session, org_slug)
+        return Scope(org_id=self.organizations[org_slug] if org_slug else None, user_id=0, username="")
 
 
 # --- the stack a test runs against -------------------------------------------------------------------

@@ -11,7 +11,7 @@ ORG = 7
 class ConcurrentRequestsTest(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "maintainer", True)}))
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (ORG, "maintainer", True)}))
         self.stack.add_events([
             working_time(at(f"2026-11-1{day} 10:00:00"), (n + 1) * 60_000, user=(100 + n, f"user{n}"), org=ORG,
                          project=1 + n % 3)

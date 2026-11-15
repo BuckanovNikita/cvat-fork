@@ -1,7 +1,7 @@
-"""Organization isolation on the details table, the full view lists and the trends: a maintainer of one
-organization gets nothing of another organization or of personal workspaces, whatever identifiers the page
-sends; instance scope (the admin group without an organization) holds every organization and personal workspaces.
-Who may ask for which scope is CVAT's permission check, not tested here."""
+"""Organization isolation on the details table, the full view lists and the trends: an administrator who selected
+one organization gets nothing of another organization or of personal workspaces, whatever identifiers the page
+sends; instance scope (an administrator without an organization) holds every organization and personal workspaces.
+Who may ask is CVAT's permission check (administrators only), not tested here."""
 
 from tests.support import FakeUser, StackTestCase, at, working_time
 from tests.test_bounding_boxes import BOX
@@ -31,9 +31,11 @@ class IsolationTest(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
         callers = self.stack.callers
-        callers.add_user("lead", FakeUser(2, "lead", memberships={"org-a": (ORG_A, "maintainer", True)}))
-        callers.add_user("lead-b", FakeUser(3, "lead-b", memberships={"org-b": (ORG_B, "maintainer", True)}))
-        callers.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
+        # "lead": an administrator who selected organization A (get() names it); "admin": an administrator who
+        # names an organization or none
+        callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org-a": (ORG_A, "maintainer", True)}))
+        callers.add_user("admin", FakeUser(1, "admin", groups=["admin"],
+                                           memberships={"org-b": (ORG_B, "maintainer", True)}))
         self.stack.add_events([
             *work(ALICE, ORG_A, 1, "NEXT_FRAME"),
             *work(BRUNO, ORG_B, 9, "ORG_B_ONLY"),
@@ -96,7 +98,7 @@ class IsolationTest(StackTestCase):
         self.assertEqual(self.get("overview", annotator="21")["filters"]["annotator"], {"user_id": 21, "user_name": None})
         self.assertEqual(self.get("overview", annotator="31")["filters"]["annotator"], {"user_id": 31, "user_name": None})
 
-    def test_the_admin_group_reads_instance_scope_and_a_named_organization(self):
+    def test_an_administrator_reads_instance_scope_and_a_named_organization(self):
         names = {row["user_name"] for row in self.get("details", "admin")["rows"]}
         self.assertEqual(names, {"alice", "bruno", "paul"})
         self.assertEqual({row["id"] for row in self.get("list", "admin", by="projects")["rows"]}, {1, 5, 9})
@@ -105,9 +107,9 @@ class IsolationTest(StackTestCase):
         self.assertEqual([row["user_name"] for row in self.get("details", "admin", org="org-b")["rows"]], ["bruno"])
 
 
-# What a reader who is not an administrator gets of the history block: nothing that dates the instance.
-MAINTAINER_HISTORY = {"complete", "percent", "periods", "earliest_month", "complete_weeks", "trends_ready"}
-ADMIN_ONLY_HISTORY = {"first_day", "days_ready", "days_total", "ready_from", "ready_from_day"}
+# The history block every caller gets (only administrators read): it dates the instance, whatever the scope.
+HISTORY = {"complete", "percent", "periods", "earliest_month", "complete_weeks", "trends_ready",
+           "first_day", "days_ready", "days_total", "ready_from", "ready_from_day"}
 
 
 class HistoryStatusTest(StackTestCase):
@@ -117,70 +119,58 @@ class HistoryStatusTest(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
         callers = self.stack.callers
-        callers.add_user("lead", FakeUser(2, "lead", memberships={"org-a": (ORG_A, "maintainer", True)}))
-        callers.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
+        callers.add_user("admin", FakeUser(1, "admin", groups=["admin"],
+                                           memberships={"org-a": (ORG_A, "maintainer", True)}))
         self.stack.add_events([
             working_time(at("2026-10-01 10:00:00"), 60_000, user=BRUNO, org=ORG_B, project=9),
             working_time(at("2026-11-10 10:00:00"), 60_000, user=ALICE, org=ORG_A, project=1),
         ])
         # processed from 2026-11-10 (UTC), the older days still to do
         for _ in range(10):
-            if self.status("admin")["history"]["ready_from_day"] == "2026-11-10":
+            if self.status()["history"]["ready_from_day"] == "2026-11-10":
                 break
             self.stack.engine.step()
-        self.assertEqual(self.status("admin")["history"]["ready_from_day"], "2026-11-10")
+        self.assertEqual(self.status()["history"]["ready_from_day"], "2026-11-10")
 
-    def status(self, session: str, **query) -> dict:
-        if session == "lead":
-            query.setdefault("org", "org-a")
-        status, body = self.stack.get(API + "status", session, **query)
+    def status(self, **query) -> dict:
+        status, body = self.stack.get(API + "status", "admin", **query)
         self.assertEqual(status, 200, body)
         return body
 
-    def test_a_maintainer_learns_progress_periods_freshness_and_the_cutover_but_not_the_instances_history(self):
-        body = self.status("lead")
-        self.assertEqual(set(body), {"history", "refresh", "cutover"})
-        history = body["history"]
-        self.assertEqual(set(history), MAINTAINER_HISTORY)
-        self.assertFalse(history["complete"])
-        # 4 of the 44 days from 2026-10-01 to 2026-11-13 are processed
-        self.assertEqual(history["percent"], 9)
-        self.assertEqual(history["periods"], {"week": False, "two_weeks": False, "month": False, "year": False})
-        self.assertIsNone(history["earliest_month"])
-        self.assertFalse(history["trends_ready"])
-        self.assertIn("last_success_at", body["refresh"])
-        self.assertIn("at", body["cutover"])
-
-    def test_earlier_events_of_another_organization_add_nothing_that_dates_them(self):
-        for query in ({}, {"tz": "Asia/Tokyo"}):
-            with self.subTest(**query):
-                body = self.status("lead", **query)
-                self.assertEqual(set(body["history"]), MAINTAINER_HISTORY)
-                text = repr(body)
-                for day in ("2026-10", "2026-11-10", "2026-11-09", "days"):
-                    self.assertNotIn(day, text)
-
     def test_an_administrator_gets_the_full_block_with_or_without_an_organization(self):
-        for query in ({}, {"org": "org-a"}):
+        for query in ({}, {"org": "org-a"}, {"org": "org-a", "tz": "Asia/Tokyo"}):
             with self.subTest(**query):
-                history = self.status("admin", **query)["history"]
-                self.assertEqual(set(history), MAINTAINER_HISTORY | ADMIN_ONLY_HISTORY)
-                self.assertEqual((history["first_day"], history["ready_from_day"]), ("2026-10-01", "2026-11-10"))
+                body = self.status(**query)
+                self.assertEqual(set(body), {"history", "refresh", "cutover"})
+                history = body["history"]
+                self.assertEqual(set(history), HISTORY)
+                self.assertFalse(history["complete"])
+                self.assertEqual(history["first_day"], "2026-10-01")
                 self.assertEqual((history["days_ready"], history["days_total"]), (4, 44))
-                # the percentage is the administrator's day counts, rounded down
+                # 4 of the 44 days from 2026-10-01 to 2026-11-13 are processed, rounded down
                 self.assertEqual(history["percent"], 9)
+                self.assertEqual(history["periods"],
+                                 {"week": False, "two_weeks": False, "month": False, "year": False})
+                self.assertIsNone(history["earliest_month"])
+                self.assertFalse(history["trends_ready"])
+                self.assertIn("last_success_at", body["refresh"])
+                self.assertIn("at", body["cutover"])
+
+    def test_an_organization_and_instance_scope_get_the_same_block(self):
+        self.assertEqual(self.status(org="org-a")["history"], self.status()["history"])
 
     def test_complete_history_reads_as_all_of_it(self):
         for _ in range(10):
-            if self.status("admin")["history"]["complete"]:
+            if self.status()["history"]["complete"]:
                 break
             self.stack.engine.step()
-        maintainer, admin = self.status("lead")["history"], self.status("admin", org="org-a")["history"]
-        self.assertTrue(maintainer["complete"])
-        self.assertEqual(set(maintainer), MAINTAINER_HISTORY)
-        self.assertEqual((maintainer["percent"], admin["percent"]), (100, 100))
-        self.assertEqual((admin["days_ready"], admin["days_total"]), (44, 44))
-        self.assertEqual((maintainer["complete_weeks"], maintainer["trends_ready"]), (12, True))
+        for query in ({}, {"org": "org-a"}):
+            with self.subTest(**query):
+                history = self.status(**query)["history"]
+                self.assertTrue(history["complete"])
+                self.assertEqual(history["percent"], 100)
+                self.assertEqual((history["days_ready"], history["days_total"]), (44, 44))
+                self.assertEqual((history["complete_weeks"], history["trends_ready"]), (12, True))
 
 
 class OverviewScopeTest(StackTestCase):
@@ -189,11 +179,8 @@ class OverviewScopeTest(StackTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        callers = self.stack.callers
-        callers.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
-        callers.add_user("owner", FakeUser(2, "owner", memberships={"org-a": (ORG_A, "owner", True)}))
-        callers.add_user("maintainer", FakeUser(3, "maintainer", memberships={"org-a": (ORG_A, "maintainer", True)}))
-        callers.add_user("maintainer-b", FakeUser(8, "maintainer-b", memberships={"org-b": (ORG_B, "maintainer", True)}))
+        self.stack.callers.add_user("admin", FakeUser(1, "admin", groups=["admin"], memberships={
+            "org-a": (ORG_A, "maintainer", True), "org-b": (ORG_B, "maintainer", True)}))
         self.stack.add_events([
             working_time(at("2026-11-13 10:00:00"), 100_000, user=ALICE, org=ORG_A),
             working_time(at("2026-11-13 10:00:00"), 200_000, user=BRUNO, org=ORG_B),
@@ -206,17 +193,13 @@ class OverviewScopeTest(StackTestCase):
         self.assertEqual(status, 200, body)
         return [row["user_name"] for row in body["by_annotator"]["rows"]]
 
-    def test_owner_and_maintainer_read_their_organization_only(self):
-        self.assertEqual(self.names("owner", org="org-a"), ["alice"])
-        self.assertEqual(self.names("maintainer", org="org-a"), ["alice"])
-        self.assertEqual(self.names("maintainer-b", org="org-b"), ["bruno"])
-
-    def test_admin_group_reads_a_named_organization(self):
+    def test_an_administrator_reads_a_named_organization(self):
         self.assertEqual(self.names("admin", org="org-a"), ["alice"])
         self.assertEqual(self.names("admin", org="org-b"), ["bruno"])
 
-    def test_admin_group_without_an_organization_reads_instance_scope_with_personal_workspaces(self):
+    def test_an_administrator_without_an_organization_reads_instance_scope_with_personal_workspaces(self):
         self.assertEqual(self.names("admin"), ["paul", "bruno", "alice"])
 
     def test_identifiers_sent_by_the_browser_cannot_widen_the_scope(self):
-        self.assertEqual(self.names("maintainer", org="org-a", org_id=str(ORG_B)), ["alice"])
+        self.assertEqual(self.names("admin", org="org-a", org_id=str(ORG_B)), ["alice"])
+        self.assertEqual(self.names("admin", org="org-a", instance="1"), ["alice"])
