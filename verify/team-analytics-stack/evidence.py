@@ -18,7 +18,7 @@ restored by run.sh around it).
                                     probe and is restarted; restart counts before and after; the probe's own
                                     command passes again (exit 0) within 90 s of the rollout
     evidence.py two-replicas        (two worker replicas set by run.sh) both pods ready; a burst of reads is
-                                    served, by both pods; over eight minutes at least five refresh runs that
+                                    served, by both pods; over twelve minutes at least five refresh runs that
                                     wrote, one from each pod at least, every run read from the logs with its
                                     timestamps, and none overlapping
     evidence.py snapshot FILE       the Technical accounts list and its table, before analytics is switched off
@@ -69,10 +69,12 @@ TABLE = "team_analytics_technicalaccount"
 REPLY_MARGIN_S = 2.0
 YEAR_S = 31_536_000  # rq's default failure TTL, the refresh job's
 READ_FAILURE_TTL_S = 60  # views.enqueue_read's failure_ttl of a read job
-# two-replicas: eight minutes of scheduled runs, one a minute and each due at the stack's 60 s interval, so about
-# eight that write; at least five of them, and one from each pod (both pods take jobs from the one queue: all eight
-# on one pod would be about one chance in a hundred and twenty-eight, and a failure to look into)
-TWO_REPLICAS_WINDOW_S = 480
+# two-replicas: twelve minutes of scheduled runs, one a minute. A run writes when the last refresh's data_as_of (its
+# start) is at least the stack's 60 s old (core/worker.py), so a run that starts a moment less than a minute after
+# the one before has nothing due: between every run and every other run writes, six to twelve in the window. At
+# least five, and at least one from each pod (both pods take jobs from the one queue: six on one pod is about one
+# chance in thirty-two, twelve one in two thousand; a failure prints the counts by pod to judge it by)
+TWO_REPLICAS_WINDOW_S = 720
 TWO_REPLICAS_MIN_WROTE = 5
 
 
@@ -260,11 +262,12 @@ def registry_pids(pod: str) -> list[str]:
     return pids
 
 
-def kill_rq(pod: str) -> tuple[str, list[int]]:
-    """SIGKILL to the rq processes of `pod` (KILL_RQ); how they were found and their pids. Fails unless at least one
-    was killed and, a few seconds on, none of them runs any more."""
-    registered = registry_pids(pod)
+def kill_rq(pod: str, registered: list[str]) -> tuple[str, list[int], float]:
+    """SIGKILL to the rq processes of `pod` (KILL_RQ; `registered`: the registry's pids, read beforehand so that the
+    kill follows the job's start at once); how they were found, their pids and when they were killed (monotonic).
+    Fails unless at least one was killed and, a few seconds on, none of them runs any more."""
     out = kubectl("exec", pod, "-c", "cvat-backend", "--", "python3", "-c", KILL_RQ, ",".join(registered))
+    killed_at = time.monotonic()
     found = json.loads(out.strip().splitlines()[-1])
     how, pids = found["how"], found["pids"]
     need(bool(pids), f"no rq process of {pod} found to kill, neither by its command line ('rqworker') nor by the "
@@ -274,7 +277,7 @@ def kill_rq(pod: str) -> tuple[str, list[int]]:
     need(not alive, f"rq processes {alive} of {pod} still run 3 s after SIGKILL")
     log(f"rq processes of {pod} found by {how} (registry pids {registered}): SIGKILL to {pids}; 3 s on none of them "
         "runs (supervisord starts new ones)")
-    return how, pids
+    return how, pids, killed_at
 
 
 def started_reads() -> list[str]:
@@ -292,6 +295,7 @@ def killed_worker() -> str:
     since = utc_now()
     pod = first_pod(WORKER_SELECTOR)
     job = None
+    registered = registry_pids(pod)
     try:
         stopped = clickhouse_signal("STOP")  # the read job's statements wait on ClickHouse: the job is mid-read
         log(f"ClickHouse's server process stopped (SIGSTOP to {stopped} processes)")
@@ -307,8 +311,7 @@ def killed_worker() -> str:
             time.sleep(0.5)
         need(job is not None, f"no read job started while ClickHouse was held (rq:wip:{QUEUE} empty)")
         log(f"read job {job} started: {redis('HGET', f'rq:job:{job}', 'status')}")
-        how, killed = kill_rq(pod)
-        killed_at = time.monotonic()
+        how, killed, killed_at = kill_rq(pod, registered)
     finally:
         log(f"ClickHouse's server process continued (SIGCONT to {clickhouse_signal('CONT')} processes)")
     timeline = []
@@ -417,7 +420,7 @@ def liveness() -> str:
     log(f"Unhealthy events of {pod}:\n{events.strip()}")
     kubectl("rollout", "status", WORKER, "--timeout=10m")
     procs = kubectl("get", "pod", pod, "-o", 'jsonpath={.spec.containers[0].env[?(@.name=="NUMPROCS")].value}').strip()
-    passed = False
+    passed, last = False, ""
     for _ in range(30):
         try:  # kubectl() stops on a non-zero exit, which is workerprobe's failure; passing is exit 0
             kubectl("exec", pod, "-c", "cvat-backend", "--", "django-admin", "workerprobe", QUEUE,
@@ -475,7 +478,7 @@ def two_replicas() -> str:
     for t in threads:
         t.join(client_budget_s() + 30)
     log(f"burst of 12 uncached overviews (status, seconds): {sorted(results)}")
-    time.sleep(TWO_REPLICAS_WINDOW_S)  # scheduled runs (one a minute, each due at the stack's 60 s) on two replicas
+    time.sleep(TWO_REPLICAS_WINDOW_S)  # scheduled runs (one a minute) on two replicas
     by_pod = logs_by_pod(since)
     spans, reads_by_pod, wrote_by_pod, problems = [], {}, {}, []
     for pod, lines in by_pod.items():

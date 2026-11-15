@@ -183,7 +183,8 @@ async function administrator(browser) {
 async function refused(browser, username, linkDelayMs) {
     const page = await signIn(browser, username, username === 'ta-outsider' ? '' : ORG);
     // from here until the browser's own call below, the page itself must send nothing to /api/team-analytics/: not
-    // with the header on CVAT's start page, not on a direct visit that ends in the not-available state
+    // on CVAT's start page (loaded again once the network is watched), not on a direct visit that ends in the
+    // not-available state
     const analyticsRequests = [];
     const watch = (message) => {
         if (message.sessionId !== page.sessionId || message.method !== 'Network.requestWillBeSent') return;
@@ -194,6 +195,9 @@ async function refused(browser, username, linkDelayMs) {
     };
     browser.listeners.add(watch);
     await page.send('Network.enable', {});
+    // the start page CVAT opened after sign-in, loaded again while the network is watched
+    await page.goto(await page.evaluate('location.href'));
+    await page.waitFor('!!document.querySelector(".cvat-header")', `CVAT's start page for ${username} loaded again`);
     // the administrator's link appeared linkDelayMs after the organization showed; wait well past it
     await sleep(Math.max(5000, 3 * linkDelayMs));
     check(!(await page.evaluate(`!!(${LINK})`)), `${username} sees the Team Analytics link`);
@@ -205,7 +209,7 @@ async function refused(browser, username, linkDelayMs) {
     await sleep(3000); // anything the page would send after it settled
     browser.listeners.delete(watch);
     check(analyticsRequests.length === 0, `${username}'s pages sent ${JSON.stringify(analyticsRequests)} to /api/team-analytics/, `
-        + 'expected no request at all (the header of the start page, then a direct visit to /team-analytics)');
+        + 'expected no request at all (CVAT\'s start page loaded again after sign-in, then a direct visit to /team-analytics)');
     await page.screenshot(`${username}-team-analytics`);
     check(denied.includes('Team analytics is not available') && denied.includes(DENIED_TEXT),
         `${username} sees "${denied}", expected "Team analytics is not available" and "${DENIED_TEXT}"`);
