@@ -493,6 +493,8 @@ refresh, history a day at a time),
   not ready; 503 `{"error": "unavailable"}` when the read failed, or when a
   saved list could not retire the answers computed before it. Every response
   of the view set carries `Cache-Control: no-store`, refusals included.
+- Only these paths are routed: a path with a format suffix, such as
+  `status.json` or `settings.json`, is CVAT's 404 like any unknown path.
 
 ### Access
 
@@ -538,9 +540,10 @@ refresh, history a day at a time),
   was at the last save that listed it. Administrators edit it in Team
   Analytics settings on the page. It is not a setting of the deployment: the
   environment variable `TEAM_ANALYTICS_TECHNICAL_ACCOUNTS`, which held a list
-  of user names before, is no longer read. Where it is still set and not
-  empty, each process that loads the app's settings logs one warning that it
-  is ignored.
+  of user names before, no longer gives the list. It is looked at once, when
+  a process loads the app's settings, only to warn: where it is still set and
+  not empty, that process logs one warning that it is ignored and where the
+  list is kept now.
 - Membership is applied when figures are read: every read matches the
   technical accounts by user id in the stored totals, and no history is
   recomputed. A change therefore applies to every past period at the next
@@ -561,14 +564,17 @@ refresh, history a day at a time),
   an existing user, and an id already on the list is kept even when its user
   is gone, so a deleted user can stay on the list but cannot be added again.
   Anything else is refused with 400 and a sentence in `detail`, and nothing
-  changes. The save takes a lock on the table against other writers, so two
-  saves take turns and the second one replaces the first one's list; readers
-  are not held up. It commits, then advances the generation and logs who
-  added and removed which ids. If the generation cannot be advanced after the
-  commit, the answer is 503 `{"error": "unavailable"}` and the error is
-  logged: the list is saved, and answers computed before it can be served
-  until the generation next advances (the next refresh run that writes, or
-  another save; a save advances it even when the list is unchanged).
+  changes; a body that is not JSON, or is sent with another content type than
+  JSON, gets the same 400, not DRF's own answer. The save takes a lock on the
+  table against other writers, so two saves take turns and the second one
+  replaces the first one's list; readers are not held up. It commits, then
+  advances the generation and logs who added and removed which ids. A save
+  advances the generation even when the list is unchanged. When the
+  generation cannot be advanced after the commit, or the step after the
+  commit does not run at all, the answer is 503 `{"error": "unavailable"}`
+  and the error is logged: the list is saved either way, and answers computed
+  before it can be served until the generation next advances (the next
+  refresh run that writes, or another save). Saving again repairs it.
 - `GET settings/users?search=<text>` answers `{"users": [{"id", "username",
   "first_name", "last_name"}, ...]}`: at most 20 users of the whole instance,
   in any organization or none, active or not, whose user name, first name or
@@ -587,23 +593,40 @@ refresh, history a day at a time),
 - Known limits of the list: matching is by user id, so an account that was
   deleted and created again under the same name is a different account and
   is not on the list until it is added. The stored name of a listed user is
-  brought up to date only by a save; `GET settings` shows the current name
-  of a user that exists. Figures are not kept per list: a period read before
-  and after a change shows different figures, and nothing records which list
-  a figure was read with, beyond the log of each save.
+  as fresh as the last save; `GET settings` shows the current name of a user
+  that exists, so the stored one matters only once the user is deleted. A
+  user deleted while a save that adds it is in progress can end up on the
+  list as a deleted account. After a 503 on a committed save the figures keep
+  the old list until the generation next moves. A very deeply nested JSON
+  body ends as a 500, as it does anywhere in CVAT. Figures are not kept per
+  list: a period read before and after a change shows different figures, and
+  nothing records which list a figure was read with, beyond the log of each
+  save.
 
 ### The page
 
 - The header's Team Analytics link is shown only to administrators, and only
   where analytics is enabled. The page reads the organization CVAT has
   selected and keeps it in its address.
+- The page decides from the signed-in account's groups, by the same rule as
+  the header link (the `admin` group): an account that is not an
+  administrator sees the "not available" panel on the first render, and the
+  page sends no Team Analytics request at all, whatever its address says. An
+  administrator's page asks the API; a 403 that arrives anyway (the account's
+  rights changed) leads to the same panel, and a refusal that arrives while
+  the settings dialog is open closes the dialog.
 - The filter bar holds the period, the Bounding boxes / All shapes switch, the
   Project and Annotator selectors and the "data as of" stamp; its controls
   share one height. Project and Annotator are searchable dropdowns that pick
   one value each, "All" first; their options come from the full view's list
   read for the period, without the other filters, loaded when the dropdown
   opens. For a period that is not processed yet they offer only "All" and the
-  current value. Clicking a row of a card still sets the filter.
+  current value. After typing, the first match is the active option, so Enter
+  picks it (with no match, Enter picks nothing); clearing a filter leaves the
+  focus in its selector. An open dropdown closes when its period or
+  organization changes, and its popup is placed so that it stays inside the
+  page and never makes it scroll sideways. Clicking a row of a card still
+  sets the filter.
 - The operations card has five columns (Operation, Boxes or Objects, Avg time,
   Total time, Share); the hotkey and mouse split of each operation is a
   second line under it, so the card is designed to fit its narrowest width
@@ -616,11 +639,23 @@ refresh, history a day at a time),
   settings", a dialog with the Technical accounts list: the listed accounts,
   each with a remove button, a search for users to add, Save and Cancel, and
   the sentence that a change applies to every past period the next time the
-  page is loaded. After a save everything the page shows is loaded again,
-  the selectors' options included. A refused save
+  page is loaded. In the search, accounts already on the list are shown
+  disabled and marked "already on the list", so the answer of at most 20
+  does not look shorter than it is; a search that fails says so instead of
+  "No users found"; the search text is at most 150 characters, the server's
+  limit. While a save is on its way the dialog cannot be closed (Cancel, the
+  close button, Escape and the mask do nothing) and a second Save sends
+  nothing. After a successful save the dialog closes and everything the page
+  shows is loaded again, the selectors' options included. A refused save
   shows the server's sentence; a save that may or may not have been stored
   says so and asks to open the settings again.
-- Project names come from the fork's `project-names`, 500 ids per request.
+- A definition's tooltip, opened by hover or focus, is hidden by Escape
+  wherever the focus is.
+- Project names come from the fork's `project-names`, in requests of at most
+  500 ids and 3,000 characters of ids, so the request line stays under 4,096
+  characters. Ids a request answered without a name are not asked again
+  until the page's data is reloaded; the ids of a request that failed are
+  asked again.
 
 ### Reads
 
@@ -715,7 +750,9 @@ refresh, history a day at a time),
   key for `TEAM_ANALYTICS_ANSWER_TTL_S`. It reads the generation, then the
   Technical accounts list from Postgres, and passes the list's ids to the
   engine as a value (the calculation code names no Django); a failure to read
-  the list is a failed read. Each statement of a read runs with a
+  the list is a failed read. The job closes its Postgres connection right
+  after it reads the list, so the ClickHouse read that follows holds none.
+  Each statement of a read runs with a
   time limit (`TEAM_ANALYTICS_READ_STATEMENT_S`) and a memory limit
   (`TEAM_ANALYTICS_READ_STATEMENT_MEMORY_BYTES`) that ClickHouse enforces; the
   job has the timeout `TEAM_ANALYTICS_READ_JOB_TIMEOUT_S`. A read that fails
@@ -861,7 +898,7 @@ of each, and the limits of the settings endpoints (1,000 technical accounts,
 
 The API process does no analytical work, so the failures below show on the
 Team Analytics page and nowhere else in CVAT. The stack checks this on a
-running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-dropped]`, see the
+running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-dropped|redis-down]`, see the
 [stack's README](../verify/team-analytics-stack/README.md)).
 
 - The worker stopped: reads are queued up to the queue limit, each request
@@ -938,12 +975,15 @@ running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-droppe
   boxes saved by a technical account has a row (no working time, its saved
   boxes and its Model boxes). A technical account never appears in the table
   by annotator or in any other list of people, and under an annotator filter
-  on its id its saved boxes neither list a project nor count for one.
+  on its id its saved boxes neither list a project nor count for one. The
+  Overview's saved boxes follow the details: under an annotator filter on a
+  technical account's id they are empty, the total and the rows per project.
 - The page's project and annotator filters belong to the organization named
   by `org` in the page address. Filters of another organization, or of an
   address that names none while one is selected, are not applied. Requests
   for project names and the details project search stay bounded: names go to
-  the fork's `project-names`, 500 ids per request, and the search sends one
+  the fork's `project-names` in requests of at most 500 ids and 3,000
+  characters of ids (commas counted encoded), and the search sends one
   table page of ids.
 - Known limit of the annotator search in the details table: the page sends
   the search text, trimmed, as `search`, and the API refuses a value longer
@@ -1388,11 +1428,11 @@ decision on whether it is an operation. A rename breaks the figures silently.
 
 | ID | Expected observable outcome | Existing evidence mechanism |
 | --- | --- | --- |
-| TA-A | The real server accepts every record the UI logging adds, and each reaches the events table with its fields | Seam 2 (`node --test verify/team_analytics_logging.cjs`) for the serialized batch; `verify/team-analytics-stack/run.sh check-final` for a real browser, server and ClickHouse |
+| TA-A | The real server accepts every record the UI logging adds, and each reaches the events table with its fields | Seam 2 (`tools/gate/node-suite.sh verify/team_analytics_logging.cjs`) for the serialized batch; `verify/team-analytics-stack/run.sh check-final` for a real browser, server and ClickHouse |
 | TA-B | Stock event logging and working time are unchanged by the new logging; the closing input summary leaves with the closing save | Seam 2; `check-final` (client scopes, `client_id`, `send:working_time`, all event POSTs answered 201) |
 | TA-C | For given events the app returns the agreed figures for sessions, working time, operations, creation methods, Model, saved boxes, keyboard and mouse, projects, trends, history and late events | Seam 1 (`verify/team_analytics_backend.sh`, the calculation tests against a real ClickHouse); `check-final` for real UI work and loaded volume |
-| TA-D | Administrators read Team Analytics with and without an organization selected, and every other account, an organization's owner and maintainer included, is refused with 403 on every endpoint, the settings included; signed out is 401; a removed member is refused on the next request; no cached answer is served across organizations or between an organization and the instance | Upstream's generated policy tests for `rules/team_analytics.rego`; `check-tracer`, `check-final`, `check-access` and `check-settings` against the real CVAT; `check-cross-org` for cached answers |
-| TA-E | The page renders every state, filters (the Project and Annotator selectors among them), full views, comparison, long names and large numbers; the terms' tooltips carry their definitions; the settings dialog shows, edits and saves the Technical accounts list and says why a save failed | Seam 3 (`node --test verify/team_analytics_page.cjs`); `check-final` and `check-fixes page` in a browser |
+| TA-D | Administrators read Team Analytics with and without an organization selected, and every other account, an organization's owner and maintainer included, is refused with 403 on every endpoint, the settings included; signed out is 401; an administrator taken out of the admin group is refused on the very next request, in the session it has and in a fresh one; no cached answer is served across organizations or between an organization and the instance | Upstream's generated policy tests for `rules/team_analytics.rego`; `check-tracer`, `check-final`, `check-access` and `check-settings` against the real CVAT; `check-cross-org` for cached answers |
+| TA-E | The page renders every state, filters (the Project and Annotator selectors among them), full views, comparison, long names and large numbers; the terms' tooltips carry their definitions; the settings dialog shows, edits and saves the Technical accounts list and says why a save failed | Seam 3 (`tools/gate/node-suite.sh verify/team_analytics_page.cjs`); `check-final` and `check-fixes page` in a browser |
 | TA-F | With a hundred annotators and forty long-named projects the overview keeps its length and nothing overflows; on a narrow window cards stack and wide tables scroll sideways, the operations card's table excepted; the filter bar's controls share one height | `check-final` and `check-fixes page` in headless Chrome (seam 3 has no layout) |
 | TA-G | With the Team Analytics worker stopped, with ClickHouse stopped and with the totals database missing, the page shows its error panel, and signing in, the task list and opening and saving a job still work | `check-isolation [worker-down\|clickhouse-down\|totals-dropped]`; `check-worker` (part of `up`) for the worker itself |
 | TA-H | The fork server image is built from the fork's tree on public bases with upstream's requirements and carries the app with its migration; the UI image serves the page; with analytics off the server starts, no worker is rendered, no refresh is scheduled and the endpoints answer 404 | `build-server.sh` (its refusals and its six checks), `build-ui.sh`; the stack run uses both images; `check-analytics-off`, and the analytics-off render check inside `preflight` |
@@ -1416,8 +1456,14 @@ scenarios it drives: the detector record is produced by the real UI with only
 the model list and the model's answer supplied in the browser, the current week
 of the volume goes through the events API (older weeks are inserted directly,
 since the API cannot date records back), and `run.sh check-access` runs a
-removed member, an administrator by group, a personal workspace and header
-credentials against the real CVAT. `run.sh check-settings` runs the settings
+revoked administrator, an administrator by group, a personal workspace and
+header credentials against the real CVAT. Its `revoked-admin` case
+(`verify/team-analytics-stack/access_cases.py`) has an account in the
+`admin` group without the superuser flag read the status with and without an
+organization, an organization's overview and the settings; an administrator
+then takes it out of the group through CVAT's API, and its very next
+requests, in the session it already has and in a fresh one, must each be the
+plain 403 with no wait; the account is put back in the group afterwards. `run.sh check-settings` runs the settings
 endpoints against it: refusals, writes with their CSRF and token rules, bad
 bodies, the generation, the user search, a retroactive change of the list,
 project names and a deleted user. `run.sh check-fixes` drives each defect fix
@@ -1425,7 +1471,9 @@ along the path that failed; its `page` step checks the page in a browser as an
 administrator: the filter bar's height and centre line, the operations card
 over a sweep of window widths, the selectors, the terms' tooltips and the
 settings dialog. The refusal page for non-administrators is part of
-`check-tracer`. The stack does not cover a deployed model function.
+`check-tracer`, which also holds that their pages (the start page's header
+and a direct visit to `/team-analytics`) send no request to
+`/api/team-analytics/`. The stack does not cover a deployed model function.
 The stack's own subcommands and what each judges are in its
 [README](../verify/team-analytics-stack/README.md). The independent review of
 the access rules recorded with the dated evidence is of the rules before
