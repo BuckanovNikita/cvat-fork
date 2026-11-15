@@ -162,9 +162,13 @@ test('names of thousands of projects are asked in requests of at most 500 ids an
     const ids = Array.from({ length: 2000 }, (_, index) => 9_000_001 + index);
     ids[1499] = 1500;
 
-    const names = await lookupProjectNames(ids, request);
+    const answered = new Set();
+    const names = await lookupProjectNames(ids, request, answered);
 
     const asked = requests.map((sent) => sent.params.ids.split(',').map(Number));
+    // the failed request's ids are not reported as answered: the page asks them again
+    assert.equal(answered.has(1500), false);
+    assert.equal(answered.size, ids.length - asked.find((chunk) => chunk.includes(1500)).length);
     for (const [index, sent] of requests.entries()) {
         assert.ok(asked[index].length <= 500, `${asked[index].length} ids in one request`);
         // the address as sent, its commas encoded; the request line adds the method, the version and `org`
@@ -210,7 +214,13 @@ function mountPage({
         'react-router': { useHistory: () => history },
         './service': { ...loadPage('service.ts'), requestService: request },
         './project-names': {
-            lookupProjectNames: async (ids) => { lookups.push(ids); return names(ids); },
+            // as the real lookup: the ids of an answered lookup go into `answered`, those of a failed one do not
+            lookupProjectNames: async (ids, request, answered) => {
+                lookups.push(ids);
+                const found = await names(ids);
+                ids.forEach((id) => answered?.add(id));
+                return found;
+            },
         },
     }).default;
     return {
@@ -359,5 +369,22 @@ test('ids the names lookup did not name are not asked again until the data is re
         await click(view.container.querySelector('.cvat-team-analytics-filter-project .cvat-team-analytics-filter-button'));
         await view.settle();
         assert.ok(lookups.flat().filter((id) => id === 2).length === 1, `asked once: ${JSON.stringify(lookups)}`);
+    });
+});
+
+test('ids of a names lookup that failed are asked again', async () => {
+    let fail = true;
+    const { history, lookups, Page } = mountPage({
+        names: async () => {
+            if (fail) throw new Error('503');
+            return { 1: 'Street scenes' };
+        },
+    });
+    await opened(Page, async (view) => {
+        assert.deepEqual([...lookups[0]].sort(), [1, 2]);
+        fail = false;
+        await act(async () => { history.push('/team-analytics?project=7&org=team-org'); });
+        await view.settle();
+        assert.deepEqual([...lookups.at(-1)].sort(), [1, 2, 7], 'not remembered as unnamed');
     });
 });

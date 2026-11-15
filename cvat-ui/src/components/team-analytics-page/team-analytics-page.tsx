@@ -73,8 +73,10 @@ function AdministratorPage(): JSX.Element {
             .filter((id) => id > 0 && !(id in knownNames.current) && !unnamed.current.has(id));
         let current = true;
         if (asked.length) {
-            lookupProjectNames(asked, requestService).then((names) => {
-                asked.filter((id) => !(id in names)).forEach((id) => unnamed.current.add(id));
+            // a request that failed leaves its ids out of `answered`: they are asked again
+            const answered = new Set<number>();
+            lookupProjectNames(asked, requestService, answered).then((names) => {
+                asked.filter((id) => answered.has(id) && !(id in names)).forEach((id) => unnamed.current.add(id));
                 if (current) setProjectNames((known) => ({ ...known, ...names }));
             }).catch(() => { /* shown by identifier, asked again later */ });
         }

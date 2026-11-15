@@ -39,8 +39,10 @@ export function namesChunks(ids: number[]): number[][] {
     return chunks;
 }
 
+// The names of the existing projects among `ids`. `answered`, when given, receives the ids of the requests that
+// were answered: an id there without a name names no project, while the ids of a failed request may be asked again.
 export async function lookupProjectNames(
-    ids: number[], request: RequestService = requestService,
+    ids: number[], request: RequestService = requestService, answered?: Set<number>,
 ): Promise<ProjectNames> {
     const wanted = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
     const chunks = namesChunks(wanted);
@@ -50,6 +52,7 @@ export async function lookupProjectNames(
     for (const chunk of chunks) {
         try {
             Object.assign(names, await requestProjectNames(chunk, request));
+            chunk.forEach((id) => answered?.add(id));
         } catch (error) {
             failure = error;
         }
