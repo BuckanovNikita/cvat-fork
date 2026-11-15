@@ -65,11 +65,7 @@ function CreationMethodsCard({
                         {methods.rows.map((row) => {
                             const name = METHOD_NAMES[row.method];
                             return (
-                                <tr
-                                    key={row.method}
-                                    className='cvat-team-analytics-method-row'
-                                    title={`${name}: ${formatCount(row.objects)} (${formatShare(row.share)})`}
-                                >
+                                <tr key={row.method} className='cvat-team-analytics-method-row'>
                                     <td className='cvat-team-analytics-operation-name'>{name}</td>
                                     <td className='cvat-team-analytics-method-bar-cell'>
                                         <span
@@ -80,17 +76,17 @@ function CreationMethodsCard({
                                             }}
                                         />
                                     </td>
-                                    <td>{formatCount(row.objects)}</td>
+                                    <td title={`${name}: ${formatCount(row.objects)} (${formatShare(row.share)})`}>
+                                        {formatCount(row.objects)}
+                                    </td>
                                     <td>{formatShare(row.share)}</td>
                                     <td>{formatSeconds(row.average_ms)}</td>
                                 </tr>
                             );
                         })}
                         {model ? (
-                            <tr
-                                className='cvat-team-analytics-method-row cvat-team-analytics-model-row'
-                                title={`${MODEL_NAME}: ${formatCount(model.objects)} (${formatShare(model.share)})`}
-                            >
+                            // the hover text sits on the count, not the row: it must not cover the Model definition
+                            <tr className='cvat-team-analytics-method-row cvat-team-analytics-model-row'>
                                 <td className='cvat-team-analytics-operation-name'>
                                     <Term name='Model'>{MODEL_NAME}</Term>
                                 </td>
@@ -102,7 +98,11 @@ function CreationMethodsCard({
                                         }}
                                     />
                                 </td>
-                                <td>{formatCount(model.objects)}</td>
+                                <td
+                                    title={`${MODEL_NAME}: ${formatCount(model.objects)} (${formatShare(model.share)})`}
+                                >
+                                    {formatCount(model.objects)}
+                                </td>
                                 <td>{formatShare(model.share)}</td>
                                 <td>{MISSING}</td>
                             </tr>

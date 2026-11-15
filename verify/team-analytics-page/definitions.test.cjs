@@ -181,6 +181,21 @@ test('each term is focusable and described by a tooltip with the glossary wordin
     });
 });
 
+test('a term shows one tooltip only: neither it nor anything around it in its card has a native title', async () => {
+    await opened('?period=week', (container) => {
+        const all = terms(container);
+        assert.equal(all.length, 13);
+        for (const term of all) {
+            const card = term.closest('section, .cvat-team-analytics-details');
+            const titled = [];
+            for (let element = term; element && element !== card.parentElement; element = element.parentElement) {
+                if (element.hasAttribute('title')) titled.push(`${element.tagName.toLowerCase()} "${element.getAttribute('title')}"`);
+            }
+            assert.deepEqual(titled, [], `${placeOf(term)} · ${term.textContent}`);
+        }
+    });
+});
+
 test('hovering a term shows its definition, leaving hides it', async () => {
     await opened('?period=week', async (container) => {
         const term = container.querySelector('.cvat-team-analytics-sessions .cvat-team-analytics-term');
