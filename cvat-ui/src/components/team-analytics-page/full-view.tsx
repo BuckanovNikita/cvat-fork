@@ -281,7 +281,7 @@ export default function FullView({
     useEffect(() => {
         if (wanted.length === 0) return undefined;
         let current = true;
-        lookupProjectNames(wanted).then((found) => {
+        lookupProjectNames(wanted, requestService).then((found) => {
             if (current) setNames((shown) => ({ ...shown, ...found }));
         }).catch(() => { /* shown by identifier */ });
         return () => { current = false; };

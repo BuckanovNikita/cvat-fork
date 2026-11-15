@@ -1,0 +1,308 @@
+// The Project and Annotator selectors of the filter row: searchable single-select dropdowns whose options are the
+// projects or annotators with job work in the period, loaded when one opens (mounted page, supplied answers).
+const assert = require('node:assert/strict');
+const test = require('node:test');
+const {
+    React, act, dependency, loadPage, mount, suppliedService,
+} = require('./helper.cjs');
+
+const { createMemoryHistory } = dependency('history');
+const HOUR = 3600000;
+
+const OVERVIEW = {
+    by_annotator: {
+        rows: [{ user_id: 11, user_name: 'alice', working_time_ms: 4 * HOUR }],
+        rest: { count: 0, working_time_ms: 0 },
+    },
+    by_project: { rows: [{ project_id: 1, working_time_ms: 3 * HOUR }], rest: { count: 0, working_time_ms: 0 } },
+    filters: { project: null, annotator: null },
+};
+
+const operations = { creation: {}, alignment: {}, class_change: {}, deletion: {}, other: { time_ms: 0 } };
+const listRow = (id, userName = null) => ({
+    id, user_name: userName, working_time_ms: HOUR, share: 0.5, operations, methods: {}, model: 0,
+});
+const PROJECTS = { by: 'projects', legacy: false, shapes: 'all', total: { count: 3, working_time_ms: 3 * HOUR },
+    rows: [listRow(2), listRow(0), listRow(1)] };
+const ANNOTATORS = { by: 'annotators', legacy: false, shapes: 'all', total: { count: 3, working_time_ms: 3 * HOUR },
+    rows: [listRow(12, 'bob'), listRow(11, 'alice'), listRow(40, 'zoe')] };
+const NAMES = { 1: 'Street scenes', 2: 'Retail shelves' };
+
+function endpointOf(url) {
+    return new URL(url, 'http://localhost').pathname.replace('/api/team-analytics/', '');
+}
+
+// `lists(by, params)` answers GET list; the overview, status and names answer as on a working server
+function openPage({ search = '', lists = (by) => ({ body: by === 'projects' ? PROJECTS : ANNOTATORS }) } = {}) {
+    const history = createMemoryHistory({ initialEntries: [`/team-analytics${search}`] });
+    const { request, requests } = suppliedService((url, sent) => {
+        const endpoint = endpointOf(url);
+        if (endpoint === 'list') return lists(sent.params.by, sent.params);
+        if (endpoint === 'project-names') {
+            const ids = sent.params.ids.split(',');
+            return { body: { names: Object.fromEntries(ids.filter((id) => NAMES[id]).map((id) => [id, NAMES[id]])) } };
+        }
+        if (endpoint === 'overview') return { body: OVERVIEW };
+        return { body: {} };
+    });
+    const Page = loadPage('team-analytics-page.tsx', {
+        'react-redux': { useSelector: (select) => select({ organizations: { current: { slug: 'team-org' } } }) },
+        'react-router': { useHistory: () => history },
+        './service': { ...loadPage('service.ts'), requestService: request },
+    }).default;
+    return { history, requests, Page };
+}
+
+async function opened(Page, check) {
+    const view = await mount(React.createElement(Page));
+    try {
+        await view.settle();
+        await check(view);
+    } finally {
+        await view.unmount();
+    }
+}
+
+async function click(element) {
+    await act(async () => { element.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+}
+
+async function press(element, key) {
+    await act(async () => {
+        element.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    });
+}
+
+async function type(input, value) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    await act(async () => {
+        setter.call(input, value);
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    });
+}
+
+const selector = (container, kind) => container.querySelector(`.cvat-team-analytics-filter-${kind}`);
+const button = (container, kind) => selector(container, kind).querySelector('.cvat-team-analytics-filter-button');
+const options = (container, kind) => [...selector(container, kind).querySelectorAll('[role="option"]')]
+    .map((option) => option.textContent);
+const statusLine = (container, kind) => selector(container, kind).querySelector('.cvat-team-analytics-filter-status')
+    .textContent;
+const lists = (requests) => requests.filter((sent) => sent.endpoint === 'list');
+
+test('opening a selector asks one list of its kind for the period, without the filters or the shapes', async () => {
+    const { requests, Page } = openPage({ search: '?period=month&month=2026-10&annotator=11&org=team-org&shapes=all' });
+    await opened(Page, async (view) => {
+        assert.equal(lists(requests).length, 0, 'nothing is asked before a selector opens');
+        await click(button(view.container, 'project'));
+        await view.settle();
+        assert.deepEqual(lists(requests).map((sent) => sent.params), [
+            { period: 'month', tz: lists(requests)[0].params.tz, month: '2026-10', by: 'projects' },
+        ]);
+        assert.equal(button(view.container, 'project').getAttribute('aria-expanded'), 'true');
+        // All first, then every project with work, No project included, named through the fork's API
+        assert.deepEqual(options(view.container, 'project'),
+            ['All projects', 'Retail shelves', 'No project', 'Street scenes']);
+        assert.ok(requests.some((sent) => sent.endpoint === 'project-names' && sent.params.ids === '2'),
+            'the unnamed listed project is named');
+
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        assert.equal(lists(requests).at(-1).params.by, 'annotators');
+        assert.equal(Object.hasOwn(lists(requests).at(-1).params, 'project'), false);
+        assert.deepEqual(options(view.container, 'annotator'), ['All annotators', 'bob', 'alice', 'zoe']);
+    });
+});
+
+test('the search narrows the options by name, ignoring case; All stays first', async () => {
+    const { Page } = openPage();
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        const input = selector(view.container, 'annotator').querySelector('input[role="combobox"]');
+        assert.equal(document.activeElement, input, 'the search field takes focus');
+        await type(input, 'ZO');
+        assert.deepEqual(options(view.container, 'annotator'), ['All annotators', 'zoe']);
+        await type(input, 'nobody');
+        assert.deepEqual(options(view.container, 'annotator'), ['All annotators']);
+        assert.equal(statusLine(view.container, 'annotator'), 'No match for this search');
+    });
+});
+
+test('picking an option sets the filter in the address as a card row does; All clears it', async () => {
+    const { history, requests, Page } = openPage();
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'project'));
+        await view.settle();
+        const option = [...selector(view.container, 'project').querySelectorAll('[role="option"]')]
+            .find((element) => element.textContent === 'Retail shelves');
+        await click(option);
+        await view.settle();
+        assert.equal(history.location.search, '?project=2&org=team-org&period=week');
+        assert.equal(new URL(requests.filter((sent) => sent.endpoint === 'overview').at(-1).url, 'http://localhost')
+            .searchParams.get('project'), '2');
+        assert.equal(selector(view.container, 'project').querySelector('[role="listbox"]'), null, 'the dropdown closes');
+        assert.match(button(view.container, 'project').textContent, /Retail shelves/);
+        assert.equal(document.activeElement, button(view.container, 'project'), 'focus returns to the button');
+
+        // the selected option is marked; All removes the filter
+        await click(button(view.container, 'project'));
+        await view.settle();
+        const selected = selector(view.container, 'project').querySelector('[aria-selected="true"]');
+        assert.equal(selected.textContent, 'Retail shelves');
+        await click(selector(view.container, 'project').querySelector('.cvat-team-analytics-filter-option-all'));
+        await view.settle();
+        assert.equal(history.location.search, '?period=week');
+    });
+});
+
+test('the clear button stays beside an active filter, outside the dropdown button', async () => {
+    const { history, Page } = openPage({ search: '?annotator=11&org=team-org' });
+    await opened(Page, async (view) => {
+        const clear = selector(view.container, 'annotator').querySelector('.cvat-team-analytics-filter-clear');
+        assert.ok(clear);
+        assert.equal(button(view.container, 'annotator').contains(clear), false);
+        assert.equal(selector(view.container, 'project').querySelector('.cvat-team-analytics-filter-clear'), null);
+        await click(clear);
+        await view.settle();
+        assert.equal(history.location.search, '?period=week');
+    });
+});
+
+test('a period not processed yet offers only All and the current value, and says why', async () => {
+    const withheld = { ...ANNOTATORS, processed: false, total: null, rows: null };
+    const { Page } = openPage({ search: '?annotator=40&org=team-org', lists: () => ({ body: withheld }) });
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        assert.deepEqual(options(view.container, 'annotator'), ['All annotators', 'Annotator #40']);
+        assert.equal(selector(view.container, 'annotator').querySelector('[aria-selected="true"]').textContent,
+            'Annotator #40');
+        assert.equal(statusLine(view.container, 'annotator'), 'This period is not processed yet');
+    });
+});
+
+test('a failed list says so and is asked again on the next opening; a list that arrived is kept', async () => {
+    let fail = true;
+    const { requests, Page } = openPage({
+        lists: (by) => (fail ? { status: 503, body: { error: 'unavailable' } } : { body: by === 'projects' ? PROJECTS : ANNOTATORS }),
+    });
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        assert.equal(statusLine(view.container, 'annotator'), 'Could not load the list');
+        assert.deepEqual(options(view.container, 'annotator'), ['All annotators']);
+        await click(button(view.container, 'annotator'));
+
+        fail = false;
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        assert.equal(lists(requests).length, 2, 'asked again');
+        assert.deepEqual(options(view.container, 'annotator'), ['All annotators', 'bob', 'alice', 'zoe']);
+        await click(button(view.container, 'annotator'));
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        assert.equal(lists(requests).length, 2, 'kept while the page is open');
+    });
+});
+
+test('while the list loads the dropdown says so', async () => {
+    let answer;
+    const pending = new Promise((resolve) => { answer = resolve; });
+    const { Page } = openPage({ lists: () => pending });
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        assert.equal(statusLine(view.container, 'annotator'), 'Loading…');
+        answer({ body: ANNOTATORS });
+        await view.settle();
+        assert.equal(statusLine(view.container, 'annotator'), '');
+    });
+});
+
+test('another period asks its own options', async () => {
+    const { requests, Page } = openPage();
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        await click(button(view.container, 'annotator'));
+        const twoWeeks = [...view.container.querySelectorAll('.cvat-team-analytics-period')]
+            .find((element) => element.textContent === 'Two weeks');
+        await click(twoWeeks);
+        await view.settle();
+        await click(button(view.container, 'annotator'));
+        await view.settle();
+        assert.deepEqual(lists(requests).map((sent) => sent.params.period), ['week', 'two_weeks']);
+    });
+});
+
+test('a shared link\'s value that is not among the options is still shown as selected', async () => {
+    const { Page } = openPage({ search: '?project=77&org=team-org' });
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'project'));
+        await view.settle();
+        assert.deepEqual(options(view.container, 'project'),
+            ['All projects', 'Project #77', 'Retail shelves', 'No project', 'Street scenes']);
+        assert.equal(selector(view.container, 'project').querySelector('[aria-selected="true"]').textContent, 'Project #77');
+    });
+});
+
+test('keyboard: ArrowDown opens, arrows move the active option, Enter picks, Escape closes back to the button', async () => {
+    const { history, Page } = openPage();
+    await opened(Page, async (view) => {
+        const trigger = button(view.container, 'annotator');
+        trigger.focus();
+        await press(trigger, 'ArrowDown');
+        await view.settle();
+        const input = selector(view.container, 'annotator').querySelector('input[role="combobox"]');
+        assert.equal(document.activeElement, input);
+        const listbox = selector(view.container, 'annotator').querySelector('[role="listbox"]');
+        assert.equal(input.getAttribute('aria-controls'), listbox.id);
+        assert.equal(trigger.getAttribute('aria-controls'), listbox.id);
+        const activeName = () => document.getElementById(input.getAttribute('aria-activedescendant')).textContent;
+        assert.equal(activeName(), 'All annotators', 'with no filter All is active');
+        await press(input, 'ArrowDown');
+        await press(input, 'ArrowDown');
+        assert.equal(activeName(), 'alice');
+        await press(input, 'ArrowUp');
+        assert.equal(activeName(), 'bob');
+        await press(input, 'Escape');
+        assert.equal(selector(view.container, 'annotator').querySelector('[role="listbox"]'), null);
+        assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+        assert.equal(document.activeElement, trigger);
+        assert.equal(history.location.search, '', 'Escape picks nothing');
+
+        await press(trigger, 'ArrowDown');
+        await view.settle();
+        const again = selector(view.container, 'annotator').querySelector('input[role="combobox"]');
+        await press(again, 'ArrowDown');
+        await press(again, 'ArrowDown');
+        await press(again, 'ArrowDown');
+        await press(again, 'Enter');
+        await view.settle();
+        assert.equal(history.location.search, '?annotator=40&org=team-org&period=week');
+        assert.equal(document.activeElement, button(view.container, 'annotator'));
+    });
+});
+
+test('clicking outside closes the dropdown', async () => {
+    const { Page } = openPage();
+    await opened(Page, async (view) => {
+        await click(button(view.container, 'project'));
+        await view.settle();
+        assert.ok(selector(view.container, 'project').querySelector('[role="listbox"]'));
+        await act(async () => {
+            document.body.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
+        });
+        assert.equal(selector(view.container, 'project').querySelector('[role="listbox"]'), null);
+    });
+});
+
+test('a card row click still sets the filter, and the selector shows it', async () => {
+    const { history, Page } = openPage();
+    await opened(Page, async (view) => {
+        await click(view.container.querySelector('.cvat-team-analytics-annotator-row'));
+        await view.settle();
+        assert.equal(history.location.search, '?annotator=11&org=team-org&period=week');
+        assert.match(button(view.container, 'annotator').textContent, /alice/);
+    });
+});

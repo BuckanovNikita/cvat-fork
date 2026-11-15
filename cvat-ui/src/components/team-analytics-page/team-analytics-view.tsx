@@ -9,7 +9,7 @@ import Title from 'antd/lib/typography/Title';
 import Text from 'antd/lib/typography/Text';
 
 import {
-    Overview, PageState, Period, ProjectNames, Status,
+    FilterKind, FilterOptions, Overview, PageState, Period, ProjectNames, Status,
 } from './service';
 import { Address, currentMonth } from './address';
 import { Filters } from './filters';
@@ -61,6 +61,8 @@ interface Props {
     renderTrends?: (scopeLabel: string, options?: TrendsOptions) => React.ReactNode;
     // the details table (loads on its own); it stays on the overview and has no full view
     renderDetails?: () => React.ReactNode;
+    // the options of the Project and Annotator selectors for the period shown (loaded when one opens)
+    loadFilterOptions?: (kind: FilterKind) => Promise<FilterOptions>;
 }
 
 export interface TrendsOptions {
@@ -98,7 +100,7 @@ function scopeLabel(organization: string | null): string {
 export default function TeamAnalyticsView({
     organization, state, onBackToTasks, address, onAddressChange, pending = false, status = null,
     timeZone = 'UTC', currentMonth: latestMonth = currentMonth(), projectNames = {},
-    hotkeyLabels, renderTrends, renderDetails,
+    hotkeyLabels, renderTrends, renderDetails, loadFilterOptions,
 }: Props): JSX.Element {
     const filters: Filters = { project: address?.project ?? null, annotator: address?.annotator ?? null };
     // clicking a row sets it as the filter; clicking the selected row again removes it
@@ -303,6 +305,8 @@ export default function TeamAnalyticsView({
                         projectLabel={filters.project === null ? '' : projectName(filters.project, projectNames)}
                         annotatorLabel={annotatorLabel(filters.annotator, shownOverview)}
                         onChange={onAddressChange as (change: Partial<Filters>) => void}
+                        loadOptions={loadFilterOptions}
+                        projectNameOf={(id) => projectName(id, projectNames)}
                     />
                     {refresh ? <FreshnessStamp refresh={refresh} timeZone={timeZone} /> : null}
                 </div>

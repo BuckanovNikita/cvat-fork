@@ -12,7 +12,8 @@ import { useHistory } from 'react-router';
 
 import { CombinedState } from 'reducers';
 import {
-    PageState, ProjectNames, Status, requestService, loadOverview, loadStatus, onRefusal, viewerTimeZone,
+    FilterKind, FilterOptions, PageState, ProjectNames, Status, requestService, loadFilterOptions, loadOverview,
+    loadStatus, onRefusal, viewerTimeZone,
 } from './service';
 import { currentMonth, useAddress } from './address';
 import { agedStatus } from './freshness';
@@ -48,6 +49,41 @@ export default function TeamAnalyticsPage(): JSX.Element {
     const shownOrganization = useRef<string | null>(organization);
     // kept here so that a trend's full view and the overview show the same comparison
     const trendsSelection = useTrendsSelection();
+    // the options of the Project and Annotator selectors, per organization, period, month and kind, while the
+    // page is open; dropped when the page's data is reloaded. Only lists that arrived are kept: a failed or
+    // withheld one is asked again on the next opening.
+    const filterOptions = useRef(new Map<string, Promise<FilterOptions>>());
+    // the project names known so far, for the selector's names lookup
+    const knownNames = useRef<ProjectNames>(projectNames);
+    knownNames.current = projectNames;
+
+    useEffect(() => { filterOptions.current.clear(); }, [reloads]);
+
+    const loadOptions = (kind: FilterKind): Promise<FilterOptions> => {
+        const key = [organization ?? '', address.period, address.month ?? '', kind].join('|');
+        const kept = filterOptions.current.get(key);
+        if (kept) return kept;
+        const loading = loadFilterOptions({
+            organization, timeZone, period: address.period, month: address.month, by: kind,
+        }, requestService).then((options) => {
+            if (options.kind !== 'ready') {
+                filterOptions.current.delete(key);
+                return options;
+            }
+            if (kind === 'projects') {
+                const unnamed = options.options.map((option) => option.id)
+                    .filter((id) => id > 0 && !(id in knownNames.current));
+                if (unnamed.length) {
+                    lookupProjectNames(unnamed, requestService).then((names) => {
+                        setProjectNames((known) => ({ ...known, ...names }));
+                    }).catch(() => { /* shown by identifier */ });
+                }
+            }
+            return options;
+        });
+        filterOptions.current.set(key, loading);
+        return loading;
+    };
 
     useEffect(() => {
         let current = true;
@@ -123,7 +159,7 @@ export default function TeamAnalyticsPage(): JSX.Element {
     useEffect(() => {
         if (wanted.length === 0) return undefined;
         let current = true;
-        lookupProjectNames(wanted).then((names) => {
+        lookupProjectNames(wanted, requestService).then((names) => {
             if (current) setProjectNames((known) => ({ ...known, ...names }));
         }).catch(() => { /* shown by identifier */ });
         return () => { current = false; };
@@ -161,6 +197,7 @@ export default function TeamAnalyticsPage(): JSX.Element {
                     onOpenFull={options?.onOpenFull}
                 />
             )}
+            loadFilterOptions={loadOptions}
             renderDetails={() => (
                 <DetailsSection
                     organization={organization}

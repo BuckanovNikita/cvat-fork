@@ -219,7 +219,9 @@ export type PageState =
     | { kind: 'signed-out' }
     | { kind: 'error' };
 
-export type Endpoint = 'status' | 'overview' | 'trends' | 'list' | 'details';
+// The figures' endpoints and the fork's lookups (project names; the settings are asked through requestSettings)
+export type Endpoint =
+    | 'status' | 'overview' | 'trends' | 'list' | 'details' | 'project-names' | 'settings/users';
 
 // An HTTP answer of the API: its status and its body (null when there is none the page can read).
 export interface ServiceAnswer {
@@ -506,6 +508,62 @@ export async function loadList(
     } catch {
         return null;
     }
+}
+
+// --- filter options: the projects or annotators of the Project and Annotator selectors ---------------------------
+
+export type FilterKind = 'projects' | 'annotators';
+
+// One option of a selector: a project (0 = No project, named by the page) or an annotator with their name
+export interface FilterOption {
+    id: number;
+    user_name: string | null;
+}
+
+// The options, or why there are none: the period is not processed yet (`withheld`), or the list failed.
+export type FilterOptions =
+    | { kind: 'ready'; options: FilterOption[] }
+    | { kind: 'withheld' }
+    | { kind: 'failed' };
+
+// Everyone of `kind` with job work in the period, asked through the full view list (GET list) without the
+// project, annotator and shapes parameters, so that one selector's options do not depend on the other filter.
+export async function loadFilterOptions(
+    query: OverviewQuery & { by: FilterKind }, request: RequestService = requestService,
+): Promise<FilterOptions> {
+    const list = await loadList({
+        organization: query.organization,
+        timeZone: query.timeZone,
+        period: query.period,
+        month: query.month,
+        by: query.by,
+    }, request) as RowsList | null;
+    if (!list) return { kind: 'failed' };
+    if (!list.rows) return { kind: 'withheld' };
+    return { kind: 'ready', options: list.rows.map((row) => ({ id: row.id, user_name: row.user_name })) };
+}
+
+// --- project names (GET project-names): names of any projects, whatever their organization -------------------
+
+// Ids asked per request; the API refuses more (400).
+export const PROJECT_NAMES_PER_REQUEST = 500;
+
+// The names of the existing projects among `ids` (at most PROJECT_NAMES_PER_REQUEST positive ids); an unknown
+// id is simply absent. Throws when the answer is not a success. CVAT's own projects API names, with no
+// organization selected, only personal-workspace projects, so the fork's API names them for the page.
+export async function requestProjectNames(
+    ids: number[], request: RequestService = requestService,
+): Promise<ProjectNames> {
+    const answer = await request('project-names', { ids: ids.join(',') });
+    const names = answer.body?.names;
+    if (!succeeded(answer) || !names || typeof names !== 'object') {
+        throw new Error(`project names were not returned (${answer.status})`);
+    }
+    const result: ProjectNames = {};
+    for (const [id, name] of Object.entries(names)) {
+        if (typeof name === 'string') result[Number(id)] = name;
+    }
+    return result;
 }
 
 // --- details (GET details): the paged, searchable table by annotator or by project ------------------------------

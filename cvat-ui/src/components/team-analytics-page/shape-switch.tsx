@@ -2,7 +2,6 @@
 //
 // SPDX-License-Identifier: MIT
 
-import './shapes.scss';
 import React from 'react';
 
 import { SHAPE_OPTIONS, Shapes } from './shapes';

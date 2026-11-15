@@ -1,9 +1,9 @@
 // Projects and filters: working time by project and by annotator with the rest as one line, project
-// names from CVAT, and the project and annotator filters driven by clicking rows and kept in the address.
+// names from the fork's API, and the project and annotator filters driven by clicking rows and kept in the address.
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, act, dependency, loadPage, mount, render, suppliedService, text,
+    React, act, dependency, loadCoreExceptions, loadPage, mount, render, suppliedService, text,
 } = require('./helper.cjs');
 
 const View = loadPage('team-analytics-view.tsx').default;
@@ -105,7 +105,8 @@ test('the headline shows active annotators and across how many projects', () => 
 });
 
 function chips(html) {
-    const match = html.match(/<div class="cvat-team-analytics-filter-chips">(.*?)<\/div>/);
+    // the two selectors' wrappers end the row
+    const match = html.match(/<div class="cvat-team-analytics-filter-chips">(.*?)<\/div><\/div>/);
     assert.ok(match, 'the filter row shows the project and annotator filters');
     return text(match[1]);
 }
@@ -121,52 +122,60 @@ test('the filter row names the selected project and annotator, the selected rows
         'Project All projects Annotator All annotators');
 });
 
-test('project names come from the CVAT API through cvat-core, one request for the wanted projects', async () => {
-    const asked = [];
-    const core = {
-        projects: {
-            async get(filter) {
-                asked.push(filter);
-                // CVAT returns only the projects the viewer may see: 9 was deleted or is not visible
-                return Object.assign([{ id: 1, name: 'Street scenes' }, { id: 2, name: 'Retail shelves' }], { count: 2 });
-            },
-        },
-    };
-    const { lookupProjectNames } = loadPage('project-names.ts', { 'cvat-core-wrapper': { getCore: () => core } });
+test('project names come from the fork\'s API (GET project-names), one request for the wanted projects', async () => {
+    // the API names any existing project whatever its organization: 9 does not exist
+    const { request, requests } = suppliedService(() => ({ body: { names: { 1: 'Street scenes', 2: 'Retail shelves' } } }));
+    const { lookupProjectNames } = loadPage('project-names.ts');
 
-    assert.deepEqual(await lookupProjectNames([2, 0, 1, 9, 2]), { 1: 'Street scenes', 2: 'Retail shelves' });
-    assert.deepEqual(asked, [{ filter: JSON.stringify({ in: [{ var: 'id' }, [2, 1, 9]] }), pageSize: 3 }]);
-    assert.deepEqual(await lookupProjectNames([0]), {}, 'No project needs no request');
-    assert.equal(asked.length, 1);
+    assert.deepEqual(await lookupProjectNames([2, 0, 1, 9, 2], request), { 1: 'Street scenes', 2: 'Retail shelves' });
+    assert.deepEqual(requests.map((sent) => [sent.endpoint, sent.params]), [['project-names', { ids: '2,1,9' }]]);
+    assert.deepEqual(await lookupProjectNames([0], request), {}, 'No project needs no request');
+    assert.equal(requests.length, 1);
 });
 
-test('names of thousands of projects are asked in bounded requests; a failed one leaves only its own unnamed', async () => {
-    const asked = [];
+test('the real boundary asks cvat-core for /api/team-analytics/project-names with GET', async () => {
+    const calls = [];
     const core = {
-        projects: {
-            async get({ filter, pageSize }) {
-                const ids = JSON.parse(filter).in[1];
-                asked.push({ ids, pageSize, url: `/api/projects?filter=${encodeURIComponent(filter)}&page_size=${pageSize}` });
-                if (ids.includes(1500)) throw new Error('request rejected');
-                return Object.assign(ids.map((id) => ({ id, name: `Project ${id}` })), { count: ids.length });
+        config: { backendAPI: '/api' },
+        server: {
+            async request(url, data) {
+                calls.push({ url, data });
+                return { status: 200, data: { names: { 4: 'Alpha' } } };
             },
         },
     };
-    const { lookupProjectNames } = loadPage('project-names.ts', { 'cvat-core-wrapper': { getCore: () => core } });
+    const { ServerError } = loadCoreExceptions();
+    const boundaries = { 'cvat-core-wrapper': { getCore: () => core, ServerError } };
+    const { lookupProjectNames } = loadPage('project-names.ts', boundaries);
+    assert.deepEqual(await lookupProjectNames([4, 8]), { 4: 'Alpha' });
+    assert.deepEqual(calls, [{ url: '/api/team-analytics/project-names', data: { method: 'GET', params: { ids: '4,8' } } }]);
+});
+
+test('names of thousands of projects are asked in requests of at most 500 ids; a failed one leaves only its own unnamed', async () => {
+    const { request, requests } = suppliedService((url, sent) => {
+        const ids = sent.params.ids.split(',').map(Number);
+        if (ids.includes(1500)) return { status: 400, body: { error: 'bad_request', detail: 'rejected' } };
+        return { body: { names: Object.fromEntries(ids.map((id) => [id, `Project ${id}`])) } };
+    });
+    const { lookupProjectNames } = loadPage('project-names.ts');
     const ids = Array.from({ length: 2000 }, (_, index) => 9_000_001 + index);
     ids[1499] = 1500;
 
-    const names = await lookupProjectNames(ids);
+    const names = await lookupProjectNames(ids, request);
 
-    assert.ok(asked.length > 1);
-    for (const request of asked) {
-        assert.ok(request.url.length < 4096, `a request line of ${request.url.length} characters`);
-        assert.ok(request.pageSize >= request.ids.length && request.pageSize <= 500);
-    }
-    assert.deepEqual(asked.flatMap((request) => request.ids).sort(), [...ids].sort(), 'every id asked once');
-    const failed = asked.find((request) => request.ids.includes(1500)).ids;
+    assert.equal(requests.length, 4);
+    const asked = requests.map((sent) => sent.params.ids.split(',').map(Number));
+    for (const chunk of asked) assert.ok(chunk.length <= 500, `${chunk.length} ids in one request`);
+    assert.deepEqual(asked.flat().sort(), [...ids].sort(), 'every id asked once');
+    const failed = asked.find((chunk) => chunk.includes(1500));
     assert.equal(Object.keys(names).length, ids.length - failed.length);
     assert.equal(names[9_000_001], 'Project 9000001');
+});
+
+test('a lookup whose every request fails throws, so the page shows identifiers', async () => {
+    const { request } = suppliedService(() => ({ status: 403, body: null }));
+    const { lookupProjectNames } = loadPage('project-names.ts');
+    await assert.rejects(lookupProjectNames([3], request));
 });
 
 // --- the mounted page: filters in the address, names from CVAT -----------------------------------
@@ -271,7 +280,7 @@ test('a shared address opens with its filters; a filter change keeps the period 
     });
 });
 
-test('project names are asked of CVAT for the shown and selected projects; a failed lookup shows identifiers', async () => {
+test('project names are asked for the shown and selected projects; a failed lookup shows identifiers', async () => {
     const { lookups, Page } = mountPage({ search: '?project=7&org=team-org', names: async () => { throw new Error('403'); } });
     await opened(Page, async (view) => {
         assert.deepEqual([...lookups.at(-1)].sort(), [1, 2, 7]);
