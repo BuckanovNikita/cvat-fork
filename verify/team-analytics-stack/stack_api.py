@@ -148,14 +148,19 @@ def tiny_png(shade: int) -> bytes:
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
-def upload_images(session: Session, task_id: int, org: str, count: int) -> None:
+def upload_images(session: Session, task_id: int, org: str, count: int, chunk_size: int | None = None) -> None:
+    """`count` generated images as the task's data; `chunk_size` frames per chunk (CVAT's default when None)."""
     boundary = uuid.uuid4().hex
-    parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="image_quality"\r\n\r\n70\r\n'.encode()]
+    fields = {"image_quality": 70, **({"chunk_size": chunk_size} if chunk_size else {})}
+    parts = [
+        f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode()
+        for name, value in fields.items()
+    ]
     for i in range(count):
         parts.append(
             f'--{boundary}\r\nContent-Disposition: form-data; name="client_files[{i}]"; filename="frame{i}.png"\r\n'
             "Content-Type: image/png\r\n\r\n".encode()
-            + tiny_png(40 + 60 * i)
+            + tiny_png((40 + 60 * i) % 256)
             + b"\r\n"
         )
     parts.append(f"--{boundary}--\r\n".encode())
