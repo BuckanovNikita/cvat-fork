@@ -17,11 +17,17 @@ MAX_BODY = 64 * 1024
 # this long (and this much), so that closing does not reset the connection before the answer arrives.
 LINGER_S = 1.0
 LINGER_BYTES = 1024 * 1024
+# A connection that sends nothing for this long (no request, or a request that stops halfway) is closed and
+# its thread ends. Kept-alive connections are reused by the proxy in front: ingress-nginx keeps an idle
+# upstream connection for 60 s, Traefik for 90 s. The limit is longer than both, so the server never closes
+# a connection the proxy may still send a request on. (The test stack's nginx proxy opens one per request.)
+IDLE_S = 120.0
 
 
-def make_server(service: Service, host: str, port: int) -> ThreadingHTTPServer:
+def make_server(service: Service, host: str, port: int, idle_s: float = IDLE_S) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
+        timeout = idle_s  # each read and write on the connection; http.server closes it on expiry
 
         def log_message(self, *args):  # access logs come from the proxy in front
             pass

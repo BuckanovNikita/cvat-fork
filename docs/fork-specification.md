@@ -264,7 +264,18 @@ Behavior to preserve:
   search in the daily check. Each gives up after hearing nothing from
   ClickHouse for a few seconds longer than its search's limit. A request body is read and dropped, or the
   connection is closed
-  after the answer, so a body is never answered as a request.
+  after the answer, so a body is never answered as a request. A connection
+  that sends nothing for 120 s (no request, or a request that stops halfway)
+  is closed and its thread ends. The limit is longer than the time the known
+  proxies keep an idle connection to the service for reuse (ingress-nginx
+  60 s, Traefik 90 s), so the service never closes a connection a proxy may
+  still send a request on. Known limit: the HTTP server starts one thread per
+  open connection with no cap, and the manifests carry no NetworkPolicy, so
+  any pod in the cluster can open connections to port 8000 (each lasting at
+  most the idle limit while silent, longer if it sends a byte now and then).
+  A cap needs a worker count nobody has chosen; a NetworkPolicy needs the
+  deployment's ingress controller, which the fork does not know, and a local
+  cluster may not enforce one.
 - Its routes are under `/team-analytics-api/v1/`. Every request is checked
   against CVAT with the caller's own cookie or token: `/api/users/self`,
   `/api/organizations`, `/api/memberships`. Admins (the `admin` group) see any
