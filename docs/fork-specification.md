@@ -396,8 +396,8 @@ Behavior to preserve:
   hour while none is stored (that search has no time limit), and a late
   earlier event never moves it. Once a cutover is stored on such an instance,
   every search at start and in every daily check is stopped at its limit, so
-  each start spends up to 23 s and each daily check up to 60 s of ClickHouse
-  time under the lease for nothing. The only sign is the error the service
+  each start waits up to 23 s before it answers, and each daily check spends
+  up to 60 s of ClickHouse time under the lease, for nothing. The only sign is the error the service
   logs each time. The events table records only when an event happened, not
   when it arrived, so the search cannot be narrowed to the records added since
   the last one.
