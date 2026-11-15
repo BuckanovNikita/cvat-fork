@@ -10,6 +10,7 @@ import { formatHours, formatShare } from '../format';
 import { OPERATION_LOOKS, hasNoJobWork, isRecorded } from '../operations';
 import { shapeWording } from '../shapes';
 import { FullViewButton } from '../full-view-button';
+import { Term } from '../definitions';
 
 interface Props {
     figures: OperationsFigures;
@@ -25,7 +26,13 @@ const SHARE_INSIDE_FROM = 0.09;
 function WorkingTimeSplitCard({ figures, onFullView }: Props): JSX.Element {
     const header = (
         <div className='cvat-team-analytics-card-header'>
-            <Text strong>Where working time goes</Text>
+            <Text strong>
+                Where
+                {' '}
+                <Term name='Working time'>working time</Term>
+                {' '}
+                goes
+            </Text>
             <FullViewButton onClick={onFullView} />
         </div>
     );

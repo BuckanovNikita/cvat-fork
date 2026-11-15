@@ -16,6 +16,7 @@ import {
 } from '../operations';
 import { shapeWording } from '../shapes';
 import { FullViewButton } from '../full-view-button';
+import { Term } from '../definitions';
 
 interface Props {
     figures: OperationsFigures;
@@ -87,7 +88,7 @@ function OperationsTableCard({ figures, onFullView }: Props): JSX.Element {
                         <tr>
                             <th scope='col'>Operation</th>
                             <th scope='col'>{wording.nouns}</th>
-                            <th scope='col'>Avg time</th>
+                            <th scope='col'><Term name='Time per operation'>Avg time</Term></th>
                             <th scope='col'>Total time</th>
                             <th scope='col'>Share</th>
                         </tr>

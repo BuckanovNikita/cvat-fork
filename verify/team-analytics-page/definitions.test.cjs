@@ -1,28 +1,73 @@
-// Definitions: the overview ends with short definitions of the terms its figures use, worded from GLOSSARY.md,
-// after the details table; a full view replaces the overview and shows none.
+// Definitions: the terms the overview's figures use carry their definition, worded from GLOSSARY.md, as a tooltip
+// on the words themselves (hover and keyboard focus), once per card or table header; there is no block of
+// definitions at the end of the overview, and full views are unchanged.
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-    React, dependency, loadPage, mount, suppliedService,
+    React, act, dependency, loadPage, mount, suppliedService,
 } = require('./helper.cjs');
 
 const HOUR = 3600000;
 const PERIOD = {
     name: 'week', first_day: '2026-11-07', last_day: '2026-11-13', month: null, to_date: false, unit: 'day',
 };
+const operation = (name, objects, share) => ({
+    operation: name, objects, timed_objects: objects, time_ms: share * 10 * HOUR, average_ms: objects ? 3000 : null,
+    share, hotkey_objects: 1, mouse_objects: 1,
+});
+const method = (name, objects) => ({
+    method: name, objects, timed_objects: objects, time_ms: objects * 3000, average_ms: 3000, share: 0.3,
+});
 const OVERVIEW = {
     period: PERIOD,
-    by_annotator: { rows: [{ user_id: 11, user_name: 'alice', working_time_ms: 9 * HOUR }], rest: { count: 0, working_time_ms: 0 } },
-    filters: { project: null, annotator: null },
     processed: true,
+    by_annotator: { rows: [{ user_id: 11, user_name: 'alice', working_time_ms: 9 * HOUR }], rest: { count: 0, working_time_ms: 0 } },
+    by_project: { rows: [{ project_id: 0, working_time_ms: 9 * HOUR }], rest: { count: 0, working_time_ms: 0 } },
+    headline: { annotators: 1, projects: 1 },
+    filters: { project: null, annotator: null },
+    time_series: { unit: 'day', buckets: [{ start: '2026-11-07', working_time_ms: 9 * HOUR }] },
+    sessions: { sessions: 3, average_ms: 3 * HOUR, total_ms: 9 * HOUR, by_annotator: [] },
+    operations: {
+        legacy: false,
+        shapes: 'bounding_boxes',
+        working_time_ms: 10 * HOUR,
+        active_time_ms: 10 * HOUR,
+        rows: [operation('creation', 30, 0.3), operation('alignment', 10, 0.1), operation('class_change', 2, 0.1),
+            operation('deletion', 1, 0.1), operation('other', 0, 0.4)],
+    },
+    creation_methods: {
+        shapes: 'bounding_boxes',
+        rows: [method('drawn', 20), method('pasted', 5), method('propagated', 5)],
+        total: { objects: 30, timed_objects: 30, time_ms: 90000, average_ms: 3000 },
+        model: { objects: 4, share: 0.12 },
+        technical_accounts: 1,
+    },
 };
 const DETAILS = {
-    by: 'annotators', page: 1, page_size: 10, total: 0, legacy: false, shapes: 'bounding_boxes', processed: true,
-    technical_accounts: 0, rows: [],
+    by: 'annotators', page: 1, page_size: 10, total: 1, legacy: false, shapes: 'bounding_boxes', processed: true,
+    technical_accounts: 1,
+    rows: [{
+        id: 11, user_name: 'alice', projects: 1, sessions: 3, working_time_ms: 9 * HOUR, drawn: 20, pasted: 5,
+        propagated: 5, model: 4, saved_boxes: 0, alignments: 10, class_changes: 2, deletions: 1,
+        average_create_ms: 3000, hotkey_share: 0.5,
+    }],
 };
 const LIST = {
     period: PERIOD, processed: true, by: 'annotators', legacy: false, shapes: 'bounding_boxes',
     total: { count: 0, working_time_ms: 0 }, rows: [],
+};
+
+const WORDING = {
+    Session: 'One uninterrupted interval of job work by one person, at most a day long. A pause longer than five ' +
+        'minutes ends it. Seen for a single project, a session counts if it touched that project, and its length ' +
+        'is only the time spent inside it.',
+    'Working time': 'The time the server counts as worked, the same figure Grafana reports. It is the only total: ' +
+        'every breakdown of time adds up to it.',
+    'Time per operation': "The time from a person's previous action to the end of the operation, so that finding, " +
+        'deciding and pointing are part of it. A pause longer than 100 seconds before an action belongs to no ' +
+        'operation.',
+    Model: 'Created without a person drawing it: saved by a technical account or produced by the built-in ' +
+        'detector. Model boxes have counts but no time.',
 };
 
 function answer(url) {
@@ -51,49 +96,140 @@ async function opened(search, check) {
     const view = await mount(React.createElement(Page));
     try {
         await view.settle();
-        await check(view.container);
+        await check(view.container, view);
     } finally {
         await view.unmount();
     }
 }
 
-const definitions = (container) => container.querySelector('.cvat-team-analytics-definitions');
+const terms = (container) => [...container.querySelectorAll('.cvat-team-analytics-term')];
 
-test('the overview ends with the definitions, after the details table, in the glossary wording', async () => {
+// the card or table a term is in, by its first cvat-team-analytics-* class
+function placeOf(term) {
+    const card = term.closest('section, .cvat-team-analytics-details');
+    const name = [...card.classList].find((value) => value.startsWith('cvat-team-analytics-') &&
+        value !== 'cvat-team-analytics-card');
+    return name.replace('cvat-team-analytics-', '');
+}
+
+// the tooltip that describes a term (rendered hidden in document.body until it opens)
+function tooltipOf(term) {
+    const id = term.getAttribute('aria-describedby');
+    assert.ok(id, 'the term names its description');
+    return document.getElementById(id);
+}
+
+// antd hides a tooltip that never opened with display: none, and one that closed with its hidden class
+function isShown(tooltip) {
+    const popup = tooltip.closest('.ant-tooltip');
+    return !popup.classList.contains('ant-tooltip-hidden') && popup.style.display !== 'none';
+}
+
+async function wait(ms) {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+}
+
+test('there is no block of definitions at the end of the overview', async () => {
     await opened('?period=week', (container) => {
-        const overview = container.querySelector('.cvat-team-analytics-cards');
-        assert.ok(overview, 'the overview is shown');
-        const block = definitions(container);
-        assert.ok(block, 'the definitions are on the overview');
-        assert.equal(overview.lastElementChild, block, 'they end the overview');
-        assert.ok(block.previousElementSibling.classList.contains('cvat-team-analytics-details'),
-            'they follow the details table');
-        const shown = [...block.querySelectorAll('.cvat-team-analytics-definition')].map((item) => [
-            item.querySelector('.cvat-team-analytics-definition-term').textContent,
-            item.textContent.slice(item.querySelector('.cvat-team-analytics-definition-term').textContent.length).trim(),
-        ]);
-        assert.deepEqual(shown, [
-            ['Session.', 'One uninterrupted interval of job work by one person, at most a day long. A pause ' +
-                'longer than five minutes ends it. Seen for a single project, a session counts if it touched ' +
-                'that project, and its length is only the time spent inside it.'],
-            ['Working time.', 'The time the server counts as worked, the same figure Grafana reports. It is the ' +
-                'only total: every breakdown of time adds up to it.'],
-            ['Time per operation.', "The time from a person's previous action to the end of the operation, so " +
-                'that finding, deciding and pointing are part of it. A pause longer than 100 seconds before an ' +
-                'action belongs to no operation.'],
-            ['Model.', 'Created without a person drawing it: saved by a technical account or produced by the ' +
-                'built-in detector. Model boxes have counts but no time.'],
+        assert.ok(container.querySelector('.cvat-team-analytics-cards'), 'the overview is shown');
+        assert.equal(container.querySelector('.cvat-team-analytics-definitions'), null);
+        assert.doesNotMatch(container.textContent, /One uninterrupted interval of job work/);
+    });
+});
+
+test('the terms sit on the words of the overview, once per card or table header', async () => {
+    await opened('?period=week', (container) => {
+        assert.deepEqual(terms(container).map((term) => [placeOf(term), term.textContent]), [
+            ['sessions', 'Sessions'],
+            ['average-creation', 'Avg time per box'],
+            ['time-chart', 'Working time'],
+            ['split', 'working time'],
+            ['operations', 'Avg time'],
+            ['creation-methods', 'Avg time'],
+            ['creation-methods', 'Model'],
+            ['working-time-by-project', 'Working time'],
+            ['working-time-by-annotator', 'Working time'],
+            ['details', 'Sessions'],
+            ['details', 'Working time'],
+            ['details', 'Model'],
+            ['details', 'Avg time to create'],
         ]);
     });
 });
 
+test('each term is focusable and described by a tooltip with the glossary wording', async () => {
+    await opened('?period=week', (container) => {
+        const byWords = {
+            Sessions: 'Session',
+            'Working time': 'Working time',
+            'working time': 'Working time',
+            'Avg time': 'Time per operation',
+            'Avg time per box': 'Time per operation',
+            'Avg time to create': 'Time per operation',
+            Model: 'Model',
+        };
+        for (const term of terms(container)) {
+            assert.equal(term.tagName, 'BUTTON', `${term.textContent} is focusable`);
+            assert.equal(term.getAttribute('type'), 'button');
+            const tooltip = tooltipOf(term);
+            assert.ok(tooltip, `${term.textContent}: its tooltip is in the document before it opens`);
+            assert.equal(tooltip.getAttribute('role'), 'tooltip');
+            assert.equal(tooltip.textContent, WORDING[byWords[term.textContent]], term.textContent);
+            assert.equal(isShown(tooltip), false, 'hidden until asked for');
+            assert.equal(container.contains(tooltip), false, 'outside the cards, so no table clips it');
+        }
+    });
+});
+
+test('hovering a term shows its definition, leaving hides it', async () => {
+    await opened('?period=week', async (container) => {
+        const term = container.querySelector('.cvat-team-analytics-sessions .cvat-team-analytics-term');
+        await act(async () => { term.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
+        await wait(200);
+        assert.equal(isShown(tooltipOf(term)), true);
+        assert.equal(tooltipOf(term).textContent, WORDING.Session);
+        await act(async () => {
+            term.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+        });
+        await wait(300);
+        assert.equal(isShown(tooltipOf(term)), false);
+    });
+});
+
+test('a tap or click on a term shows its definition', async () => {
+    await opened('?period=week', async (container) => {
+        const term = container.querySelector('.cvat-team-analytics-details .cvat-team-analytics-term');
+        await act(async () => { term.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+        await wait(50);
+        assert.equal(isShown(tooltipOf(term)), true);
+        assert.equal(tooltipOf(term).textContent, WORDING.Session);
+    });
+});
+
+test('focusing a term shows its definition; Escape hides it', async () => {
+    await opened('?period=week', async (container) => {
+        const term = container.querySelector('.cvat-team-analytics-creation-methods .cvat-team-analytics-model-row ' +
+            '.cvat-team-analytics-term');
+        await act(async () => { term.focus(); });
+        await wait(50);
+        assert.equal(document.activeElement, term);
+        assert.equal(isShown(tooltipOf(term)), true);
+        assert.equal(tooltipOf(term).textContent, WORDING.Model);
+        await act(async () => {
+            term.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        });
+        await wait(300);
+        assert.equal(isShown(tooltipOf(term)), false);
+        assert.equal(document.activeElement, term, 'focus stays on the term');
+    });
+});
+
 test('a full view shows no definitions, for a chart and for a trend', async () => {
-    await opened('?period=week', (container) => assert.ok(definitions(container), 'the overview has them'));
-    for (const search of ['?period=week&view=annotators', '?period=week&view=trend-working_time']) {
+    for (const search of ['?period=week&view=time', '?period=week&view=annotators', '?period=week&view=trend-working_time']) {
         // eslint-disable-next-line no-await-in-loop
         await opened(search, (container) => {
             assert.ok(container.querySelector('.cvat-team-analytics-full'), `${search} opens a full view`);
-            assert.equal(definitions(container), null, `${search} shows no definitions`);
+            assert.deepEqual(terms(container), [], `${search} shows no definitions`);
         });
     }
 });

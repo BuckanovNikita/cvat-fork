@@ -4,26 +4,26 @@
 
 @import 'base';
 
-// The last row of the overview grid: plain text, not a card. Columns narrow to one in a narrow window and long
-// words wrap, so the block never widens the page.
-.cvat-team-analytics-definitions {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-    gap: $grid-unit-size $grid-unit-size * 3.5;
-    min-width: 0;
-    padding: $grid-unit-size * 0.5 $grid-unit-size * 0.5 0;
-    color: $text-color-secondary;
-    font-size: 13px;
+// A word of the overview with a definition (definitions.tsx): a dotted underline says there is more to read.
+.cvat-team-analytics-term {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    text-decoration: underline dotted;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    cursor: help;
+
+    &:focus-visible {
+        border-radius: 2px;
+        outline: 2px solid $validation-progress-color;
+        outline-offset: 1px;
+    }
 }
 
-.cvat-team-analytics-definition {
-    min-width: 0;
-    margin: 0;
-    overflow-wrap: anywhere;
-}
-
-.cvat-team-analytics-definition-term {
-    color: $text-color;
-    font-weight: 600;
+.cvat-team-analytics-term-tooltip {
+    max-width: 320px;
 }

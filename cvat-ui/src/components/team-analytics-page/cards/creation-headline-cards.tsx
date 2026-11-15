@@ -10,6 +10,7 @@ import { formatCount, formatSeconds, shortCount } from '../format';
 import { METHOD_NAMES } from '../creation-methods';
 import { operationRow } from '../operations';
 import { shapeWording } from '../shapes';
+import { Term } from '../definitions';
 
 interface Props {
     figures: OperationsFigures;
@@ -43,7 +44,7 @@ function CreationHeadlineCards({ figures, methods }: Props): JSX.Element {
                 </Text>
             </section>
             <section className='cvat-team-analytics-card cvat-team-analytics-average-creation'>
-                <Text type='secondary'>{`Avg time per ${noun}`}</Text>
+                <Text type='secondary'><Term name='Time per operation'>{`Avg time per ${noun}`}</Term></Text>
                 <div className='cvat-team-analytics-headline-value'>{formatSeconds(creation?.average_ms ?? null)}</div>
                 <Text type='secondary'>{methods ? perMethod(methods) : 'to create one'}</Text>
             </section>

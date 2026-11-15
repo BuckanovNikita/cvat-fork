@@ -8,6 +8,7 @@ import Text from 'antd/lib/typography/Text';
 import { TimeSeries } from '../service';
 import { dayLabel, exactHours } from '../format';
 import { FullViewButton } from '../full-view-button';
+import { Term } from '../definitions';
 
 interface Props {
     series: TimeSeries;
@@ -50,7 +51,11 @@ function WorkingTimeOverPeriodCard({ series, onFullView, large = false }: Props)
         >
             {large ? null : (
                 <div className='cvat-team-analytics-card-header'>
-                    <Text strong>{weekly ? 'Working time by week' : 'Working time by day'}</Text>
+                    <Text strong>
+                        {/* the full view shows the chart without the definitions */}
+                        {large ? 'Working time' : <Term name='Working time'>Working time</Term>}
+                        {weekly ? ' by week' : ' by day'}
+                    </Text>
                     <Text type='secondary'>Hours as the server counts working time</Text>
                     <FullViewButton onClick={onFullView} />
                 </div>

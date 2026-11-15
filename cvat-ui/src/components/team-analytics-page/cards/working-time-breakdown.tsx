@@ -23,7 +23,7 @@ export interface BreakdownRow {
 interface Props {
     // `annotator` or `project`: names the card and row classes
     kind: string;
-    title: string;
+    title: React.ReactNode;
     subtitle: string;
     rows: BreakdownRow[];
     rest?: Rest;

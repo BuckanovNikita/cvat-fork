@@ -7,6 +7,7 @@ import React from 'react';
 import { ProjectNames, ProjectWorkingTime, Rest } from '../service';
 import { projectName } from '../format';
 import WorkingTimeBreakdown from './working-time-breakdown';
+import { Term } from '../definitions';
 
 interface Props {
     rows: ProjectWorkingTime[];
@@ -28,7 +29,7 @@ function WorkingTimeByProjectCard({
     return (
         <WorkingTimeBreakdown
             kind='project'
-            title='Working time by project'
+            title={<><Term name='Working time'>Working time</Term> by project</>}
             subtitle={periodLabel}
             rows={rows.map((row) => ({
                 id: row.project_id,

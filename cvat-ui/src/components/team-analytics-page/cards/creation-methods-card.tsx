@@ -15,6 +15,7 @@ import { METHOD_NAMES, MODEL_COLOR, MODEL_NAME } from '../creation-methods';
 import { OPERATION_LOOKS } from '../operations';
 import { shapeWording } from '../shapes';
 import { FullViewButton } from '../full-view-button';
+import { Term } from '../definitions';
 
 interface Props {
     methods: CreationMethods;
@@ -57,7 +58,7 @@ function CreationMethodsCard({
                             <th aria-hidden='true' />
                             <th>{nouns}</th>
                             <th>Share</th>
-                            <th>Avg time</th>
+                            <th><Term name='Time per operation'>Avg time</Term></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -90,7 +91,9 @@ function CreationMethodsCard({
                                 className='cvat-team-analytics-method-row cvat-team-analytics-model-row'
                                 title={`${MODEL_NAME}: ${formatCount(model.objects)} (${formatShare(model.share)})`}
                             >
-                                <td className='cvat-team-analytics-operation-name'>{MODEL_NAME}</td>
+                                <td className='cvat-team-analytics-operation-name'>
+                                    <Term name='Model'>{MODEL_NAME}</Term>
+                                </td>
                                 <td className='cvat-team-analytics-method-bar-cell'>
                                     <span
                                         className='cvat-team-analytics-method-bar'

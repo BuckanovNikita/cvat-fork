@@ -10,6 +10,7 @@ import {
 import {
     MISSING, exactHours, formatCount, formatHours, formatSeconds, formatShare, projectName,
 } from '../format';
+import { Term } from '../definitions';
 
 interface Props {
     // null until the first answer
@@ -109,16 +110,16 @@ function DetailsTableCard({
                             <tr>
                                 <th className='cvat-team-analytics-details-name'>{projects ? 'Project' : 'Annotator'}</th>
                                 <th>{projects ? 'Annotators' : 'Projects'}</th>
-                                <th>Sessions</th>
-                                <th>Working time</th>
+                                <th><Term name='Session'>Sessions</Term></th>
+                                <th><Term name='Working time'>Working time</Term></th>
                                 <th>Drawn</th>
                                 <th>Pasted</th>
                                 <th>Propagated</th>
-                                <th>{legacy ? 'Boxes saved' : 'Model'}</th>
+                                <th>{legacy ? 'Boxes saved' : <Term name='Model'>Model</Term>}</th>
                                 <th>Alignments</th>
                                 <th>Class changes</th>
                                 <th>Deletions</th>
-                                <th>Avg time to create</th>
+                                <th><Term name='Time per operation'>Avg time to create</Term></th>
                                 <th>Hotkey share</th>
                             </tr>
                         </thead>

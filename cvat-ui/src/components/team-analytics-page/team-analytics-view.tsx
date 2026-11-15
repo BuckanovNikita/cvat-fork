@@ -34,7 +34,6 @@ import { LegacyNotices } from './legacy-notice';
 import ShapeSwitch from './shape-switch';
 import { DEFAULT_SHAPES } from './shapes';
 import FullView from './full-view';
-import Definitions from './definitions';
 import { FullView as FullViewKey, viewOfTrend } from './full-views';
 
 interface Props {
@@ -263,7 +262,6 @@ export default function TeamAnalyticsView({
                     })}
                 </TrendsGate>
                 {renderDetails?.()}
-                <Definitions />
             </div>
         );
     }

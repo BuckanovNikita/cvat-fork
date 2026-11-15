@@ -6,6 +6,7 @@ import React from 'react';
 import Text from 'antd/lib/typography/Text';
 
 import { SessionFigures } from '../service';
+import { Term } from '../definitions';
 import { exactHours, formatDuration } from '../format';
 
 interface Props {
@@ -19,7 +20,7 @@ function SessionsCard({ figures }: Props): JSX.Element {
             className='cvat-team-analytics-card cvat-team-analytics-sessions'
             title={`Uninterrupted intervals of work · ${exactHours(figures.total_ms)} in total`}
         >
-            <Text type='secondary'>Sessions</Text>
+            <Text type='secondary'><Term name='Session'>Sessions</Term></Text>
             <div className='cvat-team-analytics-headline-value'>{figures.sessions.toLocaleString('en-US')}</div>
             <Text type='secondary'>
                 {figures.sessions > 0 ? `average ${formatDuration(figures.average_ms)}` : 'no sessions in this period'}

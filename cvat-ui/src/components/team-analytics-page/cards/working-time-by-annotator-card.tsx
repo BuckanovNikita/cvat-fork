@@ -6,6 +6,7 @@ import React from 'react';
 
 import { AnnotatorWorkingTime, Rest } from '../service';
 import WorkingTimeBreakdown from './working-time-breakdown';
+import { Term } from '../definitions';
 
 interface Props {
     rows: AnnotatorWorkingTime[];
@@ -26,7 +27,7 @@ function WorkingTimeByAnnotatorCard({
     return (
         <WorkingTimeBreakdown
             kind='annotator'
-            title='Working time by annotator'
+            title={<><Term name='Working time'>Working time</Term> by annotator</>}
             subtitle={periodLabel}
             rows={rows.map((row) => ({
                 id: row.user_id,
