@@ -263,7 +263,8 @@ layers; of the 92 files under `/opt/team-analytics`, only `team_analytics/http_s
 (this branch's change); the two copy layers differ in digest. The check tag was removed.
 `tools/git-filter-repo`: SHA-256
 `67447413e273fc76809289111748870b6f6072f08b17efe94863a92d810b7d94`, its `--version` prints
-`a40bce548d2c`, recorded in the specification with the commit that added it (by its subject).
+`a40bce548d2c`, both recorded in the specification; by the owner's decision the commit that
+added it is not named.
 Its upstream release is not identified; no outside request was made to find it.
 
 **Finding 5, the rest (recorded).** `build-ui.sh` pins the Node image by tag, and upstream's

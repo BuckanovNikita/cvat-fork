@@ -20,8 +20,7 @@ to the repository root.
 
 The authoritative import path selection is `PATHS` in `mirror-cvat.sh`.
 `tools/git-filter-repo` is vendored tooling, not a place for fork policy.
-It was added by the commit "chore: add the filtered mirror tooling" and has
-not changed since; its SHA-256 is
+It has not changed since it was added; its SHA-256 is
 `67447413e273fc76809289111748870b6f6072f08b17efe94863a92d810b7d94`, and its
 own `--version` (the start of its source's git blob id) prints `a40bce548d2c`.
 Which upstream release of git-filter-repo it is has not been identified: the
