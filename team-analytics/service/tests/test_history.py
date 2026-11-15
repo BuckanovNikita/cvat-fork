@@ -281,6 +281,8 @@ class ShortWindowTest(HistoryCase):
         self.assertEqual(status, 200, trends)
         self.assertEqual([bucket["processed"] for bucket in trends["buckets"]], [True] * 11 + [False])
         self.assertEqual(trends["lines"][0]["points"][-2]["working_time_ms"], 4 * MINUTE)  # the week of the 5th
+        # a candidate's working time never takes in the bucket that is not processed; it stays null meanwhile
+        self.assertEqual([(row["id"], row["working_time_ms"]) for row in trends["candidates"]], [(ALICE[0], None)])
 
         self.step()  # the history step: the hour from 15:00
         self.assertTrue(self.history()["complete"])
