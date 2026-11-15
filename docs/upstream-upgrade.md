@@ -246,9 +246,9 @@ every process of the run a memory limit (address space, `NODE_SUITE_MEMORY_KB`,
 default 8 GiB) and every test a time limit (`NODE_SUITE_TEST_TIMEOUT_MS`,
 default one minute), so a runaway test fails its suite instead of exhausting
 the machine. Node's test runner has neither limit by default. Run a suite by
-hand through the same wrapper, as the commands below do; the browser check of
-the task legend (`BROWSER_BIN`) is the exception, kept as its own command
-because it starts a browser.
+hand through the same wrapper, as the commands below do. The browser check of
+the task legend (`BROWSER_BIN`) is not part of the pipeline and keeps its own
+command.
 
 Prerequisites on a fresh checkout:
 
@@ -571,7 +571,8 @@ the merge alone does not undo server database migrations.
 
 Fork versions before the Technical accounts list read the list of technical
 accounts from the environment variable `TEAM_ANALYTICS_TECHNICAL_ACCOUNTS`
-(user names separated by commas). The fork no longer reads it: the list is kept
+(user names separated by commas). The fork no longer takes the list from it (it
+only looks at it to warn, below): the list is kept
 in Postgres and edited by an administrator in Team Analytics settings on the
 page (TA-1). On such an instance:
 
