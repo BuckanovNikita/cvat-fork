@@ -22,16 +22,17 @@ Refused, each named on stderr:
   allowed, nothing else): a volume of a pod, at any depth, with a source other than configMap,
   emptyDir, persistentVolumeClaim or projected, or a projected source other than configMap; a
   `volumeName` anywhere (a claim that names a volume); an Ingress with a rule or a TLS entry for
-  a host other than --ingress-host, a rule without a host, or a default backend (without
-  --ingress-host every Ingress is refused); an Endpoints or EndpointSlice object, which the
+  a host other than --ingress-host, a rule without a host, a default backend, or any annotation
+  (an annotation can add a host or controller configuration; without --ingress-host every
+  Ingress is refused); an Endpoints or EndpointSlice object, which the
   genuine render does not contain (the cluster writes them for Services with a selector); a
   Secret of a type other than unset, Opaque or generic (a service account token Secret);
 - a RoleBinding whose role is a ClusterRole, or with a subject other than a ServiceAccount of
   --namespace;
 - a render with no object.
 
-Not refused: the annotations of an Ingress for the stack's own host, its class, and anything
-else the checks above do not name. The host checks (Service type, host fields, privileged mode,
+Not refused: the class of an Ingress for the stack's own host, and anything else the checks
+above do not name. The host checks (Service type, host fields, privileged mode,
 capabilities) and the role binding checks still refuse by list.
 
 On success prints the render's images, normalised and sorted, one per line. Exit 0 accepted,
@@ -176,11 +177,16 @@ def storage(node: object, path: str) -> Iterator[str]:
             yield from storage(value, f"{path}[{index}]")
 
 
-def routes(spec: dict, name: str, ingress_host: str | None) -> Iterator[str]:
-    """An Ingress may route the stack's own host only."""
+def routes(obj: dict, name: str, ingress_host: str | None) -> Iterator[str]:
+    """An Ingress may route the stack's own host only, and carries no annotation (the genuine one has
+    none; an annotation can add hosts, such as ingress-nginx's server-alias, or controller configuration)."""
     if ingress_host is None:
         yield f"Ingress without a host of the stack's to compare with: {name}"
         return
+    metadata = obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {}
+    if metadata.get("annotations"):
+        yield f"Ingress with annotations: {name}: {sorted(metadata['annotations'])}"
+    spec = obj.get("spec") if isinstance(obj.get("spec"), dict) else {}
     for key in ("defaultBackend", "backend"):
         if key in spec:
             yield f"Ingress with a default backend (any host): {name}"
@@ -217,7 +223,7 @@ def reach(obj: dict, name: str, namespace: str, ingress_host: str | None = None)
                     or subject.get("namespace") not in (None, "", namespace):
                 yield f"role binding to a subject outside {namespace}: {name} binds {subject}"
     if kind == "Ingress":
-        yield from routes(spec, name, ingress_host)
+        yield from routes(obj, name, ingress_host)
     if (group_of(str(obj.get("apiVersion", ""))), kind) in ENDPOINT_KINDS:
         yield f"endpoints written by hand: {name}"
     if kind == "Secret" and group_of(str(obj.get("apiVersion", ""))) == "" \

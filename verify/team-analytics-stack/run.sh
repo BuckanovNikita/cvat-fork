@@ -204,8 +204,8 @@ stack_images() {
 # the host or the outside (a Service other than ClusterIP, host networking, a host port or path,
 # privileged mode, added capabilities), no role binding to a ClusterRole or to a subject
 # outside the namespace, and, by allowlist, only the volume sources the genuine render uses, no
-# claim that names a volume, no Ingress for a host other than TA_INGRESS_HOST and no Endpoints
-# or EndpointSlice written by hand. With a second
+# claim that names a volume, no Ingress for a host other than TA_INGRESS_HOST or with an
+# annotation, no Endpoints or EndpointSlice written by hand, and only the genuine Secret types. With a second
 # argument, the backend check too: the fork server image is in the render and no other image
 # of its repository is, so a fallback to the stock image is refused although it is approved.
 # Writes the render's images, one per line, to the file named by GUARD_IMAGES when it is set.
