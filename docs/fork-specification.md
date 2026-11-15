@@ -172,9 +172,16 @@ over the stock files at `/opt/cvat/cvat/apps/engine/rules/`, with the stock
 files' owner and mode, and nothing else: no package, no Python change, no
 configuration change. That directory of the import is the whole build context.
 `build-server.sh` never pulls or pushes: the stock base must already be local,
-and the build runs without network. `IMAGE` and `BASE_IMAGE` are its supported
-overrides; it refuses an `IMAGE` equal to `BASE_IMAGE`, so the stock tag is
-never overwritten. `SAVE=1` additionally exports a compressed image archive.
+and the build runs without network. `IMAGE`, `BASE_IMAGE` and `STOCK_TAG` (the
+import tag, which must be local) are its supported overrides; it refuses an
+`IMAGE` equal to `BASE_IMAGE`, so the stock tag is never overwritten. It builds
+the image untagged and tags it `IMAGE` only after two checks with the server's
+own bundle builder: the built image's bundle holds the import's two patched
+policies, and the base image's bundle holds the four policy files the import
+carries exactly as `STOCK_TAG` has them, so a base of another release is
+refused. If either fails, no image is left under `IMAGE` (an earlier image under
+that tag is removed as well) and nothing is saved. `SAVE=1` additionally
+exports a compressed image archive, after the checks.
 
 The chart has one backend image setting, so the server, every worker and the
 initializer run the fork server image. The custom UI suffix is never a backend
@@ -185,16 +192,20 @@ The policies are patched in place inside the import (IAM-1). The server packages
 the bundle it serves at `/api/auth/rules` from its installed rules directory, so
 the copy must land in the directory the server builds that bundle from. Upstream
 moved the installed sources from `/home/django` to `/opt/cvat` in 2.72.0; a copy
-to a directory the server does not read raises no error and leaves the stock
-policies in force. The bundle check finds that:
+to a directory the server does not read raises no error in the build itself and
+leaves the stock policies in force. The bundle check finds that, and
+`build-server.sh` runs it before it tags the image:
 `verify/policy_bundle.sh from-image IMAGE` builds the bundle with the server's
 own builder in a one-off container of the image, without network, and
 `verify/policy_bundle.sh check` compares each of the two policies in a bundle
 given on stdin, by itself and byte for byte, with the import's file (with
-`check <tag>`, with the file at that import tag). The test stack applies the
-same check to the bundle the running server serves (`run.sh check-policies`)
-and also requires the patch marker in each policy; its render check refuses a
-backend image other than the fork server image.
+`check <tag>`, with the file at that import tag; `check-stock <tag>` compares
+the four policy files). It first refuses a bundle with two entries of one name,
+which the server builds when a policy exists in two registered rules
+directories, and a compared policy that is not a regular file. The test stack
+applies the same check to the bundle the running server serves
+(`run.sh check-policies`) and also requires the patch marker in each policy;
+its render check refuses a backend image other than the fork server image.
 
 Rebuild the fork server image whenever a policy changes and on every upstream
 upgrade, and run the backend on the rebuilt image: a running server caches the
@@ -626,7 +637,7 @@ rules is recorded with the dated evidence.
 | IAM-A | Unassigned organization members with at least the `worker` global role can act on issues/comments and list the organization's resources; below the floor the result is stock's | `verify/opa_issues_test.rego` through `verify/policy_test.sh`; the stack's issue and comment matrix (`run.sh check-issues`) |
 | IAM-B | Nonmembers, removed members, other organizations and sandbox/context mismatches do not gain access from the patch | Same policy suite; the stack's matrix for a nonmember, another organization's member, each organization's members on the other's issue, the personal workspace and an account with no global role. A removed member is covered by the policy suite only |
 | IAM-C | Sandbox behavior and upstream filter shape remain compatible with the target release | Stock-versus-patched policy suite with target helpers |
-| BUILD-A | Built image serves the changed UI without stale bundles/source maps; the backend runs the fork server image, which differs from the stock release only in the two policies | Image inspection and browser verification; the stack's render check |
+| BUILD-A | Built image serves the changed UI without stale bundles/source maps; the backend runs the fork server image, which differs from the stock release only in the two policies | Image inspection and browser verification; `build-server.sh`'s two bundle checks and the dated comparison of the fork and stock images (`docs/evidence/2026-11-14-fork-server-image.md`) for the content; the stack's render check for the backend image name only |
 | BUILD-B | Both served policy files equal the import's, each by itself, and real requests exhibit the patched behavior | `verify/policy_bundle.sh` on the image, `run.sh check-policies` on the served bundle, and `run.sh check-issues`; not marker presence alone |
 
 The frontend suite executes real TypeScript, Redux and server-rendered React
@@ -642,9 +653,43 @@ The live checks run on the test stack (`verify/team-analytics-stack/`), each
 judging its own outcome. The issue and comment matrix runs every row through
 the real API with real accounts, one of them with no global role, against the
 fork server image; the stock column is checked against the policy engine only
-(`run.sh check-issue-policies stock`), not against a running stock server. The
+(`run.sh check-issue-policies stock`, run by every `up`), not against a running
+stock server. The removed Compose launcher (`verify/opa_issues.sh`) ran the
+matrix against a live stock server and then a patched one; the stack runs only
+the fork server image, so the stock column's live run is gone: the stock
+decisions are shown by the policy engine with inputs `issue_matrix.py` builds
+as the server would send them, and not by a real stock server. The
 task progress check creates a job in every stage and state and checks the
 legend, segments, colours and total in a browser on the stack's UI image.
+
+### The test stack on a shared machine and in a public repository
+
+The stack's namespace is `cvat-ta-it-<TA_RUN_ID>`, and `TA_RUN_ID` defaults to
+the machine user. Every checkout of the same user therefore shares one stack:
+one namespace, one state directory and one port-forward, and the ownership
+label is the same for all of them. An `up` from a second checkout upgrades the
+first one's release and its `down` deletes it. Give each concurrent run its own
+`TA_RUN_ID` (and its own reserved host port). `down` refuses a namespace
+without the label and stops only its own port-forward.
+
+The cluster's sweeper drops a namespace at its age limit or when it was created
+before the cluster's last restart. The launcher recreates a namespace older
+than `TA_MAX_REUSE_HOURS`, and one created before the restart time the
+sweeper's last tick recorded (`infra-janitor/last-run`, `restart_at`). That
+time can lag a restart by one tick, and k8s-infra does not yet count the
+sweeper's restart detection as proven; without a readable time only the age
+rule applies.
+
+The repository is public. What it shows about the stack, none of it a secret
+of a running system: the default of the disposable seed password
+(`stack.env`); upstream's default database and cache passwords in the chart's
+`values.yaml`; and, in evidence dated before 2026-11-15, the default namespace
+and Ingress host, which carry the machine user's name; and a machine path
+outside the home directory in `INFRA_MIGRATION.md`, the platform's own notice
+text. Older evidence is not rewritten. The seed password
+reaches the backend pod through the seed script's standard input, not a
+command line. The check pipeline's output is not redacted: a failing hook
+prints absolute paths, so its output must not be pasted into evidence.
 
 ## Changes that do not need reimplementation
 
