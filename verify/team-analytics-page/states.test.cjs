@@ -8,14 +8,10 @@ const View = loadPage('team-analytics-view.tsx').default;
 test('a refused caller sees that the page is not available, not an error', () => {
     const html = render(View, { organization: 'team-org', state: { kind: 'denied' } });
     assert.match(text(html), /Team analytics is not available/);
-    assert.match(text(html), /This page is for administrators and for owners and maintainers of the current organization\./);
+    assert.match(text(html), /This page is for administrators of this CVAT instance\./);
+    assert.doesNotMatch(text(html), /owner|maintainer/);
     assert.match(text(html), /Back to tasks/);
     assert.doesNotMatch(html, /cvat-team-analytics-error/);
-});
-
-test('an owner or maintainer without an organization is asked to select one', () => {
-    const html = render(View, { organization: null, state: { kind: 'select-organization' } });
-    assert.match(text(html), /Select an organization/);
 });
 
 test('an unreachable service shows an error panel on the page', () => {

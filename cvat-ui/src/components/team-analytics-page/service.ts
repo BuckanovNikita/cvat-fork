@@ -182,16 +182,16 @@ export interface Overview {
 }
 
 // How far history is processed (status section `history`), in the viewer's time zone. The fields marked
-// "administrators only" describe the whole instance and are absent from everyone else's status.
+// "whole instance" describe the whole instance whatever the scope (only administrators read the status).
 export interface HistoryStatus {
     complete: boolean;
     percent?: number; // whole percent of the days with events that are processed; 100 only when complete
-    // administrators only. ISO time from which everything is processed; null when complete or nothing is
+    // whole instance. ISO time from which everything is processed; null when complete or nothing is
     ready_from?: string | null;
-    ready_from_day?: string | null; // administrators only. YYYY-MM-DD: the viewer's first whole processed day
-    first_day?: string | null; // administrators only. YYYY-MM-DD: the first day with events
-    days_ready?: number; // administrators only
-    days_total?: number; // administrators only
+    ready_from_day?: string | null; // whole instance. YYYY-MM-DD: the viewer's first whole processed day
+    first_day?: string | null; // whole instance. YYYY-MM-DD: the first day with events
+    days_ready?: number; // whole instance
+    days_total?: number; // whole instance
     periods: Record<string, boolean>; // period key -> wholly processed
     earliest_month: string | null; // YYYY-MM: the earliest wholly processed month (null: none, or all when complete)
     complete_weeks: number;
@@ -216,7 +216,6 @@ export type PageState =
     | { kind: 'loading' }
     | { kind: 'ready'; overview: Overview }
     | { kind: 'denied' }
-    | { kind: 'select-organization' }
     | { kind: 'signed-out' }
     | { kind: 'error' };
 
@@ -232,15 +231,6 @@ export interface ServiceAnswer {
 // throws only when there is no answer at all (CVAT unreachable, a timeout).
 export type RequestService = (endpoint: Endpoint, params: Record<string, string>) => Promise<ServiceAnswer>;
 
-// cvat-core keeps no body in the error it throws for a non-2xx answer: it turns a JSON body it does not know
-// into "**<field>**: <value>" lines of the error's message (`generateError` in cvat-core/src/server-proxy.ts).
-// So the one error body the page needs, {"error": "organization_required"}, is read back from that message.
-const ORGANIZATION_REQUIRED = /(^|\n)\*\*error\*\*: organization_required(\n|$)/;
-
-function errorBody(error: ServerError): any {
-    return ORGANIZATION_REQUIRED.test(error.message) ? { error: 'organization_required' } : null;
-}
-
 export const requestService: RequestService = async (endpoint, params) => {
     const core = getCore();
     try {
@@ -254,7 +244,7 @@ export const requestService: RequestService = async (endpoint, params) => {
     } catch (error) {
         // a ServerError without an HTTP status (code 0: no response, a timeout) is no answer at all
         if (error instanceof ServerError && error.code >= 100) {
-            return { status: error.code, body: errorBody(error) };
+            return { status: error.code, body: null };
         }
         throw error;
     }
@@ -303,14 +293,12 @@ function serviceParams(query: OverviewQuery): Record<string, string> {
 
 // --- refusals: the page state for a 401, 403 or 404 from any endpoint -----------------------------------------
 
-export type RefusedState = { kind: 'denied' } | { kind: 'select-organization' } | { kind: 'signed-out' };
+export type RefusedState = { kind: 'denied' } | { kind: 'signed-out' };
 
-// A 404 (analytics switched off on the server, or an unknown organization) reads as "not available", as a 403
-// does. Any other failure, a 429 that outlived cvat-core's retries too, is no refusal: the loaders' error.
+// Team Analytics is for administrators only: every 403 is the "denied" state. A 404 (analytics switched off on
+// the server, or an unknown organization) reads as "not available" too. Any other failure, a 429 that outlived
+// cvat-core's retries too, is no refusal: the loaders' error.
 export function refusalOf(answer: ServiceAnswer): RefusedState | null {
-    if (answer.status === 403 && answer.body?.error === 'organization_required') {
-        return { kind: 'select-organization' };
-    }
     if (answer.status === 401) return { kind: 'signed-out' };
     if (answer.status === 403 || answer.status === 404) return { kind: 'denied' };
     return null;

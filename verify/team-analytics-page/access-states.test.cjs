@@ -21,7 +21,7 @@ async function visit(organization, answer) {
     return { text, html, requests };
 }
 
-const ROLES = /This page is for administrators and for owners and maintainers of the current organization\./;
+const ROLES = /This page is for administrators of this CVAT instance\./;
 
 test('an ordinary annotator without an organization sees that the page is not available and for whom', async () => {
     const { text, requests } = await visit(null, { status: 403, body: { error: 'forbidden' } });
@@ -32,7 +32,7 @@ test('an ordinary annotator without an organization sees that the page is not av
     assert.doesNotMatch(text, /All organizations and personal workspaces/);
 });
 
-test('a worker or supervisor of the selected organization sees that the page is not available', async () => {
+test('anyone but an administrator, an owner or maintainer of the selected organization too, sees the denied state', async () => {
     const { text, html } = await visit('team-org', { status: 403, body: { error: 'forbidden' } });
     assert.match(text, /Team analytics is not available/);
     assert.match(text, ROLES);
@@ -40,13 +40,21 @@ test('a worker or supervisor of the selected organization sees that the page is 
     assert.doesNotMatch(html, /cvat-team-analytics-annotator-row/);
 });
 
-test('an owner or maintainer without an organization is asked to select one, with no scope claimed', async () => {
-    const { text, html } = await visit(null, { status: 403, body: { error: 'organization_required' } });
-    assert.ok(html.includes('cvat-team-analytics-select-organization'));
-    assert.match(text, /Select an organization/);
-    assert.match(text, /No organization selected/);
-    assert.doesNotMatch(text, /All organizations and personal workspaces/);
-    assert.doesNotMatch(text, /not available/);
+test('a 403 is the denied state whatever its body: there is no "select an organization" state', async () => {
+    for (const body of [{ error: 'organization_required' }, null, 'Forbidden']) {
+        // eslint-disable-next-line no-await-in-loop
+        const { text, html } = await visit(null, { status: 403, body });
+        assert.ok(html.includes('cvat-team-analytics-denied'));
+        assert.match(text, ROLES);
+        assert.doesNotMatch(text, /Select an organization|No organization selected/);
+        assert.doesNotMatch(text, /All organizations and personal workspaces/);
+    }
+});
+
+test('an administrator reads organization scope with an organization selected and instance scope with none', async () => {
+    const ready = { status: 200, body: { by_annotator: { rows: [] } } };
+    assert.match((await visit('team-org', ready)).text, /Organization team-org · annotation work inside jobs/);
+    assert.match((await visit(null, ready)).text, /All organizations and personal workspaces · annotation work inside jobs/);
 });
 
 test('an ended session asks to sign in again instead of naming the roles', async () => {

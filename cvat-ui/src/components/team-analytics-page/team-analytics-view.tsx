@@ -87,10 +87,10 @@ function annotatorLabel(id: number | null, overview: Overview | null): string {
     return shown ?? echoed ?? `Annotator #${id}`;
 }
 
-function scopeLabel(organization: string | null, state: PageState): string {
+// Only administrators read Team Analytics: with an organization selected, organization scope; with none,
+// instance scope.
+function scopeLabel(organization: string | null): string {
     if (organization) return `Organization ${organization}`;
-    // without an organization only an administrator reads instance scope
-    if (state.kind === 'select-organization') return 'No organization selected';
     return 'All organizations and personal workspaces';
 }
 
@@ -117,9 +117,8 @@ export default function TeamAnalyticsView({
                     className='cvat-team-analytics-denied'
                     status='403'
                     title='Team analytics is not available'
-                    subTitle={'This page is for administrators and for owners and maintainers of the current ' +
-                        'organization. The analytics service checks the same roles before it returns any data, ' +
-                        'so a direct link shows nothing more.'}
+                    subTitle={'This page is for administrators of this CVAT instance. The server checks the same ' +
+                        'before it returns any data, so a direct link shows nothing more.'}
                     extra={(
                         <a
                             className='cvat-team-analytics-back'
@@ -151,15 +150,6 @@ export default function TeamAnalyticsView({
                 status='info'
                 title='Your session has ended'
                 subTitle='Sign in again to see team analytics.'
-            />
-        );
-    } else if (state.kind === 'select-organization') {
-        content = (
-            <Result
-                className='cvat-team-analytics-select-organization'
-                status='info'
-                title='Select an organization'
-                subTitle='Team analytics shows one organization at a time. Choose it in the organization menu at the top right.'
             />
         );
     } else if (state.overview.processed === false) {
@@ -285,7 +275,7 @@ export default function TeamAnalyticsView({
             <div className='cvat-team-analytics-header'>
                 <Title level={4}>Team analytics</Title>
                 <Text type='secondary'>
-                    {scopeLabel(organization, state)}
+                    {scopeLabel(organization)}
                     {' · annotation work inside jobs'}
                 </Text>
             </div>

@@ -45,7 +45,7 @@ const answers = [
     ['a refusal', { status: 403, body: { error: 'forbidden' } }, { kind: 'denied' }],
     ['a refusal without a body', { status: 403, body: null }, { kind: 'denied' }],
     ['an unauthenticated answer', { status: 401, body: { error: 'not_authenticated' } }, { kind: 'signed-out' }],
-    ['a request to select an organization', { status: 403, body: { error: 'organization_required' } }, { kind: 'select-organization' }],
+    ['a 403 naming organization_required (no longer sent)', { status: 403, body: { error: 'organization_required' } }, { kind: 'denied' }],
     ['analytics switched off or an unknown organization', { status: 404, body: null }, { kind: 'denied' }],
     ['an answer not ready after cvat-core\'s retries', { status: 429, body: null }, { kind: 'error' }],
     ['a bad parameter', { status: 400, body: null }, { kind: 'error' }],
@@ -121,8 +121,7 @@ test('the real boundary asks cvat-core for /api/team-analytics/<endpoint> with G
 const thrown = [
     ['401', new ServerError('Authentication credentials were not provided.', 401, 'Unauthorized'), { status: 401, body: null }, 'signed-out'],
     ['plain 403', new ServerError('You do not have permission to perform this action.', 403, 'Forbidden'), { status: 403, body: null }, 'denied'],
-    ['403 organization_required', new ServerError('**error**: organization_required', 403, 'Forbidden'), { status: 403, body: { error: 'organization_required' } }, 'select-organization'],
-    ['403 naming another error', new ServerError('**error**: organization_required_soon', 403, 'Forbidden'), { status: 403, body: null }, 'denied'],
+    ['403 naming organization_required', new ServerError('**error**: organization_required', 403, 'Forbidden'), { status: 403, body: null }, 'denied'],
     ['404', new ServerError('Not found.', 404, 'Not Found'), { status: 404, body: null }, 'denied'],
     ['429', new ServerError('Request was throttled.', 429, 'Too Many Requests'), { status: 429, body: null }, 'error'],
     ['503', new ServerError('**error**: read_failed', 503, 'Service Unavailable'), { status: 503, body: null }, 'error'],

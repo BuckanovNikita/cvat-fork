@@ -29,7 +29,7 @@ export function monthAvailable(history: HistoryStatus | null | undefined, month:
 export function HistoryProgress({ history }: { history?: HistoryStatus | null }): JSX.Element | null {
     if (!history || history.complete) return null;
     const { days_ready: daysReady, days_total: daysTotal, ready_from_day: readyFromDay } = history;
-    // Only an administrator's status has the day counts; everyone else's has the percentage alone.
+    // A status without the day counts (an older server) shows the percentage alone.
     const counted = typeof daysReady === 'number' && typeof daysTotal === 'number';
     const percent = history.percent ?? 0;
     const ready = readyFromDay ? `Ready from ${dayLabel(readyFromDay, true)}` : 'Nothing ready yet';

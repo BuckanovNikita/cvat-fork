@@ -33,7 +33,7 @@ const NO_FIGURES = {
     },
 };
 
-// An administrator's history block; a maintainer's has no first day, day counts or ready-from moment.
+// The history block of the status (only administrators read it).
 function history(overrides = {}) {
     return {
         complete: false,
@@ -91,14 +91,15 @@ test('while history is processed one progress bar shows the earliest ready date 
     assert.match(shown, /Recent days are processed first\./);
 });
 
-function maintainerHistory(overrides = {}) {
+// a status without the day counts (an older server): the bar still reads
+function percentOnlyHistory(overrides = {}) {
     const block = history({ percent: 37, ...overrides });
     for (const key of ['ready_from', 'ready_from_day', 'first_day', 'days_ready', 'days_total']) delete block[key];
     return block;
 }
 
 test('without the day counts the progress bar reads as the percentage alone', () => {
-    const html = view({ status: { history: maintainerHistory() } });
+    const html = view({ status: { history: percentOnlyHistory() } });
     const shown = text(html);
     assert.match(shown, /Processing history/);
     assert.match(shown, /37%/);
@@ -114,7 +115,7 @@ test('with the day counts the line shows them and the bar the percentage from th
 });
 
 test('without the day counts the periods are still offered only when processed', () => {
-    const periods = buttons(view({ status: { history: maintainerHistory() } }))
+    const periods = buttons(view({ status: { history: percentOnlyHistory() } }))
         .filter((b) => ['Week', 'Two weeks', 'Month', 'Year'].includes(b.name));
     assert.deepEqual(periods.map((b) => [b.name, b.disabled]), [
         ['Week', false], ['Two weeks', true], ['Month', true], ['Year', true],
