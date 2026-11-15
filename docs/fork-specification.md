@@ -692,9 +692,11 @@ it:
   harness drives the top bar over supplied searches. The stack's held-key
   step (`run.sh check-fixes gestures`: a navigation key held while the frame
   data requests are held back, its count compared with the frames shown)
-  catches a stale last shown frame. It does not reach a handler that waits:
-  on the stack (2026-11-15) the frame change did not wait for the frame's
-  data, so every key-down moved a frame. CVAT's merged `change:frame` records
+  was meant to catch a stale last shown frame. On the stack (2026-11-15)
+  the frame change did not wait for the frame's data, so every key-down
+  moved a frame, and a count of every key-down would have matched as well;
+  only the press at the last frame, which must count nothing, told the rule
+  from its absence. It does not reach a handler that waits either. CVAT's merged `change:frame` records
   count fewer steps than were shown (a record already sent keeps its count),
   so they are not a measure of frames moved.
 

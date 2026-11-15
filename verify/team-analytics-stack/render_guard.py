@@ -14,10 +14,11 @@ Refused, each named on stderr:
   on the --allow list, or has no tag or the tag `latest` (Kubernetes pulls those by default);
 - an `imagePullPolicy` anywhere other than IfNotPresent or Never;
 - with --backend IMAGE: any image of IMAGE's repository other than IMAGE, or IMAGE absent;
-- what reaches the host or the outside from inside the namespace, in any object at any depth:
-  a Service of a type other than ClusterIP (unset, or headless with clusterIP None, is
-  ClusterIP) or with external IPs; host networking, host PID or host IPC; a host port; a host
-  path volume; privileged mode or added capabilities;
+- these ways to the host or the outside, and only these: a Service of a type other than
+  ClusterIP (unset, or headless with clusterIP None, is ClusterIP) or with external IPs; and,
+  as keys at any depth of any object, host networking, host PID or host IPC, a host port, a
+  host path volume, privileged mode and added capabilities (a key of that name elsewhere, such
+  as a ConfigMap data key `hostPath`, is refused too: a false refusal, kept);
 - what reaches other projects' storage or routes, by allowlist (what the genuine render uses is
   allowed, nothing else): a volume of a pod, at any depth, with a source other than configMap,
   emptyDir, persistentVolumeClaim or projected, or a projected source other than configMap; a
@@ -31,7 +32,8 @@ Refused, each named on stderr:
   --namespace;
 - a render with no object.
 
-Not refused: the class of an Ingress for the stack's own host, and anything else the checks
+Not refused: the class of an Ingress for the stack's own host, the rest of a container's
+security settings (`allowPrivilegeEscalation: true` among them), and anything else the checks
 above do not name. The host checks (Service type, host fields, privileged mode,
 capabilities) and the role binding checks still refuse by list.
 
