@@ -505,3 +505,90 @@ test('searchUsers asks GET settings/users with the text and reads the users', as
     const failed = suppliedService(() => ({ status: 400, body: { error: 'bad_request', detail: 'too long' } }));
     assert.equal(await service.searchUsers('x'.repeat(151), failed.request), null);
 });
+
+// --- a save that does not answer in time ------------------------------------------------------------------------
+
+// the modal alone with a short save time limit; `answerPut(sent)` answers each PUT (a promise that may never settle)
+async function withModal(answerPut, check) {
+    const saved = suppliedSettings((sent) => (sent.method === 'PUT' ? answerPut(sent) : { body: SETTINGS }));
+    const SettingsModal = loadPage('settings-modal.tsx', {
+        './service': { ...loadPage('service.ts'), requestSettings: saved.request },
+    }).default;
+    const calls = { closed: 0, saved: 0 };
+    let setOpen;
+    function Host() {
+        const [open, change] = React.useState(true);
+        setOpen = change;
+        return React.createElement(SettingsModal, {
+            open,
+            saveTimeLimitMs: 100,
+            onClose() { calls.closed += 1; },
+            onSaved() { calls.saved += 1; },
+        });
+    }
+    const view = await mount(React.createElement(Host));
+    try {
+        await view.settle();
+        await check({ view, calls, puts: () => saved.requests.filter((sent) => sent.method === 'PUT').length, setOpen: (open) => setOpen(open) });
+    } finally {
+        await view.unmount();
+        document.body.querySelectorAll('.ant-modal-root').forEach((element) => element.remove());
+    }
+}
+
+const errorText = () => document.body.querySelector('.cvat-team-analytics-settings-error')?.textContent ?? null;
+const saveLoading = () => document.body.querySelector('.cvat-team-analytics-settings-save').classList.contains('ant-btn-loading');
+
+test('a save that never answers stops being waited for after the limit, says so, and the modal can be closed', async () => {
+    await withModal(() => new Promise(() => {}), async ({ view, calls, puts }) => {
+        await click(document.body.querySelector('.cvat-team-analytics-settings-save'));
+        await click(document.body.querySelector('.cvat-team-analytics-settings-cancel'));
+        assert.equal(calls.closed, 0, 'locked while the save is waited for');
+        await wait(150);
+        await view.settle();
+        assert.equal(errorText(), UNFINISHED);
+        assert.equal(saveLoading(), false, 'no longer saving');
+        await click(document.body.querySelector('.cvat-team-analytics-settings-cancel'));
+        assert.equal(calls.closed, 1, 'Cancel works again');
+        await click(document.body.querySelector('.ant-modal-close'));
+        assert.equal(calls.closed, 2, 'and the close button');
+        assert.equal(puts(), 1);
+    });
+});
+
+test('a save answered within the limit behaves as before', async () => {
+    await withModal(() => new Promise((resolve) => { setTimeout(() => resolve({ body: SETTINGS }), 30); }),
+        async ({ view, calls }) => {
+            await click(document.body.querySelector('.cvat-team-analytics-settings-save'));
+            await wait(200);
+            await view.settle();
+            assert.equal(calls.saved, 1);
+            assert.equal(errorText(), null, 'no time-limit message afterwards');
+        });
+});
+
+test('a success that arrives after the limit neither closes a reopened modal nor reloads', async () => {
+    const answers = [];
+    await withModal(() => new Promise((resolve) => { answers.push(resolve); }), async ({
+        view, calls, setOpen,
+    }) => {
+        await click(document.body.querySelector('.cvat-team-analytics-settings-save'));
+        await wait(150);
+        await view.settle();
+        assert.equal(errorText(), UNFINISHED);
+        // the late success while the modal still shows the message
+        await act(async () => { answers[0]({ body: SETTINGS }); });
+        await view.settle();
+        assert.equal(calls.saved, 0, 'no reload from the save given up on');
+        assert.equal(errorText(), UNFINISHED, 'the message stays');
+        // opened again, a second save is waited for on its own; the first save's answer has no part in it
+        await act(async () => { setOpen(false); });
+        await act(async () => { setOpen(true); });
+        await view.settle();
+        assert.equal(errorText(), null);
+        await click(document.body.querySelector('.cvat-team-analytics-settings-save'));
+        await act(async () => { answers[1]({ body: SETTINGS }); });
+        await view.settle();
+        assert.equal(calls.saved, 1, 'one reload, from the save answered in time');
+    });
+});

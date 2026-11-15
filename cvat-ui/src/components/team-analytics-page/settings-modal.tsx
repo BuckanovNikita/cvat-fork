@@ -14,7 +14,8 @@ import Spin from 'antd/lib/spin';
 import { CloseOutlined } from '@ant-design/icons';
 
 import {
-    SettingsUser, TechnicalAccount, loadSettings, requestService, requestSettings, saveSettings, searchUsers,
+    SAVE_UNFINISHED, SettingsUser, TechnicalAccount, loadSettings, requestService, requestSettings, saveSettings,
+    searchUsers,
 } from './service';
 
 interface Props {
@@ -24,7 +25,14 @@ interface Props {
     onSaved: () => void;
     // how long typing must pause before the users are searched
     searchDelayMs?: number;
+    // how long a save is waited for (SAVE_TIME_LIMIT_MS)
+    saveTimeLimitMs?: number;
 }
+
+// A save is waited for this long, then the modal stops waiting: it says the save did not finish and can be closed
+// again. The server's own save takes a few milliseconds; the limit only ends a request that never answers (no
+// timeout is set on it), which would otherwise keep the modal, and its mask over the page, open for good.
+export const SAVE_TIME_LIMIT_MS = 30000;
 
 type Loaded = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready' };
 
@@ -47,7 +55,7 @@ export const SEARCH_MAX_LENGTH = 150;
 // "Team Analytics settings": the Technical accounts list of the instance, edited here by an administrator and
 // saved as a whole. A change applies to every past period the next time the page is loaded.
 export default function SettingsModal({
-    open, onClose, onSaved, searchDelayMs = 400,
+    open, onClose, onSaved, searchDelayMs = 400, saveTimeLimitMs = SAVE_TIME_LIMIT_MS,
 }: Props): JSX.Element {
     const id = useId();
     const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
@@ -62,10 +70,11 @@ export default function SettingsModal({
     const loads = useRef(0);
     const searches = useRef(0);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    // the current opening of the modal: a save's result that belongs to an earlier opening is dropped
-    const openings = useRef(0);
-    // a save is on its way: no second save, and the modal does not close until it is answered
+    // a save is on its way: no second save, and the modal does not close until it is answered or its time is up
     const inFlight = useRef(false);
+    // the latest save and its time limit: an answer to a save no longer waited for is dropped
+    const saves = useRef(0);
+    const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     // the text typed so far, for the search that opening the list starts (typing into the closed picker opens it
     // too, and that search must not replace the typed one with an empty one)
     const typedText = useRef('');
@@ -87,7 +96,6 @@ export default function SettingsModal({
 
     useEffect(() => {
         if (!open) return undefined;
-        openings.current += 1;
         inFlight.current = false;
         setError(null);
         setSaving(false);
@@ -97,10 +105,12 @@ export default function SettingsModal({
         setSearchFailed(false);
         load();
         return () => {
-            openings.current += 1;
+            // a save of this opening is no longer waited for
             loads.current += 1;
             searches.current += 1;
+            saves.current += 1;
             if (timer.current) clearTimeout(timer.current);
+            if (saveTimer.current) clearTimeout(saveTimer.current);
         };
     }, [open]);
 
@@ -136,14 +146,29 @@ export default function SettingsModal({
         // the modal's own guard: a second Save (a double click, Enter) does not send a second list
         if (inFlight.current) return;
         inFlight.current = true;
-        const opening = openings.current;
-        setSaving(true);
-        setError(null);
-        saveSettings(accounts.map((account) => account.user_id), requestSettings).then((result) => {
-            // an answer for an earlier opening (the modal was closed by a refusal meanwhile) changes nothing here
-            if (openings.current !== opening) return;
+        saves.current += 1;
+        const { current } = saves;
+        const stopWaiting = (): void => {
             inFlight.current = false;
             setSaving(false);
+            if (saveTimer.current) clearTimeout(saveTimer.current);
+            saveTimer.current = null;
+        };
+        setSaving(true);
+        setError(null);
+        // past the limit the save is no longer waited for: its answer, if it ever comes, is dropped (a save that
+        // went through shows in the list the next time the settings are opened)
+        saveTimer.current = setTimeout(() => {
+            if (saves.current !== current) return;
+            saves.current += 1;
+            stopWaiting();
+            setError(SAVE_UNFINISHED);
+        }, saveTimeLimitMs);
+        saveSettings(accounts.map((account) => account.user_id), requestSettings).then((result) => {
+            // an answer for a save no longer waited for (its time was up, or the modal was closed by a refusal
+            // meanwhile, and maybe opened again) changes nothing here
+            if (saves.current !== current) return;
+            stopWaiting();
             if (result.kind === 'saved') onSaved();
             else setError(result.error);
         });

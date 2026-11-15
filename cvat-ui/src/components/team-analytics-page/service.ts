@@ -702,7 +702,7 @@ export async function loadSettings(request: RequestSettings = requestSettings): 
 
 // Without an answer, or with a server failure, the list may or may not have been saved (the server answers 503
 // when the list was saved but older answers could not be retired)
-const SAVE_UNFINISHED = 'The save did not finish, so the list may not have changed. Open the settings again ' +
+export const SAVE_UNFINISHED = 'The save did not finish, so the list may not have changed. Open the settings again ' +
     'to see the saved list.';
 
 export type SaveResult = { kind: 'saved'; settings: TeamAnalyticsSettings } | { kind: 'failed'; error: string };
