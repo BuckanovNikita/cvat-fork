@@ -46,6 +46,10 @@
 #   run.sh check-org-creation
 #                         only administrators create organizations: user, worker, owner and maintainer refused
 #                         (403, nothing created), an administrator creates one (deleted again); part of up
+#   run.sh check-settings the Team Analytics settings API: non-administrators refused, bad bodies refused, a save
+#                         one generation step, the user search, project names, a deleted user kept on the list,
+#                         and an account joining and leaving the list changing and restoring the week's
+#                         figures (ta-org-s); part of up after check-final (its search needs more than 20 users)
 #   run.sh check-issues   the issue and comment matrix through the real API, with its own accounts
 #                         (issue_accounts.json, one without a global role), judged pass or fail
 #   run.sh check-issue-policies [patched|stock]
@@ -721,6 +725,23 @@ check_org_creation() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/org_creation.py" check
 }
 
+# ---------------------------------------------------------------- settings
+
+# The Team Analytics settings API (settings_check.py): refusals, bad bodies, the generation step of a save, the user
+# search, project names, a deleted user kept on the list, and the list's retroactive effect on ta-org-s's week. The
+# accounts of accounts.json are loaded first (ta-org-s's probe accounts with them), and a throwaway user for the
+# deleted-account part, which deletes it. The Technical accounts list is put back as the seed set it.
+check_settings() {
+    local gone="ta-gone-$(date +%s)"
+    log "settings: loading the accounts of accounts.json and the throwaway user $gone"
+    backend_shell "$HERE/seed_users.py" "$(cat "$HERE/accounts.json")" >/dev/null
+    backend_shell "$HERE/seed_users.py" "{\"users\": {\"$gone\": {\"admin\": false}}, \"organizations\": {}}" >/dev/null
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
+        TA_NAMESPACE="$TA_NAMESPACE" TA_RELEASE="$TA_RELEASE" \
+        python3 -I -B "$HERE/settings_check.py" check "$((TA_REFRESH_INTERVAL_S * 3 + 60))" "$gone"
+    log "settings check passed"
+}
+
 # ---------------------------------------------------------------- issue matrix
 
 # The issue and comment matrix (ticket 09) through the real API: seed_users.py loads the accounts
@@ -934,6 +955,7 @@ up() {
     check_tracer
     check_task_progress
     check_final
+    check_settings
     check_issues
     check_access_cases
     check_org_creation
@@ -968,6 +990,7 @@ case "${1:-}" in
     seed-access) seed_access ;;
     check-access) check_access_cases "${2:-}" ;;
     check-org-creation) check_org_creation ;;
+    check-settings) check_settings ;;
     check-fixes) check_fixes "${2:-}" ;;
     check-cross-org) acceptance cross-org ;;
     check-isolation) acceptance isolation ${2:+"$2"} ;;
