@@ -178,7 +178,7 @@ test('a lookup whose every request fails throws, so the page shows identifiers',
     await assert.rejects(lookupProjectNames([3], request));
 });
 
-// --- the mounted page: filters in the address, names from CVAT -----------------------------------
+// --- the mounted page: filters in the address, names from the fork's API ------------------------
 
 const { createMemoryHistory } = dependency('history');
 

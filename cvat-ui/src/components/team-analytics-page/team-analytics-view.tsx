@@ -53,7 +53,7 @@ interface Props {
     pending?: boolean;
     status?: Status | null;
     timeZone?: string;
-    // names of the shown projects as CVAT returns them to the viewer
+    // names of the shown projects (the fork's project-names lookup)
     projectNames?: ProjectNames;
     // the viewer's keymap: hotkey action -> name and keys
     hotkeyLabels?: HotkeyLabels;

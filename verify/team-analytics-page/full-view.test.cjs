@@ -365,7 +365,7 @@ test('by annotator: every row with its rank, whole name, bar, value and share; s
     });
 });
 
-test('by project: names from CVAT, No project, an unknown project by its identifier', async () => {
+test('by project: names from the names lookup, No project, an unknown project by its identifier', async () => {
     const { lookups, Page } = openPage({ search: '?view=projects' });
     await opened(Page, async (view) => {
         assert.deepEqual(listRows(view.container).map((row) => row[1]), ['Street scenes', 'No project', 'Project #7']);

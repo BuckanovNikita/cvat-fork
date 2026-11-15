@@ -29,9 +29,9 @@ import SettingsModal from './settings-modal';
 const STATUS_INTERVAL_MS = 60000;
 
 // The page, loaded on demand by team-analytics-route.tsx. It reads the organization CVAT has
-// selected and the selection kept in the page address (period and filters), asks the service for
-// its figures and status and CVAT for the shown projects' names; everything it shows is in
-// TeamAnalyticsView.
+// selected and the selection kept in the page address (period and filters), asks the API for its
+// figures, its status and the shown projects' names, and opens Team Analytics settings; everything it
+// shows is in TeamAnalyticsView.
 export default function TeamAnalyticsPage(): JSX.Element {
     const organization = useSelector((state: CombinedState) => state.organizations.current?.slug ?? null);
     const history = useHistory();

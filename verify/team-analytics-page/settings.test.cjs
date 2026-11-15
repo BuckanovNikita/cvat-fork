@@ -271,12 +271,17 @@ test('Cancel sends nothing and leaves the list as it was', async () => {
 
 const service = loadPage('service.ts');
 
+// a failure after which the list may have been saved (no answer, or the 503 of a save whose older answers
+// could not be retired) does not claim that nothing was saved
+const UNFINISHED = 'The save did not finish, so the list may not have changed. Open the settings again to see the ' +
+    'saved list.';
+
 test('saveSettings says each failure in a sentence', async () => {
     const cases = [
         [{ status: 400, body: null, message: 'Too many technical accounts.' }, 'Too many technical accounts.'],
         [{ status: 403, body: null }, 'Only administrators can change Team Analytics settings.'],
-        [{ status: 503, body: { error: 'unavailable' } }, 'The settings could not be saved. Try again.'],
-        [new Error('Network Error'), 'CVAT could not be reached. Nothing was saved.'],
+        [{ status: 503, body: { error: 'unavailable' } }, UNFINISHED],
+        [new Error('Network Error'), UNFINISHED],
     ];
     for (const [answer, error] of cases) {
         const { request } = suppliedSettings(() => answer);

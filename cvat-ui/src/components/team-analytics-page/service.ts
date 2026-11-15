@@ -156,7 +156,7 @@ export interface AppliedFilters {
     annotator: { user_id: number; user_name: string | null } | null;
 }
 
-// project id -> name as CVAT returns it to the viewer; a project missing here is shown by its id
+// project id -> name (GET project-names); a project missing here (deleted) is shown by its id
 export type ProjectNames = Record<number, string>;
 
 // In a period not wholly processed (`processed: false`) the service sends no figures: every section but
@@ -700,6 +700,11 @@ export async function loadSettings(request: RequestSettings = requestSettings): 
     }
 }
 
+// Without an answer, or with a server failure, the list may or may not have been saved (the server answers 503
+// when the list was saved but older answers could not be retired)
+const SAVE_UNFINISHED = 'The save did not finish, so the list may not have changed. Open the settings again ' +
+    'to see the saved list.';
+
 export type SaveResult = { kind: 'saved'; settings: TeamAnalyticsSettings } | { kind: 'failed'; error: string };
 
 // Replaces the Technical accounts list with `ids` (the whole list). A failure is said in a sentence the screen
@@ -711,7 +716,7 @@ export async function saveSettings(
     try {
         answer = await request('PUT', { technical_accounts: ids });
     } catch {
-        return { kind: 'failed', error: 'CVAT could not be reached. Nothing was saved.' };
+        return { kind: 'failed', error: SAVE_UNFINISHED };
     }
     if (succeeded(answer) && readableSettings(answer.body)) return { kind: 'saved', settings: answer.body };
     if (answer.status === 400) {
@@ -721,7 +726,7 @@ export async function saveSettings(
     if (answer.status === 403) {
         return { kind: 'failed', error: 'Only administrators can change Team Analytics settings.' };
     }
-    return { kind: 'failed', error: 'The settings could not be saved. Try again.' };
+    return { kind: 'failed', error: SAVE_UNFINISHED };
 }
 
 // Users of the whole instance whose user name, first or last name contains `search` (at most 20, by user name),
