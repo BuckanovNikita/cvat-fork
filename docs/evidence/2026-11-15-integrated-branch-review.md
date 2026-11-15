@@ -227,3 +227,75 @@ renewal, lease always held, expired claim revived, unbounded renewal join.
   size, and the cost of reads on a large scope.
 - The page's own behaviour during the hour a short window leaves waiting (the month picker and
   the trends gate), beyond what status sends.
+
+## Review of the follow-ups (2026-11-15)
+
+Who and how: a fresh agent that wrote none of them reviewed the three last follow-ups (the
+logging merge `ae6bbfca`, the delivery merge `e59e841d` and the code review merge `de181cd7`)
+at `de181cd7`, reading and probing with doctored bundles and renders. It changed no tracked
+file, built no image and created nothing in the cluster. A second agent fixed what it found on
+branch `fix/last-review`.
+
+### The five findings and what was done
+
+1. The bundle check could be fooled by a link on the `rules` directory (each policy reported
+   equal, the bundle holding none) and by two spellings of one name (`rules/issues.rego` and
+   `rules//issues.rego`). Fixed (`b2fbc3e5`): `verify/policy_bundle.sh` refuses any entry that is
+   neither a regular file nor a directory, wherever it sits, compares names after normalising
+   them, and refuses a name that leaves the bundle. Before: both reviewer bundles passed
+   `policy_bundle.sh check` and `run.sh check-bundle`. After: both refused ("NOT FILE rules
+   (link …)", "TWICE rules/issues.rego"), on both commands, in both orders of the doubled name.
+   The real fork bundle (from `cvat/server:v2.82.0-fork-policies`) passes; the real stock bundle
+   and the earlier review's mixed, old, one-file, link, doubled, empty and non-archive bundles
+   fail as before, each with its earlier reason; `check-stock cvat-v2.82.0-widened` passes the
+   stock bundle and fails the fork one on the two policies only.
+2. While an hour waits for the history step under a window shorter than a day, status reports
+   no month and no complete week. Recorded, no code change. The specification's sentence now
+   says such a period reads as "not processed yet", and the limit says what a person sees for
+   that hour: no month offered and the trends card saying none are ready, while an earlier month
+   or week asked for directly still answers as processed.
+3. The hotkeys list skipped its filter check for a period not processed: a bad annotator,
+   project or shapes value got 200 with null figures. Fixed test first (`b04c09f6`): the values
+   are judged before the processed branch. The new test in `tests.test_full_view` failed on the
+   integration tip for the three hotkeys cases of the unprocessed Year ("(200, None) != (400,
+   'bad_request')") and passes after the fix, with the processed week and the two other kinds.
+4. The render guard judged only where objects land and what they pull. Fixed (`e7b12b32`): it
+   also refuses, in any object at any depth, a Service other than ClusterIP or with external IPs,
+   host networking, PID or IPC, a host port, a host path volume, privileged mode, added
+   capabilities, and a RoleBinding to a ClusterRole or to a subject other than a ServiceAccount
+   of the stack's namespace. The genuine render holds none of these (its Services are all
+   ClusterIP, headless ones included; its only binding is Grafana's, to its own Role and service
+   account; its security contexts drop capabilities), so nothing the chart needs is refused.
+   `apply_service` and `apply_proxy` now pass their manifests through the guard before applying
+   them; `run.sh render-service` and `render-proxy` print them. The README says what the guard
+   refuses in place of "nothing cluster-wide is created". Shown: the reviewer's LoadBalancer,
+   host Pod and cluster-admin binding renders refused, each naming every item; NodePort and
+   ExternalName Services, host PID and added capabilities in a CronJob, and a binding to a User
+   refused; a headless Service and a service account without a namespace accepted. The genuine
+   render (`run.sh render`, then `check-render`) is accepted, and so is that render with the
+   service's and the proxy's manifests appended. The reviewer's other renders that its report
+   lists as refused are still refused; three it does not list (a repeated key, an empty
+   namespace, a tagged image without a pull policy) are accepted, as kubectl reads them.
+5. A failed check in `build-server.sh` removed the image under `IMAGE`, even for a failure
+   unrelated to it. Fixed (`fe4e3b9b`): on failure the script removes only an untagged build of
+   this run, tags nothing, saves nothing, exits 1, and says that the tag still names the earlier
+   build, with its ID, which this run did not check. Shown on throwaway tags (no pull, no push,
+   build network off, all removed afterwards): a base made from the stock image with a changed
+   `utils.rego`, and an earlier good image under a throwaway target tag. The integration tip's
+   script exited 1 and removed the target tag; the new one exited 1 ("DIFFERS rules/utils.rego"),
+   the target kept `4b38c649ae96`, and the failed build was removed.
+   `cvat/server:v2.82.0-fork-policies` kept `4b38c649ae96` throughout. BUILD-1 and the upgrade
+   procedure describe the new behaviour.
+
+### What held
+
+The reviewer found sound the history state under a waiting hour, the worker under the lease,
+the figure queries' envelopes, the lease statements' stamps, the navigation hotkey's budget, the
+guard against every earlier doctored render, `check-issue-policies` on both sides, the password
+on standard input and the restart rule (its report lists how each was established).
+
+### Not checked
+
+No stack was started: the guard on the service and the proxy inside a real `up` did not run.
+`SAVE=1` was not run. The waiting hour of finding 2 was not seen in a browser. The whole seam 1
+suite was not rerun here, only `tests.test_full_view` on the default image.

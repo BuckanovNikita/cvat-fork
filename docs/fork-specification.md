@@ -179,8 +179,9 @@ the image untagged and tags it `IMAGE` only after two checks with the server's
 own bundle builder: the built image's bundle holds the import's two patched
 policies, and the base image's bundle holds the four policy files the import
 carries exactly as `STOCK_TAG` has them, so a base of another release is
-refused. If either fails, no image is left under `IMAGE` (an earlier image under
-that tag is removed as well) and nothing is saved. `SAVE=1` additionally
+refused. If either fails, the script removes only what this run built, tags
+nothing, saves nothing and exits non-zero; an earlier image under `IMAGE` stays,
+and the failure names its ID and says that this run did not check it. `SAVE=1` additionally
 exports a compressed image archive, after the checks.
 
 The chart has one backend image setting, so the server, every worker and the
@@ -200,9 +201,11 @@ own builder in a one-off container of the image, without network, and
 `verify/policy_bundle.sh check` compares each of the two policies in a bundle
 given on stdin, by itself and byte for byte, with the import's file (with
 `check <tag>`, with the file at that import tag; `check-stock <tag>` compares
-the four policy files). It first refuses a bundle with two entries of one name,
+the four policy files). It first refuses a bundle with two file entries whose
+names are one name once normalised (`rules//issues.rego` is `rules/issues.rego`),
 which the server builds when a policy exists in two registered rules
-directories, and a compared policy that is not a regular file. The test stack
+directories, an entry anywhere that is neither a regular file nor a directory
+(a link to a file or to a directory), and a name that leaves the bundle. The test stack
 applies the same check to the bundle the running server serves
 (`run.sh check-policies`) and also requires the patch marker in each policy;
 its render check refuses a backend image other than the fork server image.
@@ -490,11 +493,14 @@ Behavior to preserve:
   computed as a whole, after midnight; until then the period reads as
   processed without it. And after each refresh that moves the window on, the
   hour that left it waits for the history step that follows. Until then every
-  period and trend bucket that holds that hour reads as being processed, and
-  status offers no month and counts no complete week (so the page hides
-  trends), since both, like `ready_from` and `ready_from_day`, are counted
-  from the moment after which everything is processed; the day count and percentage keep the days before today, and a
-  period or bucket that ends before the waiting hour keeps its figures. The
+  period and trend bucket that holds that hour reads as not processed yet, and
+  status offers no month and counts no complete week, since both, like
+  `ready_from` and `ready_from_day`, are counted from the moment after which
+  everything is processed; the day count and percentage keep the days before
+  today, and a period or bucket that ends before the waiting hour keeps its
+  figures. For that hour a person sees no month offered on the page and the
+  trends card saying that none are ready, while an earlier month or week, asked
+  for directly (the overview, the trends), still answers as processed. The
   default window of 48 hours does not behave so: the next ten-minute refresh
   counts a late record, and no hour of today lies before the window.
 - The logging module never throws into the annotation view. After three
