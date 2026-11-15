@@ -689,6 +689,15 @@ first one's release and its `down` deletes it. Give each concurrent run its own
 `TA_RUN_ID` (and its own reserved host port). `down` refuses a namespace
 without the label and stops only its own port-forward.
 
+Before anything is applied, the launcher's render check (`render_guard.py`,
+listed in the stack's README) judges every object. What could reach another
+project on the shared cluster through storage or routes is judged by
+allowlist, against what the genuine render contains: pod volume sources,
+claims naming a volume, the hosts of an Ingress (the stack's own only),
+hand-written Endpoints or EndpointSlices, and Secret types. The checks for
+reaching the host still refuse by list. It judges the `helm template` render,
+not what the installation creates.
+
 The cluster's sweeper drops a namespace at its age limit or when it was created
 before the cluster's last restart. The launcher recreates a namespace older
 than `TA_MAX_REUSE_HOURS`, and one created before the restart time the

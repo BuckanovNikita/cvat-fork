@@ -202,8 +202,10 @@ stack_images() {
 # only, no other namespace than the stack's, every image field on the stack's list and with a
 # tag other than latest, no pull policy other than IfNotPresent or Never, nothing that reaches
 # the host or the outside (a Service other than ClusterIP, host networking, a host port or path,
-# privileged mode, added capabilities) and no role binding to a ClusterRole or to a subject
-# outside the namespace. With a second
+# privileged mode, added capabilities), no role binding to a ClusterRole or to a subject
+# outside the namespace, and, by allowlist, only the volume sources the genuine render uses, no
+# claim that names a volume, no Ingress for a host other than TA_INGRESS_HOST and no Endpoints
+# or EndpointSlice written by hand. With a second
 # argument, the backend check too: the fork server image is in the render and no other image
 # of its repository is, so a fallback to the stock image is refused although it is approved.
 # Writes the render's images, one per line, to the file named by GUARD_IMAGES when it is set.
@@ -216,7 +218,7 @@ guard_render() {
     fi
     mapfile -t images < <(stack_images)
     python3 -I -B "$HERE/render_guard.py" --namespace "$TA_NAMESPACE" --resources "$work/resources" \
-        --allow "${images[@]}" ${backend:+--backend "$backend"} <"$work/objects.json" >"$work/images" || rc=$?
+        --allow "${images[@]}" --ingress-host "$TA_INGRESS_HOST" ${backend:+--backend "$backend"} <"$work/objects.json" >"$work/images" || rc=$?
     if [ "$rc" = 0 ] && [ -n "${GUARD_IMAGES:-}" ]; then cp "$work/images" "$GUARD_IMAGES"; fi
     rm -rf "$work"
     [ "$rc" = 0 ] || die "render refused"
