@@ -9,7 +9,7 @@ How it is known: the service's half was run on its test harness (the review's pr
 
 The correction for a wrongly early event is documented (remove the event from the `events` table, then the stored cutover). The trust model is now stated in `docs/fork-specification.md` (TA-1, beside the cutover's limits). Nothing in the code was changed: any remedy overrides the owner's decision in ticket 17 of the defect fixes that the cutover is found by search and can move earlier.
 
-**Status:** needs-triage
+**Status:** wontfix
 
 **Open questions for triage:**
 
@@ -21,3 +21,5 @@ The correction for a wrongly early event is documented (remove the event from th
 ## Comments
 
 2026-11-15: Filed by the implementer answering the security review of ticket 28 of the defect fixes. Waits for the owner.
+
+2026-11-15: Closed as an accepted risk. The owner decided that Team Analytics becomes administrators-only (ticket 01 of `.scratch/team-analytics-admin-settings/`). Any authenticated account can still send events that move the cutover earlier or add figures for itself, but only administrators read the figures. The owner accepts that risk, and no remedy is built: the cutover is still found by search, and no figure is checked against what CVAT stores. The correction procedure for a wrongly early event and the trust model stay as documented in `docs/fork-specification.md` (TA-1).
