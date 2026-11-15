@@ -29,6 +29,7 @@ the short-window history holds, and starts the service again.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
@@ -155,6 +156,9 @@ def new_job(owner: Session, name: str, frames: int, chunk_size: int | None = Non
     else:
         raise SystemExit(f"task {task['id']}: no job within 4 minutes")
     job = jobs[0]
+    if chunk_size:
+        stored = owner.request("GET", f"/api/tasks/{task['id']}?org={UI_ORG}").get("data_chunk_size")
+        check(stored == chunk_size, f"task {task['id']}: chunk size {stored}, asked for {chunk_size}")
     labels = owner.request("GET", f"/api/labels?project_id={project['id']}")["results"]
     return {
         "project_id": project["id"],
@@ -189,14 +193,19 @@ def technical_project() -> None:
         f"/api/jobs/{job}/annotations?action=create&org={UI_ORG}",
         {"shapes": shapes, "tracks": [], "tags": [], "version": 0},
     )
-    rows = wait_rows(
-        f"SELECT user_name, scope FROM events WHERE project_id = {int(project)}",
-        lambda r: any(x["scope"] == "create:shapes" for x in r),
+    wait_rows(
+        f"SELECT count() AS n FROM events WHERE project_id = {int(project)} AND scope = 'create:shapes'",
+        lambda r: int(r[0]["n"]) > 0,
         "the technical account's saved boxes",
     )
-    people = sorted({r["user_name"] for r in rows if r["user_name"] != TECHNICAL_ACCOUNT})
-    log(f"project {project}: {TECHNICAL_ACCOUNT} saved {BOT_BOXES} boxes; events by anyone else: {people or 'none'}")
-    check(not people, f"project {project} holds events of {people}; it must hold only the technical account's work")
+    # job work as the service reads it (refresh/sessions.sql); creating the project and task is not
+    rows = clickhouse(
+        f"SELECT DISTINCT user_name FROM events WHERE project_id = {int(project)} AND job_id IS NOT NULL"
+        " AND (source = 'client' OR scope = 'send:working_time')"
+    )
+    people = sorted(r["user_name"] for r in rows)
+    log(f"project {project}: {TECHNICAL_ACCOUNT} saved {BOT_BOXES} boxes; job work by anyone: {people or 'none'}")
+    check(not people, f"project {project} holds job work of {people}; it must hold only saved boxes")
 
     query = {"org": UI_ORG, "period": "week", "by": "projects", "ids": project}
 
@@ -210,13 +219,14 @@ def technical_project() -> None:
             body = ok(owner, "details", **query, shapes=shapes)
         row = by_key(body["rows"], "id").get(project)
         check(row is not None, f"details by project ({shapes}): no row for project {project}: {body['rows']}")
+        # as the service suite's TechnicalAccountOnlyProjectTest (tests/test_details_table.py) expects
         want = {"working_time_ms": 0, "sessions": 0, "saved_boxes": BOT_BOXES, "model": BOT_BOXES, "annotators": 0}
         got = {key: row[key] for key in want}
         check(got == want, f"details row of project {project} ({shapes}) {got}, expected {want}")
         log(f"details by project ({shapes}): project {project} {got}")
-    people = ok(owner, "details", org=UI_ORG, period="week", by="annotators")
+    people = ok(owner, "details", org=UI_ORG, period="week", by="annotators", search=TECHNICAL_ACCOUNT)
     names = [r["user_name"] for r in people["rows"]]
-    check(TECHNICAL_ACCOUNT not in names, f"the technical account is listed by annotator: {names}")
+    check(not names, f"a search for the technical account by annotator finds {names}")
     log(f"details by annotator: {TECHNICAL_ACCOUNT} not listed")
 
 
@@ -310,8 +320,9 @@ def check_gestures(state_file: str) -> None:
     )
     log(f"summaries x{len(summaries)}: hotkeys {hotkeys}; change:frame (count, from, to, step): "
         + str([(n, p.get("from"), p.get("to"), p.get("step")) for n, p in frames]))
-    check(hold["keydowns"] > hold["moves"] > 0,
-          f"the frame was not slow: {hold['keydowns']} key-downs moved {hold['moves']} frames")
+    check(hold["keydowns"] > hold["moves"] > 0 and max(hold["frames"]) < job["stop_frame"],
+          f"the frame was not slow: {hold['keydowns']} key-downs moved {hold['moves']} frames, up to frame "
+          f"{max(hold['frames'])} of {job['stop_frame']}")
     check(hotkeys.get("NEXT_FRAME") == hold["moves"],
           f"NEXT_FRAME {hotkeys.get('NEXT_FRAME')} for {hold['moves']} frames shown by the held key")
     if hold["back_jumps"] == 0:
@@ -392,14 +403,19 @@ def unprocessed() -> None:
     admin, maintainer = Session("ta-admin"), Session("ta-maintainer")
     callers = [(maintainer, "ta-org-a"), (admin, "")]
     wait_figures(admin, "status", {}, lambda b: (b.get("history") or {}).get("complete"), "history complete", 900)
-    first = date.fromisoformat(clickhouse("SELECT toString(toDate(min(timestamp))) AS d FROM events")[0]["d"])
+    # below the first event day and below every day already recorded as processed (an earlier run's probe
+    # days stay recorded), so that the probe's days are new to the service
+    first = date.fromisoformat(clickhouse(
+        "SELECT toString(least(toDate(min(timestamp)),"
+        f" ifNull((SELECT minOrNull(day) FROM {TOTALS}.history_days), toDate(min(timestamp))))) AS d FROM events"
+    )[0]["d"])
     probe_day = first - timedelta(days=PROBE_DAYS_BEFORE)
     today = datetime.now(UTC).date()
-    check((today - probe_day).days < 330, f"the first event day {first} lies too far back for a probe in the year")
+    check((today - probe_day).days < 330, f"the earliest recorded day {first} lies too far back for a probe in the year")
     token = f"ta-stack-probe-{uuid.uuid4().hex[:12]}"
     held_at = hold_lease(token, "run.sh check-fixes unprocessed")
     log(f"holding the refresh lease ({LEASE_S} s); marker event on {probe_day}, {PROBE_DAYS_BEFORE} days before "
-        f"the first recorded day {first}")
+        f"the earliest recorded day {first}")
     try:
         clickhouse(
             "INSERT INTO events FORMAT JSONEachRow",
@@ -502,7 +518,10 @@ def cutover_restart() -> None:
             for session, org in ((admin, ""), (maintainer, "ta-org-a")):
                 if session.username in first_answers:
                     continue
-                status, body = service(session, "status", org=org)
+                try:  # the proxy answers 502 while no pod is ready; a dropped connection is tried again
+                    status, body = service(session, "status", org=org)
+                except (OSError, http.client.HTTPException):
+                    continue
                 if status == 200:
                     first_answers[session.username] = (round(time.monotonic() - started), body["cutover"])
             time.sleep(0.5)

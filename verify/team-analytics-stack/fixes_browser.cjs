@@ -186,7 +186,7 @@ async function gestures(stateFile) {
         const at = (fx, fy) => ({ x: bg.x + bg.w * fx, y: bg.y + bg.h * fy });
 
         // draw, undo, redo: the redo restores the box and is no second creation
-        await drawRectangle(page, keys, at(0.06, 0.1), at(0.28, 0.35));
+        await drawRectangle(page, keys, at(0.04, 0.08), at(0.3, 0.38));
         did.drawn += 1;
         const undo = await rectOf(page, '.cvat-annotation-header-undo-button');
         await keys.click(undo.cx, undo.cy);
@@ -197,15 +197,15 @@ async function gestures(stateFile) {
         log('drew a box, undid it and redid it with the header buttons');
 
         // two more boxes with a gap between them, saved, so that CVAT's own drag records carry obj_id
-        await drawRectangle(page, keys, at(0.45, 0.15), at(0.6, 0.4));
-        await drawRectangle(page, keys, at(0.75, 0.15), at(0.9, 0.4));
+        await drawRectangle(page, keys, at(0.38, 0.12), at(0.62, 0.42));
+        await drawRectangle(page, keys, at(0.72, 0.12), at(0.96, 0.42));
         did.drawn += 2;
         await save(page, keys, bg, job, did);
         log('drew two more boxes and saved');
 
         // the selection region around the two right-hand boxes: Shift and a drag on the background
-        const from = at(0.4, 0.06);
-        const to = at(0.96, 0.5);
+        const from = at(0.34, 0.04);
+        const to = at(0.99, 0.5);
         await keys.drag(from.x, from.y, to.x - from.x, to.y - from.y, { shift: true });
         await page.waitFor('!!document.querySelector(".cvat_canvas_selected_objects_box")', 'the selection box');
 
