@@ -4,16 +4,18 @@
 //   node fixes_browser.cjs gestures STATE   ta-worker-c in the job fixes_run.py prepare-gestures made: draws a
 //                                           box, undoes and redoes it (header buttons), draws two more and
 //                                           saves; selects those two with the selection region (Shift and a
-//                                           drag on the background), drags one of them (the group follows),
-//                                           moves the selection box, clears the selection, drags one box
-//                                           alone, saves; holds F on frames slowed by network latency; at the
-//                                           last frame (typed into the frame field) presses F once; drags the
-//                                           slider back; leaves the job. Writes what it did into STATE ("did")
-//                                           for fixes_run.py check-gestures.
-//   node fixes_browser.cjs look ORG         the overview of ORG at 1400 px and at 400 px: the split bars of the
-//                                           two working-time cards and the definitions block, judged from the
-//                                           page's layout; full-page screenshots for the comparison with the
-//                                           prototype, which a person makes.
+//                                           drag on the background) and moves the selection by its header
+//                                           label; copies and pastes the selection and drags the pasted pair
+//                                           by its first box; clears the selection, drags one box alone,
+//                                           saves; holds F while the frame data requests are held back; at
+//                                           the last frame (typed into the frame field) presses F once;
+//                                           presses the slider near its start; leaves the job. Writes what it
+//                                           did into STATE ("did") for fixes_run.py check-gestures.
+//   node fixes_browser.cjs look ORG [split] the overview of ORG at 1400 px and at 400 px: the split bars of the
+//                                           two working-time cards (with split, some row of each in several
+//                                           parts) and the definitions block, judged from the page's layout;
+//                                           full-page screenshots for the comparison with the prototype,
+//                                           which a person makes.
 //
 // Environment: TA_BASE_URL, TA_SEED_PASSWORD, TA_BROWSER_BIN, TA_SCREENSHOT_DIR (required for look; keep it
 // outside the repository).
