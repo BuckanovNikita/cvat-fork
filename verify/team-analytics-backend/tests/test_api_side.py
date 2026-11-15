@@ -1,6 +1,7 @@
 """The backend app's API side (what the server process imports to route, check and answer a request) never
-imports the calculation code or the worker's jobs, so it cannot query ClickHouse. Checked on the sources:
-importing them needs a configured Django."""
+imports the calculation code or the worker's jobs, so it cannot query ClickHouse; the calculation code (core/)
+imports nothing of Django, so it gets the Technical accounts list as a value. Checked on the sources: importing
+them needs a configured Django."""
 
 import ast
 import unittest
@@ -9,7 +10,11 @@ from pathlib import Path
 import cvat.apps.team_analytics as app
 
 APP_DIR = Path(app.__file__).resolve().parent
-API_SIDE = ("__init__.py", "apps.py", "default_settings.py", "urls.py", "views.py", "permissions.py", "reads.py")
+API_SIDE = ("__init__.py", "apps.py", "default_settings.py", "urls.py", "views.py", "permissions.py", "reads.py",
+            "models.py", "serializers.py", "technical_accounts.py")
+# Modules that must import nothing of Django: the calculation code, and the rules the suite tests without it.
+WITHOUT_DJANGO = ("technical_accounts.py",)
+CORE_DIR = APP_DIR / "core"
 FORBIDDEN_PACKAGES = ("clickhouse_connect",)
 FORBIDDEN_APP_MODULES = ("core", "jobs")
 
@@ -45,6 +50,15 @@ class ApiSideTest(unittest.TestCase):
                         rest = module.removeprefix("cvat.apps.team_analytics").lstrip(".").split(".")[0]
                         reached = {rest} if rest else set(names)
                         self.assertFalse(reached & set(FORBIDDEN_APP_MODULES), reached)
+
+    def test_the_calculation_code_and_the_settings_rules_import_nothing_of_django(self):
+        sources = [*sorted(CORE_DIR.rglob("*.py")), *(APP_DIR / name for name in WITHOUT_DJANGO)]
+        self.assertGreater(len(sources), 30, "core/ was not found")
+        for path in sources:
+            for level, module, names in imported(path):
+                with self.subTest(module=str(path.relative_to(APP_DIR)), imports=module or names):
+                    if level == 0:
+                        self.assertNotIn(module.split(".")[0], ("django", "rest_framework", "cvat"))
 
     def test_the_read_job_is_named_by_its_path_and_exists(self):
         views = (APP_DIR / "views.py").read_text()

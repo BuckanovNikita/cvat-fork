@@ -13,6 +13,7 @@ class TeamAnalyticsPermission(OpenPolicyAgentPermission):
 
     class Scopes(StrEnum):
         VIEW = "view"
+        UPDATE = "update"
 
     @classmethod
     def create(cls, request, view, obj, iam_context):
@@ -28,14 +29,21 @@ class TeamAnalyticsPermission(OpenPolicyAgentPermission):
     @classmethod
     def _get_scopes(cls, request, view, obj):
         Scopes = cls.Scopes
+        # by action and method: an action missing here is refused with an error (get_scopes). DRF
+        # answers HEAD with the GET handler.
+        method = "GET" if request.method == "HEAD" else request.method
         return [
             {
-                "status": Scopes.VIEW,
-                "overview": Scopes.VIEW,
-                "trends": Scopes.VIEW,
-                "list_rows": Scopes.VIEW,
-                "details": Scopes.VIEW,
-            }[view.action]
+                ("status", "GET"): Scopes.VIEW,
+                ("overview", "GET"): Scopes.VIEW,
+                ("trends", "GET"): Scopes.VIEW,
+                ("list_rows", "GET"): Scopes.VIEW,
+                ("details", "GET"): Scopes.VIEW,
+                ("team_settings", "GET"): Scopes.VIEW,
+                ("team_settings", "PUT"): Scopes.UPDATE,
+                ("settings_users", "GET"): Scopes.VIEW,
+                ("project_names", "GET"): Scopes.VIEW,
+            }[(view.action, method)]
         ]
 
     def get_resource(self):
