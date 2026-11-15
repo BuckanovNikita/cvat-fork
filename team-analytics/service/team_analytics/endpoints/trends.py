@@ -82,11 +82,13 @@ def handle(request: Request) -> dict:
     scope = request.scope_params()
     # which buckets are processed is read before any figure (service.Request.history)
     state = request.history()
-    processed = {start: state.covers(midnight(start, tz)) for start in starts}
-    counted = [start for start in starts if processed[start]]
+    ends = [midnight(start, tz) for start in starts[1:]] + [hour_floor(request.now) + timedelta(hours=1)]
+    processed = {start: state.covers(midnight(start, tz), end) for start, end in zip(starts, ends, strict=True)}
+    # the candidates count from one bucket on up to now, so only the buckets processed up to now: while an hour
+    # of today waits for the history step the earlier buckets are processed but the current one is not
+    counted = [start for start in starts if state.covers(midnight(start, tz))]
     # a bucket is legacy as a period would be (cutover.py): it ends at or before the cutover, or none is known;
     # the bucket that holds the cutover is not legacy (its figures are computed as usual)
-    ends = [midnight(start, tz) for start in starts[1:]] + [hour_floor(request.now) + timedelta(hours=1)]
     legacy_buckets = [start.isoformat() for start, end in zip(starts, ends, strict=True)
                       if request.legacy(midnight(start, tz), end).legacy_period]
     rows = request.sql.rows("read/trends.sql", {

@@ -253,6 +253,41 @@ class ShortWindowTest(HistoryCase):
         self.settle()
         self.assertTrue(self.week_processed(3 * MINUTE))
 
+    def test_an_hour_waiting_for_the_history_step_leaves_the_days_before_today_processed(self):
+        self.stack.add_events([
+            working_time(at("2026-10-20 10:00:00"), 2 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-05 10:00:00"), 4 * MINUTE, user=ALICE, org=ORG),
+            working_time(at("2026-11-13 15:05:00"), 1 * MINUTE, user=ALICE, org=ORG),
+        ])
+        self.settle()
+        self.assertTrue(self.history()["complete"])
+
+        self.stack.now = at("2026-11-13 16:05:00")
+        self.step()  # the ten-minute refresh, now from 16:00: the hour from 15:00 waits for the history step
+        history = self.history()
+        self.assertFalse(history["complete"])
+        self.assertEqual(history["ready_from"], "2026-11-13T16:00:00+00:00")
+        # every day before today is still processed (20 October to 12 November), today is not
+        self.assertEqual((history["days_ready"], history["days_total"], history["percent"]), (24, 25, 96))
+        # every period offered by status holds today
+        self.assertEqual(history["periods"], {"week": False, "two_weeks": False, "month": False, "year": False})
+        self.assertFalse(self.week_processed(1 * MINUTE))
+        # a period wholly before today keeps its figures
+        october = self.overview(period="month", month="2026-10")
+        self.assertTrue(october["processed"])
+        self.assertEqual(self.alice_ms(period="month", month="2026-10"), 2 * MINUTE)
+        # so do the trend buckets before this week; this week's holds the hour that waits
+        status, trends = self.stack.get("/team-analytics-api/v1/trends", "lead", org="org7")
+        self.assertEqual(status, 200, trends)
+        self.assertEqual([bucket["processed"] for bucket in trends["buckets"]], [True] * 11 + [False])
+        self.assertEqual(trends["lines"][0]["points"][-2]["working_time_ms"], 4 * MINUTE)  # the week of the 5th
+        # a candidate's working time never takes in the bucket that is not processed; it stays null meanwhile
+        self.assertEqual([(row["id"], row["working_time_ms"]) for row in trends["candidates"]], [(ALICE[0], None)])
+
+        self.step()  # the history step: the hour from 15:00
+        self.assertTrue(self.history()["complete"])
+        self.assertTrue(self.week_processed(1 * MINUTE))
+
     def test_across_midnight_yesterday_reads_as_processed_only_once_it_is_computed_as_a_whole(self):
         self.stack.now = at("2026-11-13 23:45:00")
         self.stack.add_events([

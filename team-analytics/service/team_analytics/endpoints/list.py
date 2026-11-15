@@ -9,7 +9,8 @@ Query `by` = `annotators` | `projects` | `hotkeys`, plus everything the overview
 
 Like the overview, `processed` says whether the whole period is processed. When it is not, the answer keeps
 `period`, `processed`, `by` and the legacy flags, and every figure (`total`, `rows`, `hotkey_actions`) is null
-(withheld.py).
+(withheld.py). The hotkeys are then not read; the rows by annotator or project are, since the legacy flags come
+from that read.
 """
 
 from __future__ import annotations
@@ -40,8 +41,13 @@ def handle(request: Request) -> dict:
         raise BadRequest(f"by must be one of {', '.join(KINDS)}")
     span = request.span()
     # read before any figure (service.Request.history)
-    processed = request.history().covers(span.start)
-    body = _hotkeys(request) if by == "hotkeys" else read_rows(request, by)
+    processed = request.history().covers(span.start, span.end)
+    if by == "hotkeys":
+        # no legacy flags in this answer: nothing is read for a period not fully processed
+        body = _hotkeys(request) if processed else {"hotkey_actions": None, "rows": None}
+    else:
+        # read even then: the legacy flags of the envelope come from the rows' own read
+        body = read_rows(request, by)
     answer = {
         "period": span.describe(),
         "processed": processed,

@@ -10,7 +10,7 @@ Figures come from read/details.sql, the scope's legacy flag, applied shapes and 
 name search, since only the page knows project names) from read/details_scope.sql. Like the overview, a
 period not fully processed says `processed: false` and carries no figures: it keeps `by`, `page_size`,
 `processed`, `technical_accounts` and the legacy flags, and `page`, `total`, `rows` and `project_ids` are null
-(withheld.py).
+(withheld.py). Its rows are then not read; the summary is, since the legacy flags come from it.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def handle(request: Request) -> dict:
 
     span = request.span()
     # read before any figure (service.Request.history)
-    processed = request.history().covers(span.start)
+    processed = request.history().covers(span.start, span.end)
     scope = request.scope_params()
     # the table's own dimension is listed whole; the selected row is only marked by the page
     if kind == "annotators":
@@ -69,10 +69,11 @@ def handle(request: Request) -> dict:
     params = {**span.params(), **scope, **legacy.params()}
 
     summary = request.sql.rows("read/details_scope.sql", params)[0]
+    # the table's rows are not read for a period not fully processed (the legacy flags come from the summary)
     rows = request.sql.rows("read/details.sql", {
         **params, "by": kind, "search": search, "has_ids": 1 if has_ids else 0, "ids": ids,
         "offset": (page - 1) * PAGE_SIZE, "page_size": PAGE_SIZE,
-    })
+    }) if processed else []
     total = int(rows[0]["total"]) if rows else 0
     other = "projects" if kind == "annotators" else "annotators"
 

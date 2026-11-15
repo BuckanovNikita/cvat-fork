@@ -231,8 +231,10 @@ Behavior to preserve:
   `cvat/server` image with no added dependency (`team-analytics/Dockerfile`).
   Its Kubernetes manifests and environment are in `team-analytics/k8s/`.
   One refresh or history step runs at a time across replicas, under a lease in
-  ClickHouse. The lease is renewed while a step runs and released on every
-  failure path; a failed release is tried again. A replica that can no longer
+  ClickHouse. Which day of history comes next is read under the lease, so a
+  replica with nothing to do also claims it, about once per refresh interval,
+  to find that out. The lease is renewed while a step runs and released on
+  every failure path; a failed release is tried again. A replica that can no longer
   prove it holds the lease (its renewals failed or came back after the lease
   could have expired) stops its step before the next write, so nothing it
   computed is marked or becomes visible. A claim renewed after it expired is
@@ -392,7 +394,13 @@ Behavior to preserve:
   cutover takes longer than the limit to read, the search keeps failing: the
   cutover is then found only by the refresh that first stores a shape-tagged
   hour while none is stored (that search has no time limit), and a late
-  earlier event never moves it.
+  earlier event never moves it. Once a cutover is stored on such an instance,
+  every search at start and in every daily check is stopped at its limit, so
+  each start waits up to 23 s before it answers, and each daily check spends
+  up to 60 s of ClickHouse time under the lease, for nothing. The only sign is the error the service
+  logs each time. The events table records only when an event happened, not
+  when it arrived, so the search cannot be narrowed to the records added since
+  the last one.
 - New measurements travel inside existing client event types (ADR 0002):
   payload fields on draw, paste, propagate, drag, resize and delete, plus three
   `debug:info` records (`team_analytics:class_change`,
@@ -443,7 +451,12 @@ Behavior to preserve:
   reload during a frame load, a save after frames were deleted or restored,
   or meta not yet loaded). A key pressed then starts its change after its
   turn, and that change counts nothing. This undercounts by at most one per
-  such press and never credits the wrong key.
+  such press and never credits the wrong key. The key's turn lasts a fixed
+  100 microtasks after its handler, against about ten on the deepest chain
+  known, so a few more awaits on the way (a cvat-core plugin wrapper, say)
+  change nothing. A chain that takes more than 100 microtasks, or that waits
+  for anything outside the microtask queue (the network, a timer), starts its
+  change after the turn, and that press likewise counts nothing.
 - Known limit of the stored totals: a changed counting rule (the redo rule,
   the group-move rule) does not recompute hours already stored. The trailing
   refresh window follows the new rule from the next refresh. An older day
@@ -475,11 +488,15 @@ Behavior to preserve:
   record that reaches ClickHouse after its hour was computed (client records
   arrive in batches, often minutes late) is counted only when its day is
   computed as a whole, after midnight; until then the period reads as
-  processed without it. And after each refresh that moves the window on, every
-  period reads as being processed until the history step that follows has
-  computed the hour that left it. The default window of 48 hours does not
-  behave so: the next ten-minute refresh counts a late record, and no hour of
-  today lies before the window.
+  processed without it. And after each refresh that moves the window on, the
+  hour that left it waits for the history step that follows. Until then every
+  period and trend bucket that holds that hour reads as being processed, and
+  status offers no month and counts no complete week (so the page hides
+  trends), since both, like `ready_from` and `ready_from_day`, are counted
+  from the moment after which everything is processed; the day count and percentage keep the days before today, and a
+  period or bucket that ends before the waiting hour keeps its figures. The
+  default window of 48 hours does not behave so: the next ten-minute refresh
+  counts a late record, and no hour of today lies before the window.
 - The logging module never throws into the annotation view. After three
   failures it switches itself off for the page's life. It records nothing
   outside an open 2D job.
@@ -506,6 +523,12 @@ Behavior to preserve:
   of time adds up to it. The rule is the service's; the owner has not been
   asked about the wording beside it. Whether to change the definition's
   wording or how such a row is shown is an open decision for the owner.
+- Known cost of the overview's rows: its working time by annotator and by
+  project each run the full view's whole row read, with every row's
+  operations, creation methods and Model, and use only the top eight rows and
+  their operation parts. That one shared read is what keeps an overview row's
+  split equal to the same row in the full view. Its cost on a large scope has
+  not been measured; overview latency under load is outside the defect fixes.
 - The page fits a narrow window inside CVAT's 1024 px minimum app width: cards
   stack, and wide tables scroll inside their cards.
 - With the service unreachable, the page shows its error panel. Nothing else
