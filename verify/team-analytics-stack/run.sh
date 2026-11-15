@@ -66,9 +66,17 @@
 #   run.sh check-isolation [PART]
 #                         CVAT's core operations with the analytics worker at zero (twelve analytics requests
 #                         waiting), with ClickHouse at zero, and with the totals database dropped (parts
-#                         worker-down, clickhouse-down, totals-dropped); restores what it changed
+#                         worker-down, clickhouse-down, totals-dropped), then the in-memory Redis at zero
+#                         (redis-down: reads 503, the schedule and the figures back; always last); restores what
+#                         it changed
 #   run.sh check-load     p95 of the task list and of a job's annotations before and during twelve concurrent
-#                         uncached overviews, during a refresh and while history is filled (needs the volume)
+#                         uncached overviews, during a refresh and while history is filled (needs the volume), with
+#                         Postgres connections and Redis memory sampled; TA_LOAD_HEAVY=1: ClickHouse at 4 CPUs,
+#                         three volume organizations, the bursts at instance scope (chart upgraded and back)
+#   run.sh check-evidence STEP
+#                         ticket 09's evidence (evidence.py): rq-start-race (read-only), liveness, killed-worker,
+#                         idle-generation (refresh interval 600 s, upgraded and back), two-replicas (two worker
+#                         replicas, upgraded and back), off-then-on (analytics off and on by upgrades in place)
 #   run.sh check-review   the review fixes: ignored parameters from the cache, length limits, no-store on
 #                         refusals and 429, the generation a counter, the piled-up refresh copies removed
 #   run.sh check-analytics-off
@@ -222,6 +230,9 @@ helm_args() {
         --set "grafana.grafana\.ini.server.root_url=$BASE_URL/analytics" \
         --set-json "cvat.backend.additionalEnv=$(analytics_env)"
     if [ "${TA_ANALYTICS:-on}" = off ]; then printf '%s\n' --set analytics.enabled=false; fi
+    # chart values an evidence step sets for itself (key=value, separated by spaces) and takes back after it
+    local s
+    for s in ${TA_EXTRA_SET:-}; do printf '%s\n' --set "$s"; done
 }
 
 render() {
@@ -893,6 +904,102 @@ install_chart_off() {
     "${H[@]}" upgrade --install "${args[@]}" --timeout 20m >&2
 }
 
+# ---------------------------------------------------------------- evidence (ticket 09)
+
+# Evidence checks for a verification stack (its own TA_RUN_ID and port), each judged by evidence.py or
+# acceptance.py. Steps that need other chart values upgrade the release in place with them (TA_EXTRA_SET, or
+# another TA_REFRESH_INTERVAL_S) and upgrade it back to the stack's own values afterwards, also on a failure.
+EVIDENCE_STEPS=(rq-start-race liveness killed-worker idle-generation two-replicas off-then-on)
+ev_py() {
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
+        TA_NAMESPACE="$TA_NAMESPACE" TA_RELEASE="$TA_RELEASE" python3 -I -B "$HERE/evidence.py" "$@"
+}
+
+# The release upgraded in place with the environment's TA_EXTRA_SET and TA_REFRESH_INTERVAL_S, then rolled out.
+chart_upgrade() {
+    log "chart: upgrading in place (extra values: ${TA_EXTRA_SET:-none}; refresh interval ${TA_REFRESH_INTERVAL_S} s)"
+    build_chart
+    install_chart
+    wait_ready
+}
+# Back to the stack's own values (stack.env's refresh interval, nothing extra).
+chart_restore() {
+    log "chart: back to the stack's own values"
+    (
+        unset TA_EXTRA_SET
+        TA_REFRESH_INTERVAL_S="$STACK_REFRESH_INTERVAL_S" chart_upgrade
+    )
+}
+STACK_REFRESH_INTERVAL_S="$TA_REFRESH_INTERVAL_S"
+
+# The newest revision of the release and its description ("Upgrade complete" for an upgrade in place).
+helm_last() {
+    "${H[@]}" history "$TA_RELEASE" -n "$TA_NAMESPACE" -o json \
+        | python3 -I -c 'import json, sys; h = json.load(sys.stdin)[-1]; print(h["revision"], h["description"])'
+}
+expect_upgrade() {
+    local before="$1" what="$2" now rev
+    now="$(helm_last)"
+    rev="${now%% *}"
+    log "helm history after $what: revision $now (before: revision $before)"
+    [ "$rev" = "$((before + 1))" ] && [ "${now#* }" = "Upgrade complete" ] \
+        || die "$what: expected revision $((before + 1)) 'Upgrade complete' (an upgrade in place), saw '$now'"
+}
+
+check_evidence() {
+    local step="${1:-}" state rev
+    [[ " ${EVIDENCE_STEPS[*]} " == *" $step "* ]] || die "usage: run.sh check-evidence STEP (${EVIDENCE_STEPS[*]})"
+    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    mkdir -p "$STATE_DIR"
+    case "$step" in
+        idle-generation)
+            trap chart_restore EXIT
+            TA_REFRESH_INTERVAL_S=600 chart_upgrade
+            ev_py idle-generation 600
+            trap - EXIT
+            chart_restore ;;
+        two-replicas)
+            trap chart_restore EXIT
+            TA_EXTRA_SET="cvat.backend.worker.teamAnalytics.replicas=2" chart_upgrade
+            ev_py two-replicas
+            trap - EXIT
+            chart_restore
+            [ "$("${K[@]}" -n "$TA_NAMESPACE" get deploy "$TA_RELEASE-backend-worker-team-analytics" -o jsonpath='{.spec.replicas}')" = 1 ] \
+                || die "the analytics worker is not back at one replica" ;;
+        off-then-on)
+            state="$STATE_DIR/evidence-off-then-on.json"
+            ev_py snapshot "$state"
+            rev="$(helm_last)"; rev="${rev%% *}"
+            check_analytics_off
+            expect_upgrade "$rev" "analytics off"
+            log "analytics on again, upgraded in place"
+            build_chart
+            install_chart
+            wait_ready
+            expect_upgrade "$((rev + 1))" "analytics on again"
+            stop_port_forward
+            start_port_forward
+            ev_py back-on "$state" ;;
+        *) ev_py "$step" ;;
+    esac
+}
+
+# The heavier load configuration (TA_LOAD_HEAVY=1 run.sh check-load): ClickHouse limited to 4 CPUs instead of 2,
+# three times the volume (ta-org-v, then ta-org-v2 and ta-org-v3 loaded the same way, with the same annotators),
+# and the bursts read at instance scope over all of it; the chart is upgraded back afterwards.
+check_load() {
+    if [ "${TA_LOAD_HEAVY:-}" != 1 ]; then acceptance load; return; fi
+    local org
+    trap chart_restore EXIT
+    TA_EXTRA_SET="clickhouse.resources.limits.cpu=4" chart_upgrade
+    for org in "${TA_VOLUME_ORG:-ta-org-v}" ta-org-v2 ta-org-v3; do
+        TA_VOLUME_ORG="$org" load_volume
+    done
+    TA_LOAD_SCOPE=instance acceptance load
+    trap - EXIT
+    chart_restore
+}
+
 # ---------------------------------------------------------------- teardown
 
 teardown() {
@@ -1013,8 +1120,14 @@ case "${1:-}" in
     check-settings) check_settings ;;
     check-fixes) check_fixes "${2:-}" ;;
     check-cross-org) acceptance cross-org ;;
-    check-isolation) acceptance isolation ${2:+"$2"} ;;
-    check-load) acceptance load ;;
+    check-isolation)
+        case "${2:-}" in
+            redis-down) pf_alive || die "the stack's port-forward is not running (run.sh forward)"; ev_py redis-down ;;
+            "") acceptance isolation; ev_py redis-down ;;  # Redis last: it restarts what depends on it
+            *) acceptance isolation "$2" ;;
+        esac ;;
+    check-load) check_load ;;
+    check-evidence) check_evidence "${2:-}" ;;
     check-review) acceptance review ;;
     check-analytics-off) check_analytics_off ;;
     *) sed -n '5,/^set -euo/p' "$0" | sed '$d' >&2; exit 2 ;;

@@ -33,6 +33,7 @@ import calendar
 import http.cookiejar
 import json
 import math
+import os
 import re
 import sys
 import threading
@@ -72,6 +73,7 @@ from stack_ops import (  # noqa: E402
     lock_samples,
     memory_mib,
     redis,
+    redis_memory_mib,
     scale,
     server_db_connections,
     wait_lock,
@@ -107,6 +109,7 @@ def client_budget_s() -> float:
 
 
 CONCURRENT = 12
+PRESSURE: list = []  # (Postgres client connections, in-memory Redis used MiB) sampled during the load's bursts
 # ta-worker-c annotates in ta-org-c (final_run.py); the isolation checks open and save a job of their own there.
 CORE_ORG = "ta-org-c"
 CORE_OWNER = "ta-owner-c"
@@ -566,7 +569,7 @@ def overview_client(session, params: dict, out: list) -> None:
     """One reader (an administrator's, stack_api.reader): asks for an overview until it has figures, after each 429
     waiting its Retry-After, within the client's budget; records (params, status, total seconds, attempts,
     processed)."""
-    path = session.bind(analytics("overview", org=VOLUME_ORG, **params))
+    path = session.bind(analytics("overview", org=session.org, **params))
     started, attempts = time.monotonic(), 0
     while True:
         attempts += 1
@@ -595,16 +598,23 @@ def burst(owner, sampler: Sampler, param_sets: list[dict], memory: list) -> tupl
             memory.append((memory_mib(worker_pod, "cvat-backend")[0], memory_mib(clickhouse_pod, "clickhouse")[0]))
             time.sleep(0.5)
 
+    def watch_pressure() -> None:  # Postgres connections (every client) and the in-memory Redis's used memory
+        while not stop.is_set():
+            PRESSURE.append((server_db_connections()["all"], redis_memory_mib()))
+            time.sleep(2)
+
     def watch_lock() -> None:  # the lock looked at in the Redis pod itself, every 50 ms, for the client budget
         held["yes"], held["looks"] = lock_samples(int(client_budget_s()) + 1)
 
     sampling = threading.Thread(target=sampler.run_until, args=(stop,), daemon=True)
     watching = threading.Thread(target=watch, daemon=True)
+    pressing = threading.Thread(target=watch_pressure, daemon=True)
     locking = threading.Thread(target=watch_lock, daemon=True)
     locking.start()
     clients = [threading.Thread(target=overview_client, args=(owner, p, readers), daemon=True) for p in param_sets]
     sampling.start()
     watching.start()
+    pressing.start()
     for c in clients:
         c.start()
     for c in clients:
@@ -612,6 +622,7 @@ def burst(owner, sampler: Sampler, param_sets: list[dict], memory: list) -> tupl
     stop.set()
     sampling.join(30)
     watching.join(30)
+    pressing.join(30)
     locking.join(client_budget_s() + 30)
     return readers, held
 
@@ -640,7 +651,13 @@ def mark_history_pending(older_than_days: int) -> int:
 def load() -> None:
     owner = Session("ta-owner-v")  # lists the volume's jobs, projects and members through CVAT
     client = Client("ta-owner-v")  # the core endpoints' sampler
-    in_volume = reader(VOLUME_ORG)  # the overview bursts
+    # the overview bursts: the volume organization, or with TA_LOAD_SCOPE=instance instance scope (the heavier
+    # configuration of run.sh check-load, three volume organizations under one scope); the filters are the volume
+    # organization's projects and annotators either way
+    scope = "" if os.environ.get("TA_LOAD_SCOPE") == "instance" else VOLUME_ORG
+    in_volume = reader(scope)
+    log(f"overviews read by {in_volume.username}")
+    PRESSURE.clear()
     jobs = owner.request("GET", f"/api/jobs?org={VOLUME_ORG}&page_size=100")["results"]
     check(jobs, f"{VOLUME_ORG} has no jobs (run.sh load-volume first)")
     job = jobs[0]["id"]
@@ -750,6 +767,11 @@ def load() -> None:
         f"(min {min(worker_mib, default=0):.0f}), ClickHouse max {max(clickhouse_mib, default=0):.0f} "
         f"(min {min(clickhouse_mib, default=0):.0f}); peak since container start (memory.peak): worker {peaks[0]}, "
         f"ClickHouse {peaks[1]}")
+    connections = [c for c, _ in PRESSURE]
+    redis_mib = [m for _, m in PRESSURE if not math.isnan(m)]
+    log(f"during the bursts, every 2 s: Postgres client connections (pg_stat_activity, every client) max "
+        f"{max(connections, default=0)} min {min(connections, default=0)}; in-memory Redis used memory max "
+        f"{max(redis_mib, default=0):.1f} MiB min {min(redis_mib, default=0):.1f} MiB ({len(PRESSURE)} samples)")
     waited = time.monotonic()
     while pending_days() and time.monotonic() - waited < 1200:
         time.sleep(10)

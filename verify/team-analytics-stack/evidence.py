@@ -1,0 +1,498 @@
+"""Evidence checks of Team Analytics on a verification stack (ticket 09 of .scratch/team-analytics-admin-settings),
+driven by run.sh. Each command prints what it expected and what it saw, prints `[evidence] PASS` or `FAIL`, exits
+non-zero on a mismatch, and puts back what it changed in the stack's pods (a chart value it needs is set and
+restored by run.sh around it).
+
+    evidence.py redis-down          the in-memory Redis at zero: analytics reads answer 503 (not 500) within the
+                                    wait; back up, the refresh schedule is there (restored with django-admin
+                                    syncperiodicjobs when it was lost) and the figures come back
+    evidence.py killed-worker       a read job whose worker processes are killed while it reads (ClickHouse held
+                                    with SIGSTOP so that the job is mid-read) is queued again once the abandoned
+                                    limit has passed: 429 until then, then an answer; the worker's log lines
+    evidence.py idle-generation     (refresh interval raised by run.sh) the generation stands still over at least
+                                    five minutes of runs with nothing due, read against the worker's log
+    evidence.py liveness            a Team Analytics worker that loses one of its rq processes fails its liveness
+                                    probe and is restarted; restart counts before and after
+    evidence.py two-replicas        (two worker replicas set by run.sh) both pods ready, refresh runs that wrote
+                                    never overlap, a burst of reads is served, by which pods
+    evidence.py snapshot FILE       the Technical accounts list and its table, before analytics is switched off
+    evidence.py back-on FILE        after analytics is on again: the list and the table as in FILE, the refresh
+                                    schedule back, the figures back
+    evidence.py rq-start-race       (read-only) the queue's failed-job registry since the worker pod started: each
+                                    id's own record and the log lines that explain it
+
+Environment: TA_BASE_URL, TA_SEED_PASSWORD, TA_KUBE_CONTEXT, TA_NAMESPACE, TA_RELEASE. Standard library only.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sys
+import threading
+import time
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # run with python3 -I, which leaves it out
+
+from acceptance import READ_LINE, analytics, client_budget_s, read_wait_s, refresh_runs, utc_now  # noqa: E402
+from stack_api import admin_session, expected_rows, figures, not_ready, raw_get, reader, technical_accounts  # noqa: E402
+from stack_ops import (  # noqa: E402
+    CLICKHOUSE_SELECTOR,
+    REDIS,
+    REDIS_SELECTOR,
+    RELEASE,
+    WORKER,
+    WORKER_SELECTOR,
+    backend_pod,
+    first_pod,
+    generation,
+    kubectl,
+    psql,
+    redis,
+    scale,
+    worker_log,
+)
+
+QUEUE = "team_analytics"
+REFRESH_JOB = "team_analytics_refresh"
+SCHEDULED = "rq:scheduler:scheduled_jobs"
+TABLE = "team_analytics_technicalaccount"
+REPLY_MARGIN_S = 2.0
+YEAR_S = 31_536_000  # rq's default failure TTL, the refresh job's
+READ_FAILURE_TTL_S = 60  # views.enqueue_read's failure_ttl of a read job
+
+
+class Failed(Exception):
+    pass
+
+
+def log(message: str) -> None:
+    print(f"  {message}", flush=True)
+
+
+def need(condition: bool, message: str) -> None:
+    if not condition:
+        raise Failed(message)
+
+
+def unique_overview() -> str:
+    """An overview nobody has asked for (its project filter names no project): a cache miss, a read job."""
+    return analytics("overview", org="ta-org-a", period="week", project=str(900_000 + uuid.uuid4().int % 99_999))
+
+
+def timed(session, path: str) -> tuple[int, float, object, dict]:
+    started = time.monotonic()
+    status, body, headers = raw_get(session.opener, session.bind(path))
+    return status, time.monotonic() - started, body, headers
+
+
+def stamp_of(admin) -> str | None:
+    status, body = admin.call(analytics("status"))
+    return (body.get("refresh") or {}).get("last_success_at") if status == 200 and isinstance(body, dict) else None
+
+
+def wait_figures_back(after_stamp: str | None, timeout_s: int) -> float:
+    """Waits until a refresh newer than `after_stamp` is recorded and ta-org-a's week shows the tracer's figures."""
+    admin, in_org = reader(""), reader("ta-org-a")
+    started = time.monotonic()
+    want = expected_rows("ta-org-a")
+    while True:
+        stamp = stamp_of(admin)
+        status, body = in_org.call(analytics("overview", org="ta-org-a", period="week"))
+        rows = figures(body) if status == 200 else None
+        if stamp and stamp != after_stamp and rows == want:
+            return time.monotonic() - started
+        need(time.monotonic() - started < timeout_s,
+             f"figures not back within {timeout_s} s: refresh stamp {stamp} (before {after_stamp}), ta-org-a week "
+             f"{status} {rows}, expected {want}")
+        time.sleep(5)
+
+
+def schedule_present() -> bool:
+    out = redis("ZSCORE", SCHEDULED, REFRESH_JOB)
+    return out not in ("", "(nil)")
+
+
+def restore_schedule() -> str:
+    """The refresh schedule in rq-scheduler's set; django-admin syncperiodicjobs (what the initializer and the
+    backend's entrypoint run) writes CVAT's periodic jobs again when it was lost."""
+    if schedule_present():
+        return "present"
+    out = kubectl("exec", "-i", backend_pod(), "-c", "cvat-backend", "--", "django-admin", "syncperiodicjobs")
+    log(f"the refresh schedule was lost; django-admin syncperiodicjobs: {out.strip()[-300:]}")
+    need(schedule_present(), f"{REFRESH_JOB} still not in {SCHEDULED} after syncperiodicjobs")
+    return "restored by django-admin syncperiodicjobs"
+
+
+def wait_rollouts() -> None:
+    for workload in (WORKER, f"deploy/{RELEASE}-backend-worker-utils", f"deploy/{RELEASE}-backend-server"):
+        kubectl("rollout", "status", workload, "--timeout=10m")
+
+
+# ---------------------------------------------------------------- Redis down
+
+
+def redis_down() -> str:
+    admin, in_org = reader(""), reader("ta-org-a")
+    before = stamp_of(admin)
+    need(before is not None, "no refresh recorded before Redis was stopped")
+    answers = []
+    try:
+        scale(REDIS, 0, REDIS_SELECTOR)
+        log("in-memory Redis at 0, its pod gone")
+        for round_ in range(6):
+            for name, session, path in (("uncached overview", in_org, unique_overview()),
+                                        ("status", admin, analytics("status"))):
+                status, s, body, _ = timed(session, path)
+                answers.append((round_, name, status, round(s, 2), body))
+            time.sleep(3)
+    finally:
+        scale(REDIS, 1, REDIS_SELECTOR)
+        log("in-memory Redis back at 1")
+    limit = read_wait_s() + REPLY_MARGIN_S
+    log("answers while Redis was down (round, request, status, seconds, body): "
+        + "; ".join(f"{r} {n} {st} {s} {str(b)[:60]}" for r, n, st, s, b in answers))
+    wrong = [a for a in answers if not (a[2] == 503 and a[4] == {"error": "unavailable"} and a[3] <= limit)]
+    wait_rollouts()
+    schedule = restore_schedule()
+    back_s = wait_figures_back(before, 900)
+    need(not wrong, f"expected 503 {{'error': 'unavailable'}} within {limit:.0f} s for every read while Redis was "
+                    f"down; outside that: {[(n, st, s, str(b)[:80]) for _, n, st, s, b in wrong]}")
+    return (f"{len(answers)} reads with Redis down: 503 unavailable within {limit:.0f} s; schedule {schedule}; "
+            f"figures back {back_s:.0f} s after the workloads were rolled out")
+
+
+# ---------------------------------------------------------------- a worker killed during a read
+
+
+# Signals ($0) every process whose command line matches the pattern ($1), except the shell itself (its own
+# command line holds the pattern too); prints how many it signalled.
+SIGNAL_MATCHING = (
+    'n=0; for p in /proc/[0-9]*; do i="${p#/proc/}"; [ "$i" = "$$" ] && continue; '
+    'grep -qa -e "$1" "$p/cmdline" 2>/dev/null && kill -"$0" "$i" 2>/dev/null && n=$((n+1)); done; echo "$n"'
+)
+
+
+def clickhouse_signal(signal: str) -> int:
+    """SIGSTOP or SIGCONT to ClickHouse's server process (`clickhouse-server`, or `clickhouse server`)."""
+    out = kubectl("exec", first_pod(CLICKHOUSE_SELECTOR), "-c", "clickhouse", "--", "sh", "-c", SIGNAL_MATCHING,
+                  signal, "clickhouse.server")
+    return int(out.strip() or 0)
+
+
+def started_reads() -> list[str]:
+    out = redis("ZRANGE", f"rq:wip:{QUEUE}", "0", "-1")
+    return [line.split(")", 1)[-1].strip().strip('"') for line in out.splitlines() if "team-analytics-read-" in line]
+
+
+def killed_worker() -> str:
+    from stack_ops import django_settings
+
+    timeout_s = int(django_settings("TEAM_ANALYTICS_READ_JOB_TIMEOUT_S")["TEAM_ANALYTICS_READ_JOB_TIMEOUT_S"])
+    limit_s = 2 * timeout_s + 120  # views._abandoned
+    in_org = reader("ta-org-a")
+    path = unique_overview()
+    since = utc_now()
+    pod = first_pod(WORKER_SELECTOR)
+    job = None
+    try:
+        stopped = clickhouse_signal("STOP")  # the read job's statements wait on ClickHouse: the job is mid-read
+        log(f"ClickHouse's server process stopped (SIGSTOP to {stopped} processes)")
+        need(stopped > 0, "no ClickHouse server process found to stop")
+        first = timed(in_org, path)
+        log(f"first request: {first[0]} after {first[1]:.1f} s")
+        for _ in range(10):
+            reads = started_reads()
+            if reads:
+                job = reads[0]
+                break
+            time.sleep(0.5)
+        need(job is not None, f"no read job started while ClickHouse was held (rq:wip:{QUEUE} empty)")
+        log(f"read job {job} started: {redis('HGET', f'rq:job:{job}', 'status')}")
+        killed = kubectl("exec", pod, "-c", "cvat-backend", "--", "sh", "-c", SIGNAL_MATCHING, "9", "rqworker").strip()
+        killed_at = time.monotonic()
+        log(f"{killed} rq processes of {pod} killed with SIGKILL (the work horse with them); supervisord starts new "
+            "ones")
+    finally:
+        log(f"ClickHouse's server process continued (SIGCONT to {clickhouse_signal('CONT')} processes)")
+    timeline = []
+    while True:
+        status, s, body, headers = timed(in_org, path)
+        state = redis("HGET", f"rq:job:{job}", "status")
+        timeline.append((round(time.monotonic() - killed_at), status, state))
+        if status != 429 or not not_ready(status, body, path):
+            break
+        need(time.monotonic() - killed_at < limit_s + 120,
+             f"still 429 {time.monotonic() - killed_at:.0f} s after the kill; the abandoned limit is {limit_s} s")
+        time.sleep(float(headers.get("retry-after") or 3))
+    after_s = time.monotonic() - killed_at
+    log("after the kill (seconds, status, the job's record): " + ", ".join(f"{t} {st} {j}" for t, st, j in timeline))
+    lines = [line for line in worker_log(since) if job in line]
+    log(f"the worker's log lines naming {job}:")
+    for line in lines[-30:]:
+        print(f"    {line}", flush=True)
+    others = [t for t in timeline[:-1] if t[1] != 429]
+    need(status == 200 and not others, f"expected 429 until the job was queued again, then 200; saw {timeline}")
+    need(after_s <= limit_s + read_wait_s() + 60,
+         f"the answer came {after_s:.0f} s after the kill, beyond the abandoned limit {limit_s} s (2 x "
+         f"{timeout_s} + 120) and the wait")
+    return (f"read job {job} killed mid-read: 429 for {after_s:.0f} s ({len(timeline) - 1} answers), then 200; "
+            f"abandoned limit {limit_s} s")
+
+
+# ---------------------------------------------------------------- the generation when nothing is due
+
+
+def idle_generation(interval_s: int) -> str:
+    """A run is due once every `interval_s`; between two due runs the minute's runs have nothing to do. After a run
+    that wrote, the next five and a half minutes hold only runs with nothing due (the interval is at least 600 s):
+    the generation must stand still and the worker's log must show those runs."""
+    need(interval_s >= 600, f"the refresh interval in force is {interval_s} s; this needs at least 600 (run.sh sets it)")
+    status, body = reader("").call(analytics("status"))
+    need(status == 200 and (body.get("history") or {}).get("complete"), f"history not complete: {status} {body}")
+    since = utc_now()
+    started = time.monotonic()
+    while True:  # the window starts right after a run that wrote
+        runs = refresh_runs(worker_log(since))
+        if any(r["wrote"] for r in runs):
+            break
+        need(time.monotonic() - started < interval_s + 180, f"no run that wrote within {interval_s + 180} s")
+        time.sleep(5)
+    time.sleep(5)
+    window_since, first = utc_now(), generation()
+    seen = [(0, first)]
+    window = 360
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < window:
+        time.sleep(15)
+        seen.append((round(time.monotonic() - t0), generation()))
+    runs = refresh_runs(worker_log(window_since))
+    log(f"generation over {window} s: {seen}")
+    log("refresh runs in the window (end, wrote): "
+        + ", ".join(f"{time.strftime('%H:%M:%S', time.gmtime(r['end']))} {r['wrote']}" for r in runs))
+    need(all(g == first for _, g in seen), f"the generation moved from {first} with nothing due: {seen}")
+    need(len(runs) >= 5 and not any(r["wrote"] for r in runs),
+         f"expected at least 5 runs with nothing due in {window} s, saw {[(r['end'], r['wrote']) for r in runs]}")
+    return f"generation {first} unchanged over {window} s and {len(runs)} runs with nothing due"
+
+
+# ---------------------------------------------------------------- liveness
+
+
+def restarts(pod: str) -> int:
+    return int(kubectl("get", "pod", pod, "-o", "jsonpath={.status.containerStatuses[0].restartCount}").strip() or 0)
+
+
+def liveness() -> str:
+    pod = first_pod(WORKER_SELECTOR)
+    probe = json.loads(kubectl("get", "pod", pod, "-o", "jsonpath={.spec.containers[0].livenessProbe}") or "{}")
+    period, threshold = int(probe.get("periodSeconds", 10)), int(probe.get("failureThreshold", 3))
+    before = restarts(pod)
+    sock = "unix:///tmp/supervisord/supervisor.sock"
+    listed = kubectl("exec", pod, "-c", "cvat-backend", "--", "supervisorctl", "-s", sock, "status", check=False)
+    names = [line.split()[0] for line in listed.splitlines() if line.startswith("rqworker")]
+    need(names, f"no rqworker program in supervisorctl status of {pod}: {listed[:300]}")
+    log(f"{pod}: probe {probe.get('exec', {}).get('command')}, every {period} s, {threshold} failures; restarts "
+        f"{before}; rq processes {names}")
+    # a stopped program unregisters its rq worker (a warm shutdown) and is not started again
+    kubectl("exec", pod, "-c", "cvat-backend", "--", "supervisorctl", "-s", sock, "stop", names[0])
+    stopped = time.monotonic()
+    log(f"stopped {names[0]}; waiting up to {period * (threshold + 2) + 120} s for the restart")
+    while restarts(pod) == before:
+        need(time.monotonic() - stopped < period * (threshold + 2) + 120,
+             f"{pod} not restarted {time.monotonic() - stopped:.0f} s after {names[0]} stopped (restarts {before})")
+        time.sleep(10)
+    after_s = time.monotonic() - stopped
+    events = kubectl("get", "events", "--field-selector", f"involvedObject.name={pod},reason=Unhealthy",
+                     "-o", "custom-columns=AT:.lastTimestamp,MSG:.message", "--no-headers", check=False)
+    log(f"Unhealthy events of {pod}:\n{events.strip()}")
+    kubectl("rollout", "status", WORKER, "--timeout=10m")
+    procs = kubectl("get", "pod", pod, "-o", 'jsonpath={.spec.containers[0].env[?(@.name=="NUMPROCS")].value}').strip()
+    for _ in range(30):
+        probe_ok = kubectl("exec", pod, "-c", "cvat-backend", "--", "django-admin", "workerprobe", QUEUE,
+                           "--expected-num-workers", procs, check=False)
+        if "expected at least" not in probe_ok:
+            break
+        time.sleep(3)
+    return (f"{pod}: one of {len(names)} rq processes stopped, liveness failed, container restarted after "
+            f"{after_s:.0f} s; restarts {before} -> {restarts(pod)}; the probe passes again")
+
+
+# ---------------------------------------------------------------- two replicas
+
+
+_PREFIXED = re.compile(r"^\[pod/([^/\]]+)/[^\]]*\] (.*)$")
+
+
+def logs_by_pod(since: str) -> dict[str, list[str]]:
+    out = kubectl("logs", "-l", WORKER_SELECTOR, "-c", "cvat-backend", f"--since-time={since}", "--tail=-1",
+                  "--max-log-requests=10", "--prefix", check=False)
+    pods: dict[str, list[str]] = {}
+    for line in out.splitlines():
+        m = _PREFIXED.match(line)
+        if m:
+            pods.setdefault(m.group(1), []).append(m.group(2))
+    return pods
+
+
+def two_replicas() -> str:
+    ready = kubectl("get", "pods", "-l", WORKER_SELECTOR, "-o",
+                    "jsonpath={range .items[*]}{.metadata.name} {.status.containerStatuses[0].ready}{'\\n'}{end}")
+    pods = [line.split() for line in ready.splitlines() if line.strip()]
+    log(f"worker pods (name, ready): {pods}")
+    need(len(pods) == 2 and all(p[1] == "true" for p in pods), f"expected 2 ready worker pods, saw {pods}")
+    since = utc_now()
+    # a burst of reads nobody asked for before, at once
+    in_org = reader("ta-org-a")
+    results: list = []
+
+    def ask(path: str) -> None:
+        started = time.monotonic()
+        while True:
+            status, body, headers = raw_get(in_org.opener, in_org.bind(path))
+            if not not_ready(status, body, path) or time.monotonic() - started > client_budget_s():
+                break
+            time.sleep(float(headers.get("retry-after") or 1))
+        results.append((status, round(time.monotonic() - started, 1)))
+
+    threads = [threading.Thread(target=ask, args=(unique_overview(),), daemon=True) for _ in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(client_budget_s() + 30)
+    log(f"burst of 12 uncached overviews (status, seconds): {sorted(results)}")
+    time.sleep(240)  # several minutes of scheduled runs on two replicas
+    by_pod = logs_by_pod(since)
+    spans = []
+    for pod, lines in by_pod.items():
+        reads = sum(1 for line in lines if READ_LINE.search(line))
+        runs = run_spans(lines)
+        log(f"{pod}: {reads} read jobs, {len(runs)} refresh runs, {sum(1 for r in runs if r[2])} wrote")
+        spans += [(begin, end, pod) for begin, end, wrote in runs if wrote]
+    spans.sort()
+    overlaps = [(a, b) for a, b in zip(spans, spans[1:]) if b[0] < a[1]]
+    need(len(results) == 12 and all(st == 200 for st, _ in results),
+         f"expected 12 answers 200 within the client's budget {client_budget_s():.0f} s, saw {sorted(results)}")
+    need(not overlaps, f"refresh runs that wrote overlapped across the replicas: {overlaps}")
+    return (f"2 ready replicas; 12 uncached reads 200; {len(spans)} refresh runs that wrote, none overlapping; read "
+            f"jobs by pod {[(p, sum(1 for line in ls if READ_LINE.search(line))) for p, ls in by_pod.items()]}")
+
+
+def run_spans(lines: list[str]) -> list[tuple[float, float, bool]]:
+    """The refresh runs of one pod's log: (start, end, wrote), read as acceptance.refresh_runs reads them."""
+    spans, current = [], None
+    for line in lines:
+        if "jobs.refresh_totals()" in line:
+            current = {"begin": _log_time(line), "wrote": False}
+        elif current is not None and ("core.refresh: refreshed" in line or "core.history: history:" in line):
+            current["wrote"] = True
+        elif current is not None and "Job OK (team_analytics_refresh)" in line:
+            end = _log_time(line)
+            if current["begin"] is not None and end is not None:
+                spans.append((current["begin"], end, current["wrote"]))
+            current = None
+    return spans
+
+
+def _log_time(line: str) -> float | None:
+    m = re.match(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),(\d{3})\]", line)
+    if not m:
+        return None
+    return datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC).timestamp() + int(m.group(2)) / 1000
+
+
+# ---------------------------------------------------------------- off, then on again
+
+
+def table_rows() -> list[str]:
+    return sorted(line.strip() for line in psql(f"SELECT user_id, user_name FROM {TABLE} ORDER BY user_id")
+                  .splitlines() if line.strip())
+
+
+def snapshot(file: str) -> str:
+    state = {"list": technical_accounts(admin_session()), "table": table_rows(), "stamp": stamp_of(reader(""))}
+    Path(file).write_text(json.dumps(state))
+    return f"list {state['list']}; table rows {state['table']}"
+
+
+def back_on(file: str) -> str:
+    state = json.loads(Path(file).read_text())
+    rows, listed = table_rows(), technical_accounts(admin_session())
+    log(f"after on again: table {rows} (before {state['table']}); list {listed}")
+    need(rows == state["table"], f"the table {TABLE} is {rows}, before off it was {state['table']}")
+    need(listed == state["list"], f"the list is {listed}, before off it was {state['list']}")
+    for _ in range(60):
+        if schedule_present():
+            break
+        time.sleep(5)
+    need(schedule_present(), f"{REFRESH_JOB} not back in {SCHEDULED} five minutes after analytics was on again")
+    back_s = wait_figures_back(state["stamp"], 900)
+    return f"table and list as before off ({len(rows)} rows); the schedule back; figures back after {back_s:.0f} s"
+
+
+# ---------------------------------------------------------------- rq's start race (read-only)
+
+
+def rq_start_race() -> str:
+    pod = first_pod(WORKER_SELECTOR)
+    started = kubectl("get", "pod", pod, "-o", "jsonpath={.status.containerStatuses[0].state.running.startedAt}").strip()
+    since = datetime.fromisoformat(started.replace("Z", "+00:00")).timestamp()
+    failed = redis("ZRANGE", f"rq:failed:{QUEUE}", "0", "-1", "WITHSCORES").splitlines()
+    values = [line.split(")", 1)[-1].strip().strip('"') for line in failed if line.strip()]
+    entries = list(zip(values[::2], (float(v) for v in values[1::2])))
+    lines = kubectl("logs", pod, "-c", "cvat-backend", f"--since-time={started}", "--tail=-1", check=False).splitlines()
+    log(f"worker pod {pod} started {started}; failed registry of {QUEUE}: {entries}")
+    found = []
+    unexplained = []
+    for job, score in entries:
+        added = score - (YEAR_S if score - time.time() > 10 * READ_FAILURE_TTL_S else READ_FAILURE_TTL_S)
+        if added < since - 1:
+            log(f"{job}: added {datetime.fromtimestamp(added, UTC).isoformat()}, before this pod started: not judged")
+            continue
+        record = redis("HGET", f"rq:job:{job}", "status")
+        exc = redis("HEXISTS", f"rq:job:{job}", "exc_info")
+        failing = [line for line in lines if f"Handling failed execution of job {job}" in line]
+        preparing = [line for line in lines if "Preparing for execution" in line and job in line]
+        cleaning = [line for line in lines if "Cleaning registries for queue" in line]
+        log(f"{job}: added {datetime.fromtimestamp(added, UTC).isoformat()}; its record {record}, exc_info {exc}")
+        for line in (cleaning[:3] + failing[:3] + preparing[:3]):
+            print(f"    {line}", flush=True)
+        if failing and preparing:
+            found.append(job)
+        else:
+            unexplained.append(job)
+    intermediate = redis("LRANGE", f"rq:queue:{QUEUE}:intermediate", "0", "-1")
+    log(f"intermediate list now: {intermediate or '(empty)'}")
+    need(not unexplained, f"failed entries since the pod started without rq's start-race lines (a process cleaning "
+                          f"registries failing a job another process prepares): {unexplained}")
+    if not found:
+        return f"no failed entry since {pod} started: the race did not occur on this start (nothing to explain)"
+    return (f"{len(found)} failed entries since the start, each failed by clean_intermediate_queue while another "
+            f"process prepared it (rq 1.16.0): {found}")
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    steps = {"redis-down": redis_down, "killed-worker": killed_worker, "liveness": liveness,
+             "two-replicas": two_replicas, "rq-start-race": rq_start_race}
+    if len(args) == 1 and args[0] in steps:
+        name, run = args[0], steps[args[0]]
+    elif len(args) == 2 and args[0] == "idle-generation":
+        name, run = args[0], lambda: idle_generation(int(args[1]))
+    elif len(args) == 2 and args[0] in ("snapshot", "back-on"):
+        name, run = args[0], (lambda: (snapshot if args[0] == "snapshot" else back_on)(args[1]))
+    else:
+        raise SystemExit(__doc__)
+    try:
+        detail = run()
+    except Failed as error:
+        print(f"[evidence] FAIL {name}: {error}", flush=True)
+        raise SystemExit(1) from None
+    print(f"[evidence] PASS {name}: {detail}", flush=True)
+
+
+if __name__ == "__main__":
+    main()
