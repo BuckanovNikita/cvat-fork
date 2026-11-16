@@ -370,11 +370,20 @@ limit.
 
 ## Found on the way, not changed
 
-- At 1024 px, with both selectors closed, the page's document is 1103 px wide against a 1024 px
-  window. The element reaching furthest right is a cell of the details table (`td` in
-  `cvat-team-analytics-details-row`, right edge 1228 px). This was measured on the branch only,
-  not compared against `main`. At 400 px the final run and the `look` step also print that
-  CVAT's own header keeps the app 1103 px wide.
+- At a 1024 px window, with both selectors closed, the document is 1103 px wide on the Team
+  Analytics page. The page step's log names a cell of the details table as the element reaching
+  furthest right (`td` in `cvat-team-analytics-details-row`, right edge 1228 px); that cell is
+  inside the page's own scrolling area and is not what sets the width. Measured afterwards on the
+  owner's stack as the administrator, with the stack's browser helpers: on CVAT's own pages
+  (`/tasks`, `/projects`, `/jobs`) the document is 1024 px at a 1024 px window; on
+  `/team-analytics` it is 1103 px, and so are the application's layout container, its header and
+  its main area, while the page's own element is 1009 px wide. The layout's main area, and the
+  header with it, take the minimum width of the page's content, which the page's own cap at the
+  window's width does not pass up to them. The effect at a window narrower than about 1103 px:
+  the document scrolls sideways and the right end of the header (the user menu) is off the
+  screen. At 1400 px the document equals the window. This was measured on the branch only, not
+  compared against `main`, and was not changed. At 400 px the final run and the `look` step
+  print the same 1103 px for the header.
 - The creation-methods card's table scrolls sideways at 42 swept widths (1024-1920 px) and the
   details card's at 34 (1024-1288 px). The owner chose to leave cards other than the operations
   card as they are.
@@ -414,6 +423,25 @@ limit.
 - Load with production data or production concurrency; a cluster of more than one node;
   production.
 
-Still to come after this record and therefore not in it: the release-tag builds
-(`cvat/server:v2.82.0-fork`, `cvat/ui:v2.82.0-fork`), the removal and fresh install of the
-owner's stack on them with the page looked at as an administrator, and the push of the branch.
+## Delivery, added after the runs above
+
+- `./build-server.sh` under the release tag gave `cvat/server:v2.82.0-fork` with the id the runs
+  used (`7ead6d1cec4b`), every check passed. `./build-ui.sh` under the release tag gave an image
+  with another id (`30adaed8cf00`) than the one the runs used; why two builds of the same commit
+  differ was not established. The release tag `cvat/ui:v2.82.0-fork` was pointed at the image the
+  runs used (`1d1a6e3d425c`). The previous images are kept as
+  `cvat/server:v2.82.0-fork-before-20261116` and `cvat/ui:v2.82.0-fork-before-20261116`.
+- The owner's stack (default namespace, port 8490) was removed and installed fresh on those two
+  images with the launcher of this branch: `down` exit 0, `up` exit 0 with every part passed. Its
+  pods report the image ids above. `run.sh check-fixes page` then passed against it (the same
+  measurements as in the final run: five controls 36 px at 1024, 1400 and 1920 px, the width sweep
+  with no sideways scroll in the operations card, both selectors, 13 terms, the settings dialog,
+  project names at instance scope), and its screenshots were looked at. No person clicked through
+  the page.
+- The check pipeline passed with twelve hooks at the last commit that changes code or checks
+  (`9a8620e96`) and again at the commit that closed the delivery ticket; the commits between
+  change documents only.
+- The verification namespace was deleted, with nothing left listening on its port; the work
+  image tags were removed.
+
+Not in this record: the push of the branch, which follows it.
