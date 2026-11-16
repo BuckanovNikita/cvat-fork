@@ -649,7 +649,10 @@ refresh, history a day at a time),
   "No users found"; the search text is at most 150 characters, the server's
   limit. While a save is on its way the dialog cannot be closed (Cancel, the
   close button, Escape and the mask do nothing) and a second Save sends
-  nothing. After a successful save the dialog closes and everything the page
+  nothing. The dialog waits for a save for at most 30 seconds: after that it
+  says the save may or may not have been stored and can be closed or used
+  again, and an answer that still arrives is ignored. After a successful
+  save the dialog closes and everything the page
   shows is loaded again, the selectors' options included. A refused save
   shows the server's sentence; a save that may or may not have been stored
   says so and asks to open the settings again.
@@ -1488,9 +1491,11 @@ passes on the others; `check-load` takes the end of a refresh run from rq's
 run per pod's log, two narrow windows in which a real repeated read would be
 excused (otherwise the rule errs towards false failures).
 The stack's own subcommands and what each judges are in its
-[README](../verify/team-analytics-stack/README.md). The independent review of
-the access rules recorded with the dated evidence is of the rules before
-Team Analytics became administrators-only.
+[README](../verify/team-analytics-stack/README.md). Two independent reviews
+are recorded with the dated evidence: the record of 2026-11-15 is of the
+access rules before Team Analytics became administrators-only, and the
+record of 2026-11-16 is of the administrators-only rules, the settings and
+the checks described here.
 
 ## Acceptance scenarios
 
