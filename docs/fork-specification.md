@@ -601,7 +601,11 @@ refresh, history a day at a time),
   body ends as a 500, as it does anywhere in CVAT. Figures are not kept per
   list: a period read before and after a change shows different figures, and
   nothing records which list a figure was read with, beyond the log of each
-  save.
+  save. The page waits at most 30 s for a save; after that the user can save
+  again while the first request is still held somewhere on its way. Saves
+  take turns under the table lock and the page sends no precondition, so if
+  the first request reaches the server last, the older list is the one kept,
+  and the page does not say so.
 
 ### The page
 
@@ -1474,6 +1478,15 @@ settings dialog. The refusal page for non-administrators is part of
 `check-tracer`, which also holds that their pages (the start page's header
 and a direct visit to `/team-analytics`) send no request to
 `/api/team-analytics/`. The stack does not cover a deployed model function.
+Known limits of these checks, recorded by the independent review on
+2026-11-16 and not fixed: the settings check's "HEAD answers with no body"
+half cannot fail, because its HTTP client reads no body for HEAD (its status
+half is real); the `page` step's instance-scope project-names part takes an
+organization whose switch failed for one with no project names this week and
+passes on the others; `check-load` takes the end of a refresh run from rq's
+"Job OK" line, milliseconds after the generation moved, and one `current`
+run per pod's log, two narrow windows in which a real repeated read would be
+excused (otherwise the rule errs towards false failures).
 The stack's own subcommands and what each judges are in its
 [README](../verify/team-analytics-stack/README.md). The independent review of
 the access rules recorded with the dated evidence is of the rules before
@@ -1492,7 +1505,7 @@ Team Analytics became administrators-only.
 | IAM-B | Nonmembers, removed members, other organizations and sandbox/context mismatches do not gain access from the patch | Same policy suites; the stack's matrix for a nonmember, another organization's member, each organization's members on the other's issue, the personal workspace and an account with no global role. A removed member is covered by the policy suites only |
 | IAM-C | Sandbox behavior and upstream filter shape remain compatible with the target release | Stock-versus-patched policy suite with the release's helpers; upstream's generated suite on the merged tree |
 | IAM-D | Only administrators create organizations: an account with the `user` or `worker` role, and an organization's owner or maintainer, is refused with 403 and nothing is created; an administrator creates one | The stack's `run.sh check-org-creation` (part of `up`) against the real API |
-| BUILD-A | Built image serves the changed UI without stale bundles/source maps; the backend runs the fork server image, built from the fork's tree by `Dockerfile.server` with the known deviations from upstream's image (BUILD-1) and no other | Image inspection and browser verification; `build-server.sh`'s refusals and six checks; a one-time comparison of the built image with the previous fork server image, to be kept as dated evidence once it is made (the earlier comparison, `docs/evidence/2026-11-14-fork-server-image.md`, is of the overlay image and does not cover this build); the stack's render check for the backend image name only |
+| BUILD-A | Built image serves the changed UI without stale bundles/source maps; the backend runs the fork server image, built from the fork's tree by `Dockerfile.server` with the known deviations from upstream's image (BUILD-1) and no other | Image inspection and browser verification; `build-server.sh`'s refusals and six checks; a one-time comparison of the first image built this way with the previous fork server image, in `docs/evidence/2026-11-16-open-lines-closed-and-admin-settings.md` (the earlier comparison, `docs/evidence/2026-11-14-fork-server-image.md`, is of the overlay image and does not cover this build); the stack's render check for the backend image name only |
 | BUILD-B | Both served policy files equal the tree's, each by itself, and real requests exhibit the patched behavior | `verify/policy_bundle.sh` on the image, `run.sh check-policies` on the served bundle, and `run.sh check-issues`; not marker presence alone |
 
 The frontend suite executes real TypeScript, Redux and server-rendered React
