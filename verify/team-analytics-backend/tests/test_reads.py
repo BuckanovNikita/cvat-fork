@@ -5,7 +5,7 @@ import unittest
 
 from cvat.apps.team_analytics import reads
 
-ORG_7 = {"org_id": 7, "admin": False}
+ORG_7 = {"org_id": 7}
 
 
 class Supplied:
@@ -212,14 +212,16 @@ class RequestKeyTest(unittest.TestCase):
         self.assertEqual(self.key(query={"period": "week", "tz": "UTC"}), self.key(query={"tz": "UTC", "period": "week"}))
 
     def test_another_organization_has_another_key(self):
-        self.assertNotEqual(self.key(scope={"org_id": 7, "admin": False}), self.key(scope={"org_id": 8, "admin": False}))
+        self.assertNotEqual(self.key(scope={"org_id": 7}), self.key(scope={"org_id": 8}))
 
     def test_instance_scope_is_not_an_organization(self):
-        self.assertNotEqual(self.key(scope={"org_id": None, "admin": True}), self.key(scope={"org_id": 0, "admin": True}))
+        self.assertNotEqual(self.key(scope={"org_id": None}), self.key(scope={"org_id": 0}))
 
-    def test_an_administrator_in_an_organization_does_not_share_its_maintainers_entries(self):
-        # status shows an administrator more than it shows a maintainer
-        self.assertNotEqual(self.key(scope={"org_id": 7, "admin": True}), self.key(scope={"org_id": 7, "admin": False}))
+    def test_an_organization_is_not_instance_scope(self):
+        # only administrators read: the organization alone keeps an organization's answer from instance scope
+        for endpoint in ("status", "overview", "details"):
+            with self.subTest(endpoint=endpoint):
+                self.assertNotEqual(self.key(endpoint, scope={"org_id": 7}), self.key(endpoint, scope={"org_id": None}))
 
     def test_endpoint_parameters_and_hour_each_change_the_key(self):
         base = self.key()
@@ -229,9 +231,11 @@ class RequestKeyTest(unittest.TestCase):
 
     def test_one_organizations_entry_is_not_returned_to_another(self):
         supplied = Supplied(worker=answers_at_once)
-        supplied.fetch(scope={"org_id": 7, "admin": False})
+        supplied.fetch(scope={"org_id": 7})
         supplied.worker = lambda supplied, key: supplied.store(key, 200, '{"figures": 2}') or True
-        self.assertEqual(supplied.fetch(scope={"org_id": 8, "admin": False}).body, '{"figures": 2}')
+        self.assertEqual(supplied.fetch(scope={"org_id": 8}).body, '{"figures": 2}')
+        supplied.worker = lambda supplied, key: supplied.store(key, 200, '{"figures": 3}') or True
+        self.assertEqual(supplied.fetch(scope={"org_id": None}).body, '{"figures": 3}')
 
 
 class CleanQueryTest(unittest.TestCase):

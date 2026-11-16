@@ -26,7 +26,7 @@ def client(when, scope: str = "change:frame", *, user: tuple[int, str] = ALICE, 
 class SessionsCase(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "maintainer", True),
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (ORG, "maintainer", True),
                                                                           "org8": (8, "maintainer", True)}))
         self.stack.callers.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
 
@@ -85,7 +85,7 @@ class PauseRuleTest(SessionsCase):
 
 
 class PerAnnotatorTest(SessionsCase):
-    stack_options = {"technical_accounts": ("importer",)}
+    stack_options = {"technical_accounts": (99,)}
 
     def test_each_annotator_has_a_session_count_and_average_whatever_the_job_stage(self):
         self.stack.add_events([

@@ -1,77 +1,83 @@
 #!/usr/bin/env bash
-# Builds the fork server image (ADRs 0004 and 0006): the stock CVAT server image of the release
-# the fork is based on, with the fork's backend files copied over it (Dockerfile.server). Those
-# are the tracked files under cvat/ and backend_entrypoint.d/ that differ from the release tag
-# (STOCK_TAG) in the working tree: the two patched policies, the Team Analytics app, its wiring
-# in cvat/settings/base.py and cvat/urls.py, and the worker's component file. The stock image
-# must already be local: the script never pulls or pushes, and the build needs no network.
+# Builds the fork server image (ADR 0007): the whole CVAT backend built from the fork's tree by
+# Dockerfile.server, a port of upstream's Dockerfile to Debian 12 with Python 3.12 from the
+# official Python image. The server and every worker run this one image.
 #
-# The image stands in for a full build of the fork's tree only while those files are the fork's
-# whole difference in what the server image is made of. The script refuses to build when
-# - the fork deleted or renamed a file under cvat/ or backend_entrypoint.d/ (a copy cannot delete),
-# - a file there is not tracked (the image is made of tracked files; the working tree would differ), or
-# - anything else the stock image is built from differs from the release: the Python
-#   requirements, the entry point, the process configuration, the other copied sources, or
-#   upstream's Dockerfile. Such a change needs upstream's own build.
+# The build needs network access: it pulls the pinned bases (the Python, Rust and Go images named
+# in Dockerfile.server; nothing else: Dockerfile.server needs no external frontend image), downloads and compiles OpenH264 and FFmpeg, and downloads the Python
+# packages. It never pushes. Run it outside the closed contour and transfer the result (SAVE=1).
 #
-# The build is tagged IMAGE only after three checks, each with the server's own bundle builder
-# (verify/policy_bundle.sh from-image) in one-off containers without network:
-# - the built image's bundle holds the tree's two patched policies, each once, byte for byte
-#   (a copy to a directory the server does not read fails here);
-# - with analytics enabled, the built image's bundle also holds the Team Analytics policy, so
-#   the app is installed and loads its rules;
-# - the base image's bundle holds the two policies and their two helpers exactly as the
-#   upstream release tag STOCK_TAG has them (a base of another release fails here).
-# If one fails, the script removes only what this run built (unless a tag names it), tags
-# nothing, saves nothing and exits non-zero. An earlier image under IMAGE is left as it is: the
-# failure names its ID and says that this run did not check it. The build cache stays.
+# The build context is the tracked files of the paths Dockerfile.server copies, as they are in
+# the working tree. The script refuses to build when
+# - upstream's Dockerfile differs from the one Dockerfile.server was ported from
+#   (PORTED_FROM_SHA256): a release changed it, and the port must be reviewed first
+#   (docs/upstream-upgrade.md, section 3);
+# - a file under the copied paths is not tracked (the image would lack it while the working
+#   tree has it), or a tracked file there is missing from the working tree.
+#
+# MAKE_JOBS (default 5, upstream's make -j5) sets the parallel jobs of each compile step; the
+# FFmpeg, wheel and Go stages run at the same time, so the build can use several times as many
+# cores. The build goes to a temporary tag. IMAGE is tagged only after these checks, each in a
+# one-off container without network:
+# - the image's bundle, from the server's own builder (verify/policy_bundle.sh from-image), holds
+#   the tree's two patched policies, each once, byte for byte;
+# - with analytics enabled the bundle also holds the tree's Team Analytics policy;
+# - python and python3 are the venv's Python 3.12, and so are django-admin and uvicorn, the
+#   programs the process configuration starts; supervisord runs; nginx -t accepts the image's
+#   configuration as the unprivileged user;
+# - no shared object under /opt/venv and no FFmpeg or OpenH264 library under /usr/lib has a
+#   dependency that is not found (the libraries a wheel bundles in its .libs directory are
+#   loaded through the wheel's own modules and are scanned with them);
+# - Django sets up on the production settings with CVAT_ANALYTICS=1 and with 0, with the Team
+#   Analytics app installed and its API routed exactly when analytics is enabled;
+# - makemigrations --check --dry-run with analytics enabled finds no model change without a
+#   migration (it needs no database: it warns that it cannot reach one and goes on).
+# If one fails, the script removes only what this run built (the temporary tag; the image goes
+# with it unless another tag names it), tags nothing, saves nothing and exits non-zero. An
+# earlier image under IMAGE is left as it is. The build cache stays.
 set -euo pipefail
 
 IMAGE="${IMAGE:-cvat/server:v2.82.0-fork}"
-BASE_IMAGE="${BASE_IMAGE:-cvat/server:v2.82.0}"
-STOCK_TAG="${STOCK_TAG:-v2.82.0}"
+MAKE_JOBS="${MAKE_JOBS:-5}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE="$ROOT/verify/policy_bundle.sh"
 
-# What the image takes from the fork's tree.
-COPIED=(cvat backend_entrypoint.d)
-# What else upstream's Dockerfile makes the server image of. Any difference from the release
-# here is not in a copy of files: cvat/requirements is under cvat/, but a changed requirement
-# is a package the stock image does not have.
-BUILT_FROM=(
-    Dockerfile cvat/requirements backend_entrypoint.sh supervisord utils manage.py
-    rqscheduler.py wait_for_deps.sh components/analytics/clickhouse/init.py cvat/nginx.conf
+# sha256 of upstream's Dockerfile (v2.82.0) that Dockerfile.server is a port of. After porting
+# a release's changes into Dockerfile.server, record the hash of its Dockerfile here.
+PORTED_FROM_SHA256=caee3eed999d8330d76128e1bde86ab635beb0907c9eacd5c9bf08a8aea8907f
+# What Dockerfile.server copies from the context (cvat/ holds the requirements and nginx.conf).
+COPIED=(
+    backend_entrypoint.d cvat supervisord utils backend_entrypoint.sh
+    components/analytics/clickhouse/init.py manage.py rqscheduler.py wait_for_deps.sh
 )
 
-if [ "$IMAGE" = "$BASE_IMAGE" ]; then
-    echo "IMAGE must differ from BASE_IMAGE ($BASE_IMAGE): the stock tag is never overwritten" >&2
-    exit 1
-fi
-# Without a local base the build would fetch it from the registry
-if ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
-    echo "$BASE_IMAGE is not present locally; this script never pulls it" >&2
-    exit 1
-fi
-if ! git -C "$ROOT" rev-parse -q --verify "$STOCK_TAG^{commit}" >/dev/null; then
-    echo "upstream tag $STOCK_TAG not found; fetch it or set STOCK_TAG (docs/upstream-upgrade.md, section 1)" >&2
+if ! [[ "$MAKE_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "MAKE_JOBS must be a positive integer, not '$MAKE_JOBS'" >&2
     exit 1
 fi
 
+upstream_sha256="$(sha256sum "$ROOT/Dockerfile")"
+upstream_sha256="${upstream_sha256%% *}"
+if [ "$upstream_sha256" != "$PORTED_FROM_SHA256" ]; then
+    echo "upstream's Dockerfile changed since Dockerfile.server was ported from it" >&2
+    echo "  ported from sha256 $PORTED_FROM_SHA256, the tree has $upstream_sha256" >&2
+    echo "port the change into Dockerfile.server, then record the new hash in this script" >&2
+    echo "(docs/upstream-upgrade.md, section 3)" >&2
+    exit 1
+fi
+
+# The three bases are the defaults of Dockerfile.server's ARGs; each must be pinned by digest.
+bases=()
+for arg in BASE_IMAGE RUST_IMAGE GOLANG_IMAGE; do
+    ref="$(sed -n "s/^ARG $arg=//p" "$ROOT/Dockerfile.server")"
+    if ! [[ "$ref" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]]; then
+        echo "Dockerfile.server: ARG $arg is not one image pinned by digest: '$ref'" >&2
+        exit 1
+    fi
+    bases+=("$ref")
+done
+
 # Each git call's output goes to a variable first, so that a failing call stops the script.
-# --no-renames throughout: a renamed file is one deleted and one added, and both must be seen.
-needs_full_build="$(git -C "$ROOT" diff --no-renames --name-only "$STOCK_TAG" -- "${BUILT_FROM[@]}")"
-if [ -n "$needs_full_build" ]; then
-    echo "these differ from $STOCK_TAG and are not something a copy of files can deliver:" >&2
-    printf '%s\n' "$needs_full_build" | sed 's/^/  /' >&2
-    echo "the fork server image cannot stand in for upstream's own build of this tree" >&2
-    exit 1
-fi
-deleted="$(git -C "$ROOT" diff --no-renames --name-only --diff-filter=D "$STOCK_TAG" -- "${COPIED[@]}")"
-if [ -n "$deleted" ]; then
-    echo "the fork deleted these files of $STOCK_TAG, which copying over the stock image cannot do:" >&2
-    printf '%s\n' "$deleted" | sed 's/^/  /' >&2
-    exit 1
-fi
 untracked="$(git -C "$ROOT" ls-files --others --exclude-standard -- "${COPIED[@]}")"
 if [ -n "$untracked" ]; then
     echo "these files are not tracked, so the image would lack them while the working tree has them:" >&2
@@ -79,47 +85,126 @@ if [ -n "$untracked" ]; then
     echo "add them (git add) or remove them, then build again" >&2
     exit 1
 fi
-changed="$(git -C "$ROOT" -c core.quotePath=off diff --no-renames --name-only --diff-filter=AMT "$STOCK_TAG" -- "${COPIED[@]}")"
-if [ -z "$changed" ]; then
-    echo "nothing under ${COPIED[*]} differs from $STOCK_TAG: there is no fork server image to build" >&2
+deleted="$(git -C "$ROOT" ls-files --deleted -- "${COPIED[@]}")"
+if [ -n "$deleted" ]; then
+    echo "these tracked files are missing from the working tree:" >&2
+    printf '%s\n' "$deleted" | sed 's/^/  /' >&2
+    echo "restore them or remove them from the index (git rm), then build again" >&2
     exit 1
 fi
 
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
-# The build context: exactly those files, as they are in the working tree, at their paths.
-mkdir "$work/context"
-printf '%s\n' "$changed" | tar -C "$ROOT" -cf - --verbatim-files-from -T - | tar -C "$work/context" -xf -
-chmod -R u=rwX,go=rX "$work/context"
-echo "copying $(printf '%s\n' "$changed" | wc -l) files of the fork's tree over $BASE_IMAGE" >&2
+tmp_tag="cvat-server-build:$(date +%Y%m%d%H%M%S)-$$"
+cleanup() {
+    # Untags this run's build; the image goes only when no other tag (IMAGE included) names it.
+    docker image rm "$tmp_tag" >/dev/null 2>&1 || true
+    rm -rf "$work"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
-# The image under IMAGE before this run, if any; a failed check leaves it in place.
-earlier="$(docker image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null || true)"
+# The build context: the tracked files of the copied paths, as they are in the working tree.
+mkdir "$work/context"
+git -C "$ROOT" ls-files -z -- "${COPIED[@]}" >"$work/files"
+tar -C "$ROOT" -cf - --null --verbatim-files-from -T "$work/files" | tar -C "$work/context" -xf -
+chmod -R u=rwX,go=rX "$work/context"
+echo "context: $(tr -cd '\0' <"$work/files" | wc -c) tracked files of ${COPIED[*]}" >&2
+
+for ref in "${bases[@]}"; do
+    docker pull -q "$ref" >/dev/null
+done
 
 DOCKER_BUILDKIT=1 docker build \
     --pull=false \
-    --network=none \
     --provenance=false \
-    --build-arg "BASE_IMAGE=$BASE_IMAGE" \
+    --build-arg "MAKE_JOBS=$MAKE_JOBS" \
     --iidfile "$work/id" \
+    -t "$tmp_tag" \
     -f "$ROOT/Dockerfile.server" \
     "$work/context"
 built="$(cat "$work/id")"
 
+# A one-off container of the build: no network, one CPU, the image's own user.
+in_image() {
+    docker run --rm --network none --cpus=1 "$@"
+}
+
 status=0
 echo "checking the bundle of the build ($built) against the tree's two patched policies" >&2
-{ "$BUNDLE" from-image "$built" >"$work/fork.tar.gz" && "$BUNDLE" check <"$work/fork.tar.gz"; } || status=1
+{ "$BUNDLE" from-image "$tmp_tag" >"$work/fork.tar.gz" && "$BUNDLE" check <"$work/fork.tar.gz"; } || status=1
 echo "checking the bundle of the build with analytics enabled against the tree's Team Analytics policy" >&2
-{ "$BUNDLE" from-image "$built" analytics >"$work/analytics.tar.gz" && "$BUNDLE" check-analytics <"$work/analytics.tar.gz"; } || status=1
-echo "checking the bundle of $BASE_IMAGE against the four policy files of $STOCK_TAG" >&2
-{ "$BUNDLE" from-image "$BASE_IMAGE" >"$work/base.tar.gz" && "$BUNDLE" check-stock "$STOCK_TAG" <"$work/base.tar.gz"; } || status=1
+{ "$BUNDLE" from-image "$tmp_tag" analytics >"$work/analytics.tar.gz" && "$BUNDLE" check-analytics <"$work/analytics.tar.gz"; } || status=1
+
+echo "checking that CVAT's programs run on the venv's Python 3.12" >&2
+in_image --entrypoint /bin/sh "$tmp_tag" -c '
+fail=0
+for p in python python3 django-admin uvicorn; do
+    w="$(command -v "$p")" || { echo "MISSING  $p is not on PATH"; fail=1; continue; }
+    case "$w" in
+    /opt/venv/bin/*) echo "ok       $p -> $w" ;;
+    *) echo "WRONG    $p -> $w (not the venv)"; fail=1 ;;
+    esac
+done
+for s in django-admin uvicorn; do
+    w="$(command -v "$s")" || continue
+    IFS= read -r line < "$w"
+    case "$line" in
+    "#!/opt/venv/bin/python"*) echo "ok       $s runs on ${line#??}" ;;
+    *) echo "WRONG    $s runs on ${line#??}"; fail=1 ;;
+    esac
+done
+for p in python python3; do
+    v="$("$p" -c "import sys; print(\"%d.%d\" % sys.version_info[:2])")"
+    if [ "$v" = 3.12 ]; then echo "ok       $p is Python $v"; else echo "WRONG    $p is Python $v"; fail=1; fi
+done
+if v="$(supervisord --version 2>&1)"; then echo "ok       supervisord $v"; else echo "WRONG    supervisord does not run: $v"; fail=1; fi
+if v="$(nginx -t 2>&1)"; then echo "ok       nginx -t accepts /etc/nginx/nginx.conf"; else echo "WRONG    nginx -t: $v"; fail=1; fi
+exit "$fail"' || status=1
+
+echo "checking the shared objects of the venv and of FFmpeg for missing dependencies" >&2
+in_image --entrypoint /bin/sh "$tmp_tag" -c '
+libs="$(ls /usr/lib/libav*.so* /usr/lib/libsw*.so* /usr/lib/libopenh264.so* 2>/dev/null)"
+if [ -z "$libs" ]; then echo "MISSING  no FFmpeg or OpenH264 library under /usr/lib"; exit 1; fi
+{ printf "%s\n" "$libs"; find /opt/venv -type f -name "*.so*" ! -path "*.libs/*"; } | {
+    n=0 bad=0
+    while IFS= read -r f; do
+        n=$((n + 1))
+        # Judged by the output alone: ldd exits 0 when a dependency is not found.
+        out="$(ldd "$f" 2>&1)" || true
+        case "$out" in *"not a dynamic executable"*) continue ;; esac
+        missing="$(printf "%s\n" "$out" | grep "not found")" || continue
+        echo "MISSING  $f:"; printf "%s\n" "$missing"
+        bad=1
+    done
+    if [ "$bad" = 0 ]; then echo "ok       $n shared objects scanned"; else echo "WRONG    $n shared objects scanned"; fi
+    exit "$bad"
+}' || status=1
+
+for analytics in 1 0; do
+    echo "checking that Django sets up on the production settings with CVAT_ANALYTICS=$analytics" >&2
+    in_image -w /opt/cvat -e "CVAT_ANALYTICS=$analytics" --entrypoint /opt/venv/bin/python "$tmp_tag" -c '
+import os, django
+django.setup()
+from django.apps import apps
+from django.urls import Resolver404, resolve
+on = os.environ["CVAT_ANALYTICS"] == "1"
+installed = apps.is_installed("cvat.apps.team_analytics")
+try:
+    resolve("/api/team-analytics/status")
+    routed = True
+except Resolver404:
+    routed = False
+print(f"CVAT_ANALYTICS={int(on)}: Team Analytics app installed: {installed}, its API routed: {routed}")
+raise SystemExit(0 if installed == on and routed == on else 1)' || status=1
+done
+
+echo "checking that no model change lacks a migration (no database: a warning about it is expected)" >&2
+in_image -w /opt/cvat -e CVAT_ANALYTICS=1 --entrypoint /opt/venv/bin/python "$tmp_tag" \
+    manage.py makemigrations --check --dry-run || status=1
 
 if [ "$status" != 0 ]; then
-    # Removed only while untagged: an identical build may be another tag's image, or the earlier one.
-    if [ "$(docker image inspect --format '{{len .RepoTags}}' "$built" 2>/dev/null)" = 0 ]; then
-        docker image rm "$built" >/dev/null || echo "could not remove the untagged build $built" >&2
-    fi
-    echo "policy check failed: this run's build $built was not tagged and nothing was saved" >&2
+    echo "a check failed: this run's build $built was not tagged and nothing was saved" >&2
+    earlier="$(docker image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null || true)"
     if [ -z "$earlier" ]; then
         echo "no image is under $IMAGE" >&2
     elif [ "$earlier" = "$built" ]; then
@@ -131,7 +216,7 @@ if [ "$status" != 0 ]; then
 fi
 
 docker tag "$built" "$IMAGE"
-echo "built $IMAGE ($built) on $BASE_IMAGE; its policies are the tree's, its base's those of $STOCK_TAG"
+echo "built $IMAGE ($built) from the fork's tree; every check passed"
 
 # Only needed when the image has to cross the air gap
 if [ "${SAVE:-0}" = 1 ]; then

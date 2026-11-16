@@ -57,7 +57,6 @@ interface StateToProps {
     changePasswordDialogShown: boolean;
     logoutFetching: boolean;
     isAnalyticsPluginActive: boolean;
-    currentOrganizationRole: string | null;
     organizationFetching: boolean;
     currentOrganization: any | null;
     organizationsList: Organization[];
@@ -105,7 +104,6 @@ function mapStateToProps(state: CombinedState): StateToProps {
         organizations: {
             fetching: organizationFetching,
             current: currentOrganization,
-            currentRole: currentOrganizationRole,
             currentArray: organizationsList,
             currentArrayFetching: organizationsListFetching,
             gettingQuery: {
@@ -125,7 +123,6 @@ function mapStateToProps(state: CombinedState): StateToProps {
         changePasswordDialogShown,
         logoutFetching,
         isAnalyticsPluginActive: list.ANALYTICS,
-        currentOrganizationRole,
         organizationFetching,
         currentOrganization,
         organizationsList,
@@ -167,7 +164,6 @@ function HeaderComponent(props: Props): JSX.Element {
         shortcutsModalVisible,
         switchSettingsShortcut,
         isAnalyticsPluginActive,
-        currentOrganizationRole,
         organizationFetching,
         currentOrganization,
         organizationsList,
@@ -498,7 +494,6 @@ function HeaderComponent(props: Props): JSX.Element {
                 {canOpenTeamAnalytics({
                     analyticsEnabled: isAnalyticsPluginActive,
                     groups: user?.groups,
-                    currentRole: currentOrganizationRole,
                 }) ? (
                         <Button
                             className={getButtonClassName('team-analytics')}

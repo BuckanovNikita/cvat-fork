@@ -190,7 +190,7 @@ test('while figures for a new period load, the previous ones stay on screen dimm
         const cards = page.view.container.querySelector('.cvat-team-analytics-cards');
         assert.ok(cards.classList.contains('cvat-team-analytics-pending'), 'and are dimmed');
         assert.equal(cards.getAttribute('aria-busy'), 'true');
-        assert.equal(page.view.container.querySelector('.cvat-team-analytics-loading'), null);
+        assert.equal(page.view.container.querySelector('.cvat-team-analytics-loading') === null, true);
 
         await act(async () => { release(); });
         await page.view.settle();

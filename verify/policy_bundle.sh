@@ -18,10 +18,6 @@
 #                                              comment and Team Analytics policies with the
 #                                              files in the working tree: the bundle of a fork
 #                                              server image where analytics is enabled
-#   verify/policy_bundle.sh check-stock REF    reads a bundle on stdin and compares all four
-#                                              policy files (the two policies and their
-#                                              two helpers) with REF's: the
-#                                              bundle of a stock server image of REF's release
 #
 # Before comparing, every check refuses a bundle that is not a readable archive, that holds an
 # entry other than a regular file or a directory anywhere (a link would be followed on
@@ -34,7 +30,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Paths in the tree. The bundle holds each under rules/<name>.
 POLICY_PATHS=(cvat/apps/engine/rules/issues.rego cvat/apps/engine/rules/comments.rego)
-STOCK_PATHS=("${POLICY_PATHS[@]}" cvat/apps/iam/rules/utils.rego cvat/apps/organizations/rules/organizations.rego)
 ANALYTICS_PATHS=("${POLICY_PATHS[@]}" cvat/apps/team_analytics/rules/team_analytics.rego)
 
 # Judges the archive's listing before anything is extracted ($1 is the archive). Each entry's
@@ -124,11 +119,8 @@ check)
 check-analytics)
     compare_bundle "" "${ANALYTICS_PATHS[@]}"
     ;;
-check-stock)
-    compare_bundle "${2:?usage: $0 check-stock REF}" "${STOCK_PATHS[@]}"
-    ;;
 *)
-    echo "usage: $0 from-image IMAGE [analytics] | check [REF] | check-analytics | check-stock REF" >&2
+    echo "usage: $0 from-image IMAGE [analytics] | check [REF] | check-analytics" >&2
     exit 2
     ;;
 esac

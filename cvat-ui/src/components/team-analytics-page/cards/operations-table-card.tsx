@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: MIT
 
-import React from 'react';
+import '../operations.scss';
+
+import React, { useId } from 'react';
 import Text from 'antd/lib/typography/Text';
 
 import { OperationsFigures } from '../service';
@@ -14,6 +16,7 @@ import {
 } from '../operations';
 import { shapeWording } from '../shapes';
 import { FullViewButton } from '../full-view-button';
+import { Term } from '../definitions';
 
 interface Props {
     figures: OperationsFigures;
@@ -23,31 +26,53 @@ interface Props {
 const HOTKEY_COLOR = '#2a78d6';
 const MOUSE_COLOR = '#c9c8c2';
 
-function InputSplitCell({ name, split }: { name: string; split: InputSplit }): JSX.Element {
+// The second row of an operation: how its objects were started, across the whole table width. `headers` ties
+// it to the operation's row header, and a hidden prefix names the operation for a screen reader that reads the
+// row on its own.
+function InputSplitRow({ name, split, header }: { name: string; split: InputSplit; header: string }): JSX.Element {
+    const prefix = <span className='cvat-team-analytics-visually-hidden'>{`${name} started by: `}</span>;
     if (split.kind === 'split') {
         const hotkey = Math.round(split.hotkey * 100);
         const mouse = 100 - hotkey;
         return (
-            <td
-                className='cvat-team-analytics-input-split'
-                title={`${name}: ${hotkey}% by hotkey, ${mouse}% by mouse`}
-            >
-                <span className='cvat-team-analytics-input-split-bar' aria-hidden>
-                    <span style={{ flexGrow: Math.max(split.hotkey, 0.01), background: HOTKEY_COLOR }} />
-                    <span style={{ flexGrow: Math.max(split.mouse, 0.01), background: MOUSE_COLOR }} />
-                </span>
-                {`${hotkey}% / ${mouse}%`}
-            </td>
+            <tr className='cvat-team-analytics-input-split-row'>
+                <td
+                    colSpan={5}
+                    headers={header}
+                    className='cvat-team-analytics-input-split'
+                    title={`${name}: ${hotkey}% by hotkey, ${mouse}% by mouse`}
+                >
+                    {prefix}
+                    <span className='cvat-team-analytics-input-split-bar' aria-hidden>
+                        <span style={{ flexGrow: Math.max(split.hotkey, 0.01), background: HOTKEY_COLOR }} />
+                        <span style={{ flexGrow: Math.max(split.mouse, 0.01), background: MOUSE_COLOR }} />
+                    </span>
+                    {`${hotkey}% hotkey / ${mouse}% mouse`}
+                </td>
+            </tr>
         );
     }
     const label = { 'mouse-only': 'Mouse only', 'not-recorded': 'Not recorded', none: MISSING }[split.kind];
-    return <td className='cvat-team-analytics-input-split cvat-team-analytics-not-recorded'>{label}</td>;
+    return (
+        <tr className='cvat-team-analytics-input-split-row'>
+            <td
+                colSpan={5}
+                headers={header}
+                className='cvat-team-analytics-input-split cvat-team-analytics-not-recorded'
+            >
+                {prefix}
+                {label}
+            </td>
+        </tr>
+    );
 }
 
-// The four operations: objects, average time per object, total time and share of working time.
+// The four operations: objects, average time per object, total time and share of working time, each with how
+// its objects were started (hotkey or mouse) on a row of its own below, so that the table fits a narrow card.
 function OperationsTableCard({ figures, onFullView }: Props): JSX.Element {
     const rows = figures.rows.filter((row) => row.operation !== 'other');
     const wording = shapeWording(figures);
+    const idPrefix = useId();
     return (
         <section className='cvat-team-analytics-card cvat-team-analytics-operations'>
             <div className='cvat-team-analytics-card-header'>
@@ -57,28 +82,29 @@ function OperationsTableCard({ figures, onFullView }: Props): JSX.Element {
             <Text type='secondary'>
                 {`Counts and average time per ${wording.noun} · ${wording.label.toLowerCase()}`}
             </Text>
-            <div className='cvat-team-analytics-table-scroll'>
-                <table className='cvat-team-analytics-table'>
+            <div className='cvat-team-analytics-table-scroll cvat-team-analytics-operations-scroll'>
+                <table className='cvat-team-analytics-operations-table'>
                     <thead>
                         <tr>
-                            <th>Operation</th>
-                            <th>{wording.nouns}</th>
-                            <th>Avg time</th>
-                            <th>Total time</th>
-                            <th>Share</th>
-                            <th>Started by hotkey / mouse</th>
+                            <th scope='col'>Operation</th>
+                            <th scope='col'>{wording.nouns}</th>
+                            <th scope='col'><Term name='Time per operation'>Avg time</Term></th>
+                            <th scope='col'>Total time</th>
+                            <th scope='col'>Share</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {rows.map((row) => {
-                            const look = OPERATION_LOOKS[row.operation];
-                            const recorded = isRecorded(figures, row.operation);
-                            return (
-                                <tr key={row.operation}>
-                                    <td>
+                    {rows.map((row) => {
+                        const look = OPERATION_LOOKS[row.operation];
+                        const recorded = isRecorded(figures, row.operation);
+                        const header = `${idPrefix}-${row.operation}`;
+                        // one group per operation: its figures and, below them, how its objects were started
+                        return (
+                            <tbody key={row.operation} className='cvat-team-analytics-operation-group'>
+                                <tr className='cvat-team-analytics-operation-row'>
+                                    <th scope='row' id={header}>
                                         <span className='cvat-team-analytics-swatch' style={{ background: look.color }} />
                                         <span className='cvat-team-analytics-operation-name'>{look.name}</span>
-                                    </td>
+                                    </th>
                                     {recorded ? (
                                         <>
                                             <td>{formatCount(row.objects)}</td>
@@ -94,17 +120,18 @@ function OperationsTableCard({ figures, onFullView }: Props): JSX.Element {
                                             <td>{MISSING}</td>
                                         </>
                                     )}
-                                    <InputSplitCell name={look.name} split={inputSplit(figures, row)} />
                                 </tr>
-                            );
-                        })}
-                    </tbody>
+                                <InputSplitRow name={look.name} split={inputSplit(figures, row)} header={header} />
+                            </tbody>
+                        );
+                    })}
                 </table>
             </div>
             <Text type='secondary' className='cvat-team-analytics-footnote'>
-                Creation covers drawn, pasted and propagated objects. Alignment is done on the canvas, so it has no
-                hotkey. Average time runs from the previous action to
-                the end of the operation; pauses over 100 seconds are left out.
+                Creation covers drawn, pasted and propagated objects. The bar under each operation shows how its
+                objects were started, by hotkey or by mouse; alignment is done on the canvas, so it has no hotkey.
+                Average time runs from the previous action to the end of the operation; pauses over 100 seconds are
+                left out.
             </Text>
         </section>
     );

@@ -15,6 +15,7 @@ import logging
 import django_rq
 from django.conf import settings
 from django.core.cache import caches
+from django.db import connection
 
 from . import QUEUE, reads
 from .core.config import Config
@@ -24,6 +25,7 @@ from .core.redis_lock import RedisLock
 from .core.run import WatchedLock, refresh_run
 from .core.scope import Scope
 from .core.sql import Limit
+from .models import TechnicalAccount
 from .reads import ANSWER_KEY_PREFIX, GENERATION_KEY, advance_generation
 
 log = logging.getLogger(__name__)
@@ -45,11 +47,20 @@ def config() -> Config:
         clickhouse_password=clickhouse["PASSWORD"],
         events_db=clickhouse["NAME"],
         totals_db=settings.TEAM_ANALYTICS_DB,
-        technical_accounts=tuple(settings.TEAM_ANALYTICS_TECHNICAL_ACCOUNTS),
         refresh_interval_s=settings.TEAM_ANALYTICS_REFRESH_INTERVAL_S,
         refresh_window_hours=settings.TEAM_ANALYTICS_REFRESH_WINDOW_HOURS,
         lookback_s=settings.TEAM_ANALYTICS_LOOKBACK_S,
     )
+
+
+def technical_account_ids() -> tuple[int, ...]:
+    """The user ids on the Technical accounts list, from Postgres (models.TechnicalAccount). The
+    database connection is closed right after: the read that follows may take as long as its
+    statement limit and needs none (a later use of the ORM in the same process opens a new one)."""
+    try:
+        return tuple(sorted(TechnicalAccount.objects.values_list("user_id", flat=True)))
+    finally:
+        connection.close()
 
 
 def _engine(read_limit: Limit | None = None) -> tuple[Engine, WatchedLock]:
@@ -133,10 +144,14 @@ def _read_answer(cache, endpoint: str, scope: dict, query: dict, key: str) -> No
         # read before computing: an answer computed while a run was writing is stored as older than
         # the totals that run leaves, and is computed again when it is next asked for
         generation = cache.get(GENERATION_KEY, 0)
+        # the list after the generation, never before: a save commits, then advances the generation,
+        # so an answer computed on a list read before a save is stored as older than that save
+        technical_accounts = technical_account_ids()
         body = engine.answer(
             endpoint,
-            Scope(org_id=scope["org_id"], user_id=0, username="", admin=bool(scope["admin"])),
+            Scope(org_id=scope["org_id"], user_id=0, username=""),
             query,
+            technical_accounts=technical_accounts,
         )
         stored = {"status": 200, "body": json.dumps(body)}
     except BadRequest as error:

@@ -22,11 +22,11 @@ MONTHS = ["2025-12-01", "2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01", 
 
 class TrendsCase(StackTestCase):
     # one refresh covers more than a year, so every bucket is processed
-    stack_options = {"refresh_window_hours": 400 * 24, "technical_accounts": ("robot",)}
+    stack_options = {"refresh_window_hours": 400 * 24, "technical_accounts": (99,)}
 
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "maintainer", True)}))
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (ORG, "maintainer", True)}))
 
     def trends_response(self, **query) -> tuple[int, dict]:
         query.setdefault("org", "org7")

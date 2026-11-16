@@ -19,6 +19,10 @@ WORKER_SELECTOR = "app.kubernetes.io/instance={},tier=backend,component=worker-t
 CLICKHOUSE = f"statefulset/{RELEASE}-clickhouse-shard0"
 CLICKHOUSE_SELECTOR = f"app.kubernetes.io/instance={RELEASE},app.kubernetes.io/name=clickhouse"
 REDIS_POD = f"{RELEASE}-redis-master-0"
+REDIS = f"statefulset/{RELEASE}-redis-master"
+# the in-memory Redis's pods (Bitnami's labels); the rq queues, the refresh lock and Django's cache live there
+REDIS_SELECTOR = f"app.kubernetes.io/instance={RELEASE},app.kubernetes.io/name=redis,app.kubernetes.io/component=master"
+SERVER_SELECTOR = f"app.kubernetes.io/instance={RELEASE},tier=backend,component=server"
 
 # The keys the app keeps (cvat/apps/team_analytics): the refresh lock in the RQ database of the in-memory
 # Redis (db 0), and in Django's cache the generation of the totals and the ready mark.
@@ -131,10 +135,24 @@ def server_db_connections() -> dict:
     ips = kubectl("get", "pods", "-l", f"app.kubernetes.io/instance={RELEASE},tier=backend,component=server",
                   "-o", "jsonpath={.items[*].status.podIP}").split()
     query = "SELECT coalesce(host(client_addr), '-') FROM pg_stat_activity WHERE backend_type = 'client backend'"
-    script = 'PGPASSWORD="${POSTGRES_PASSWORD:-$POSTGRESQL_PASSWORD}" psql -U "${POSTGRES_USER:-${POSTGRESQL_USERNAME:-postgres}}" -d "${POSTGRES_DB:-${POSTGRESQL_DATABASE:-postgres}}" -h 127.0.0.1 -tA -c "$0"'
-    out = kubectl("exec", f"{RELEASE}-postgresql-0", "--", "sh", "-c", script, query)
-    addrs = [line.strip() for line in out.splitlines() if line.strip()]
+    addrs = [line.strip() for line in psql(query).splitlines() if line.strip()]
     return {"server": sum(1 for a in addrs if a in ips), "all": len(addrs)}
+
+
+def psql(query: str) -> str:
+    """One query in the release's Postgres, as its own user (the password stays in the pod); unaligned rows."""
+    script = 'PGPASSWORD="${POSTGRES_PASSWORD:-$POSTGRESQL_PASSWORD}" psql -U "${POSTGRES_USER:-${POSTGRESQL_USERNAME:-postgres}}" -d "${POSTGRES_DB:-${POSTGRESQL_DATABASE:-postgres}}" -h 127.0.0.1 -tA -c "$0"'
+    return kubectl("exec", f"{RELEASE}-postgresql-0", "--", "sh", "-c", script, query)
+
+
+def redis_memory_mib() -> float:
+    """The in-memory Redis's used memory (INFO memory, used_memory), in MiB; NaN when it cannot be read."""
+    out = redis("INFO", "memory")
+    for line in out.replace('"', "").splitlines():
+        name, _, value = line.strip().partition(":")
+        if name == "used_memory" and value.strip().isdigit():
+            return int(value) / 2**20
+    return float("nan")
 
 
 def django_settings(*names: str) -> dict:

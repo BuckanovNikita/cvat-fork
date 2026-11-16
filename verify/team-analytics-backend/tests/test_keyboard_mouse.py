@@ -19,7 +19,7 @@ def summary(when: datetime, hotkeys: dict | None = None, mouse: dict | None = No
 class KeyboardMouseCase(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "maintainer", True)}))
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (ORG, "maintainer", True)}))
 
     def overview(self, **query) -> dict:
         self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))
@@ -99,7 +99,7 @@ class InputFiguresTest(KeyboardMouseCase):
 
 
 class ScopeTest(KeyboardMouseCase):
-    stack_options = {"technical_accounts": ("robot",)}
+    stack_options = {"technical_accounts": (99,)}
 
     def test_filters_by_project_and_annotator_and_technical_accounts_are_left_out(self):
         t = "2026-11-13 10:00:00"

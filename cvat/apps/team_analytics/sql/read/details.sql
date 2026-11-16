@@ -36,7 +36,7 @@ WITH
                 GROUP BY hour
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-            AND user_name NOT IN {technical_accounts:Array(String)}
+            AND user_id NOT IN {technical_accounts:Array(UInt64)}
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     ),
@@ -52,7 +52,7 @@ WITH
                 GROUP BY hour
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-            AND user_name NOT IN {technical_accounts:Array(String)}
+            AND user_id NOT IN {technical_accounts:Array(UInt64)}
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
     ),
@@ -95,7 +95,7 @@ WITH
                 )
                 AND instance_wide = {instance:UInt8}
                 AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-                AND user_name NOT IN {technical_accounts:Array(String)}
+                AND user_id NOT IN {technical_accounts:Array(UInt64)}
                 AND ({has_project:UInt8} = 0 OR has(project_ids, {project:UInt64}))
                 AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
         )
@@ -114,7 +114,7 @@ WITH
                 GROUP BY hour
             )
             AND ({instance:UInt8} = 1 OR org_id = {org_id:UInt64})
-            AND user_name NOT IN {technical_accounts:Array(String)}
+            AND user_id NOT IN {technical_accounts:Array(UInt64)}
             AND ({has_project:UInt8} = 0 OR project_id = {project:UInt64})
             AND ({has_annotator:UInt8} = 0 OR user_id = {annotator:UInt64})
         GROUP BY key
@@ -123,9 +123,9 @@ WITH
         SELECT
             toUInt64(if({by:String} = 'annotators', user_id, project_id)) AS key,
             sumIf(objects, action = 'create' AND (
-                    (source = 'detector' AND user_name NOT IN {technical_accounts:Array(String)})
+                    (source = 'detector' AND user_id NOT IN {technical_accounts:Array(UInt64)})
                     OR ({by:String} = 'projects' AND source = 'saved' AND {has_annotator:UInt8} = 0
-                        AND user_name IN {technical_accounts:Array(String)}))
+                        AND user_id IN {technical_accounts:Array(UInt64)}))
                 -- all shapes when asked for or in a legacy period
                 AND ({bounding_boxes:UInt8} = 0
                     OR {legacy_period:UInt8} = 1
@@ -134,7 +134,7 @@ WITH
                 AND shape_type = 'rectangle'
                 -- a technical account is no annotator: its boxes count per project, and not under an annotator filter
                 AND (({by:String} = 'projects' AND {has_annotator:UInt8} = 0)
-                    OR user_name NOT IN {technical_accounts:Array(String)})) AS saved_boxes
+                    OR user_id NOT IN {technical_accounts:Array(UInt64)})) AS saved_boxes
         FROM $totals_db.boxes_hourly
         WHERE hour >= {from:DateTime('Etc/UTC')} AND hour < {to:DateTime('Etc/UTC')}
             AND (hour, version) IN (

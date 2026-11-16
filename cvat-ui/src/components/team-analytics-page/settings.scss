@@ -1,0 +1,100 @@
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+@import 'base';
+
+// The page header's Settings button: 36px tall like the filter row's controls
+.cvat-team-analytics-header .cvat-team-analytics-settings-button {
+    box-sizing: border-box;
+    height: 36px;
+}
+
+// "Team Analytics settings" (settings-modal.tsx)
+.cvat-team-analytics-settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: $grid-unit-size * 1.5;
+}
+
+.cvat-team-analytics-settings-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.cvat-team-analytics-settings-text {
+    margin: 0;
+    color: #595959;
+}
+
+.cvat-team-analytics-settings-loading,
+.cvat-team-analytics-settings-load-failed {
+    display: flex;
+    align-items: center;
+    gap: $grid-unit-size;
+}
+
+.cvat-team-analytics-settings-accounts {
+    max-height: 240px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+    border: 1px solid $border-color-1;
+    border-radius: $border-radius-base;
+}
+
+.cvat-team-analytics-settings-account {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $grid-unit-size;
+    padding: $grid-unit-size * 0.5 $grid-unit-size * 0.5 $grid-unit-size * 0.5 $grid-unit-size * 1.5;
+
+    & + & {
+        border-top: 1px solid $border-color-1;
+    }
+}
+
+.cvat-team-analytics-settings-account-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cvat-team-analytics-settings-account-deleted .cvat-team-analytics-settings-account-name {
+    color: #595959;
+    font-style: italic;
+}
+
+.cvat-team-analytics-settings-empty {
+    color: #595959;
+}
+
+.cvat-team-analytics-settings-picker-label {
+    margin-bottom: -$grid-unit-size;
+    font-weight: 600;
+}
+
+.cvat-team-analytics-settings-picker {
+    width: 100%;
+}
+
+// in the picker's list: a user already on the list (a disabled option) and a search that failed
+.cvat-team-analytics-settings-listed {
+    font-style: italic;
+}
+
+.cvat-team-analytics-settings-search-failed {
+    color: #a8071a;
+}
+
+.cvat-team-analytics-settings-error {
+    padding: $grid-unit-size $grid-unit-size * 1.5;
+    border: 1px solid #ffccc7;
+    border-radius: $border-radius-base;
+    background: #fff2f0;
+    color: #a8071a;
+}

@@ -11,7 +11,10 @@
     "ta-owner-c": {"admin": false},
     "ta-worker-c": {"admin": false},
     "ta-bot": {"admin": false},
-    "ta-owner-v": {"admin": false}
+    "ta-owner-v": {"admin": false},
+    "ta-owner-s": {"admin": false},
+    "ta-worker-s": {"admin": false},
+    "ta-worker-s2": {"admin": false}
   },
   "organizations": {
     "ta-org-a": {
@@ -42,6 +45,14 @@
       "name": "Team Analytics V (final run, volume)",
       "members": {
         "ta-owner-v": "owner"
+      }
+    },
+    "ta-org-s": {
+      "name": "Team Analytics S (settings check)",
+      "members": {
+        "ta-owner-s": "owner",
+        "ta-worker-s": "worker",
+        "ta-worker-s2": "worker"
       }
     }
   }

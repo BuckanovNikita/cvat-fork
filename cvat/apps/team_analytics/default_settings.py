@@ -30,12 +30,15 @@ def _number(name: str, default, kind=int, minimum=1):
 # Database of the stored totals, on the ClickHouse server of settings.CLICKHOUSE["events"].
 TEAM_ANALYTICS_DB = os.getenv("TEAM_ANALYTICS_DB", "team_analytics")
 
-# User names of accounts that stand for automated processes, separated by commas.
-TEAM_ANALYTICS_TECHNICAL_ACCOUNTS = tuple(
-    name.strip()
-    for name in os.getenv("TEAM_ANALYTICS_TECHNICAL_ACCOUNTS", "").split(",")
-    if name.strip()
-)
+# The Technical accounts list is not a setting: administrators edit it in the Team Analytics settings
+# (models.TechnicalAccount). The environment variable that held it before is looked at only to warn:
+# an instance upgraded with it still set is told once at start that its value has no effect and
+# where the list is now kept, instead of losing the list without a word.
+if os.getenv("TEAM_ANALYTICS_TECHNICAL_ACCOUNTS", "").strip():
+    log.warning(
+        "TEAM_ANALYTICS_TECHNICAL_ACCOUNTS is ignored: the Technical accounts list is edited by an "
+        "administrator in Team Analytics settings (the Settings button of the Team Analytics page)"
+    )
 
 # The refresh of the stored totals: how often recent hours are recomputed, how many of them, and how
 # far before them the computation reads events.

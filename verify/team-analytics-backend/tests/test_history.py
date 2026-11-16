@@ -21,7 +21,7 @@ MINUTE = 60_000
 class HistoryCase(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "owner", True)}))
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (ORG, "owner", True)}))
         self.stack.callers.add_user("admin", FakeUser(1, "admin", groups=["admin"]))
 
     def step(self, times: int = 1) -> None:
@@ -29,8 +29,8 @@ class HistoryCase(StackTestCase):
             self.stack.engine.step()
 
     def history(self, **query) -> dict:
-        """The history block as an administrator who selected the organization sees it: the full block
-        (a maintainer's is in test_isolation.HistoryStatusTest)."""
+        """The history block as an administrator who selected the organization sees it (every caller gets
+        the full block; test_isolation.HistoryStatusTest)."""
         status, body = self.stack.get("/api/team-analytics/status", "admin", org="org7", **query)
         self.assertEqual(status, 200, body)
         return body["history"]

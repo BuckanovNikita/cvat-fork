@@ -15,8 +15,6 @@ class Config:
     events_db: str = "cvat"
     # Database of the stored totals, owned by Team Analytics.
     totals_db: str = "team_analytics"
-    # User names of accounts that stand for automated processes.
-    technical_accounts: tuple[str, ...] = ()
     refresh_interval_s: int = 600
     refresh_window_hours: int = 48
     # How far before the refresh window the computation reads events.

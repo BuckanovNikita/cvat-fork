@@ -28,6 +28,9 @@ const {
 } = require('./browser_check.cjs');
 
 const BASE = process.env.TA_BASE_URL;
+// Team Analytics answers only administrators: the page is read as ta-admin with the organization selected;
+// annotators keep annotating as themselves
+const ADMIN = 'ta-admin';
 
 // ---------------------------------------------------------------- input
 
@@ -468,8 +471,9 @@ async function pageChecks(contextFile) {
     try {
         browser = await launch(profile);
 
-        // a small organization first: the overview's length with one annotator and one project
-        const small = await signIn(browser, 'ta-owner-c', context.ui_org);
+        // a small organization first: the overview's length with one annotator and one project. Only
+        // administrators read figures: ta-admin with the organization selected
+        const small = await signIn(browser, ADMIN, context.ui_org);
         await small.goto(`${BASE}/team-analytics`);
         await overviewReady(small, 'the overview of ta-org-c');
         result.small_height = await pageHeight(small);
@@ -483,7 +487,9 @@ async function pageChecks(contextFile) {
             const cells = (selector) => [...document.querySelectorAll(selector)].map((r) => [...r.children].map((c) => c.textContent.trim()));
             const value = (selector) => document.querySelector(selector)?.textContent.trim();
             return {
-                operations: Object.fromEntries(cells(".cvat-team-analytics-operations tbody tr").map((r) => [r[0], r[1]])),
+                // one row per operation (its hotkey/mouse split is a second row under it): the name, then the count
+                operations: Object.fromEntries([...document.querySelectorAll(".cvat-team-analytics-operations tr.cvat-team-analytics-operation-row")]
+                    .map((r) => [r.querySelector(".cvat-team-analytics-operation-name").textContent.trim(), r.querySelector("td").textContent.trim()])),
                 methods: Object.fromEntries(cells(".cvat-team-analytics-method-row, .cvat-team-analytics-model-row").map((r) => [r[0], r[2]])),
                 created: value(".cvat-team-analytics-objects-created .cvat-team-analytics-headline-value"),
                 sessions: value(".cvat-team-analytics-sessions .cvat-team-analytics-headline-value"),
@@ -506,7 +512,7 @@ async function pageChecks(contextFile) {
         check(shown.hotkeys.some((text) => text.includes(`Hotkey actions ${pressed}`)), `keyboard figures ${JSON.stringify(shown.hotkeys)}, ${pressed} hotkeys pressed`);
         log(`real UI figures on the page (project ${ui.project_id}): ${JSON.stringify(shown.operations)}, methods ${JSON.stringify(shown.methods)}, hotkey actions ${pressed}`);
 
-        const page = await signIn(browser, 'ta-owner-v', context.volume_org);
+        const page = await signIn(browser, ADMIN, context.volume_org);
         const keys = input(page);
         await page.goto(`${BASE}/team-analytics`);
         await overviewReady(page, 'the overview of ta-org-v');
@@ -635,12 +641,12 @@ async function serviceDown(stateFile) {
     let browser;
     try {
         browser = await launch(profile);
-        const owner = await signIn(browser, 'ta-owner-c', state.org);
+        const admin = await signIn(browser, ADMIN, state.org);
         const opened = Date.now();
-        await owner.goto(`${BASE}/team-analytics`);
-        const panel = await owner.waitFor('document.querySelector(".cvat-team-analytics-error")?.textContent.trim()', 'the error panel', 90000);
+        await admin.goto(`${BASE}/team-analytics`);
+        const panel = await admin.waitFor('document.querySelector(".cvat-team-analytics-error")?.textContent.trim()', 'the error panel', 90000);
         const panelAfterS = ((Date.now() - opened) / 1000).toFixed(1);
-        await owner.screenshot('final-service-down');
+        await admin.screenshot('final-service-down');
         check(panel.includes('could not be loaded'), `error panel reads "${panel}"`);
         log(`analytics worker at zero: the page shows "${panel.slice(0, 70)}" ${panelAfterS} s after it was opened`);
 

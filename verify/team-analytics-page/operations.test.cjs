@@ -108,22 +108,49 @@ test('each part of the bar is as wide as its time and names itself on hover', ()
     assert.doesNotMatch(html, /cvat-team-analytics-split-part"[^>]*>5%<\/div>/);
 });
 
+// the header row and each operation's row of figures (the hotkey / mouse rows below them left out)
 function tableRows(html) {
     const card = html.match(/<section[^>]*cvat-team-analytics-operations[^>]*>(.*?)<\/section>/);
     assert.ok(card, 'the operations table is shown');
-    return [...card[1].matchAll(/<tr[^>]*>(.*?)<\/tr>/g)].map((tr) => (
-        [...tr[1].matchAll(/<t[hd][^>]*>(.*?)<\/t[hd]>/g)].map((cell) => text(cell[1]))
-    ));
+    return [...card[1].matchAll(/<tr([^>]*)>(.*?)<\/tr>/g)]
+        .filter((tr) => !tr[1].includes('cvat-team-analytics-input-split-row'))
+        .map((tr) => [...tr[2].matchAll(/<t[hd][^>]*>(.*?)<\/t[hd]>/g)].map((cell) => text(cell[1])));
+}
+
+// the visible text of each operation's hotkey / mouse row
+function splitRows(html) {
+    const card = html.match(/<section[^>]*cvat-team-analytics-operations[^>]*>(.*?)<\/section>/);
+    return [...card[1].matchAll(/<tr class="cvat-team-analytics-input-split-row">(.*?)<\/tr>/g)]
+        .map((tr) => text(tr[1].replace(/<span class="cvat-team-analytics-visually-hidden">.*?<\/span>/, '')));
 }
 
 test('a table lists each operation with its count, average time, total time and share of working time', () => {
     assert.deepEqual(tableRows(render(View, ready(OPERATIONS))), [
-        ['Operation', 'Objects', 'Avg time', 'Total time', 'Share', 'Started by hotkey / mouse'],
-        ['Creation', '3,456', '4.2 s', '4.0 h', '40%', '—'],
-        ['Alignment', '900', '2.0 s', '0.5 h', '5%', 'Mouse only'],
-        ['Class change', '0', '—', '0.0 h', '0%', '—'],
-        ['Deletion', '120', '9.0 s', '0.3 h', '3%', '—'],
+        ['Operation', 'Objects', 'Avg time', 'Total time', 'Share'],
+        ['Creation', '3,456', '4.2 s', '4.0 h', '40%'],
+        ['Alignment', '900', '2.0 s', '0.5 h', '5%'],
+        ['Class change', '0', '—', '0.0 h', '0%'],
+        ['Deletion', '120', '9.0 s', '0.3 h', '3%'],
     ]);
+    assert.deepEqual(splitRows(render(View, ready(OPERATIONS))), ['—', 'Mouse only', '—', '—']);
+});
+
+test('the table has five columns and no minimum width; each split row spans them under its operation', () => {
+    const html = render(View, ready(OPERATIONS));
+    const card = html.match(/<section[^>]*cvat-team-analytics-operations[^>]*>(.*?)<\/section>/)[1];
+    assert.match(card, /<table class="cvat-team-analytics-operations-table">/);
+    // the shared table class (min-width 440px) is not used here
+    assert.doesNotMatch(card, /class="cvat-team-analytics-table"/);
+    assert.equal((card.match(/<th scope="col"/g) || []).length, 5);
+    // one group per operation: its row header and the split row naming it through `headers`
+    const groups = [...card.matchAll(/<tbody class="cvat-team-analytics-operation-group">(.*?)<\/tbody>/g)];
+    assert.equal(groups.length, 4);
+    for (const [, group] of groups) {
+        const id = group.match(/<th scope="row" id="([^"]+)"/)[1];
+        // React's static markup writes the attribute as colSpan
+        assert.ok(group.includes(`<td colSpan="5" headers="${id}"`), group);
+    }
+    assert.match(card, /<span class="cvat-team-analytics-visually-hidden">Creation started by: <\/span>/);
 });
 
 test('a legacy period shows the notice and marks class change as not recorded', () => {
@@ -135,7 +162,8 @@ test('a legacy period shows the notice and marks class change as not recorded', 
         'Old events do not say which shape was edited, so operations and timing below cover all shapes. ' +
         'Class changes and hotkey use were not recorded and start from the day the new UI is deployed. ' +
         'Projects, sessions, working time and the number of boxes saved are complete.');
-    assert.deepEqual(tableRows(html)[3], ['Class change', 'Not recorded', '—', '—', '—', 'Not recorded']);
+    assert.deepEqual(tableRows(html)[3], ['Class change', 'Not recorded', '—', '—', '—']);
+    assert.equal(splitRows(html)[2], 'Not recorded');
     // the split leaves out what was not recorded instead of showing it as zero
     assert.deepEqual(legend(html).map((item) => item.split(' ')[0]), ['Creation', 'Alignment', 'Deletion', 'Other']);
 });
@@ -143,7 +171,7 @@ test('a legacy period shows the notice and marks class change as not recorded', 
 test('a period with shape-tagged events shows no legacy notice and counts class changes', () => {
     const html = render(View, ready(OPERATIONS));
     assert.doesNotMatch(html, /cvat-team-analytics-legacy-notice/);
-    assert.deepEqual(tableRows(html)[3], ['Class change', '0', '—', '0.0 h', '0%', '—']);
+    assert.deepEqual(tableRows(html)[3], ['Class change', '0', '—', '0.0 h', '0%']);
 });
 
 test('operations with no measured time and no working time show no shares', () => {

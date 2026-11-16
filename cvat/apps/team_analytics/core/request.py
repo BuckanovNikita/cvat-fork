@@ -37,13 +37,16 @@ def discover(package: ModuleType) -> tuple[ModuleType, ...]:
 
 @dataclass
 class Request:
-    """What an endpoint gets: the caller's scope (from CVAT), the query, and the means to read."""
+    """What an endpoint gets: the caller's scope (from CVAT), the query, and the means to read.
+    `technical_accounts`: the user ids of the accounts that stand for automated processes, for this
+    answer."""
 
     scope: Scope
     query: dict[str, str]
     sql: Sql
     config: Config
     now: datetime
+    technical_accounts: tuple[int, ...]
     cache: dict[str, Any] = field(default_factory=dict)
 
     def span(self) -> Span:
@@ -102,7 +105,7 @@ class Request:
         return {
             "instance": 1 if self.scope.instance else 0,
             "org_id": self.scope.org_id or 0,
-            "technical_accounts": list(self.config.technical_accounts),
+            "technical_accounts": list(self.technical_accounts),
             "has_project": 0 if project is None else 1,
             "project": project or 0,
             "has_annotator": 0 if annotator is None else 1,

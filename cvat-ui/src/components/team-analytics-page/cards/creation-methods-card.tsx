@@ -15,6 +15,7 @@ import { METHOD_NAMES, MODEL_COLOR, MODEL_NAME } from '../creation-methods';
 import { OPERATION_LOOKS } from '../operations';
 import { shapeWording } from '../shapes';
 import { FullViewButton } from '../full-view-button';
+import { Term } from '../definitions';
 
 interface Props {
     methods: CreationMethods;
@@ -57,18 +58,14 @@ function CreationMethodsCard({
                             <th aria-hidden='true' />
                             <th>{nouns}</th>
                             <th>Share</th>
-                            <th>Avg time</th>
+                            <th><Term name='Time per operation'>Avg time</Term></th>
                         </tr>
                     </thead>
                     <tbody>
                         {methods.rows.map((row) => {
                             const name = METHOD_NAMES[row.method];
                             return (
-                                <tr
-                                    key={row.method}
-                                    className='cvat-team-analytics-method-row'
-                                    title={`${name}: ${formatCount(row.objects)} (${formatShare(row.share)})`}
-                                >
+                                <tr key={row.method} className='cvat-team-analytics-method-row'>
                                     <td className='cvat-team-analytics-operation-name'>{name}</td>
                                     <td className='cvat-team-analytics-method-bar-cell'>
                                         <span
@@ -79,18 +76,20 @@ function CreationMethodsCard({
                                             }}
                                         />
                                     </td>
-                                    <td>{formatCount(row.objects)}</td>
+                                    <td title={`${name}: ${formatCount(row.objects)} (${formatShare(row.share)})`}>
+                                        {formatCount(row.objects)}
+                                    </td>
                                     <td>{formatShare(row.share)}</td>
                                     <td>{formatSeconds(row.average_ms)}</td>
                                 </tr>
                             );
                         })}
                         {model ? (
-                            <tr
-                                className='cvat-team-analytics-method-row cvat-team-analytics-model-row'
-                                title={`${MODEL_NAME}: ${formatCount(model.objects)} (${formatShare(model.share)})`}
-                            >
-                                <td className='cvat-team-analytics-operation-name'>{MODEL_NAME}</td>
+                            // the hover text sits on the count, not the row: it must not cover the Model definition
+                            <tr className='cvat-team-analytics-method-row cvat-team-analytics-model-row'>
+                                <td className='cvat-team-analytics-operation-name'>
+                                    <Term name='Model'>{MODEL_NAME}</Term>
+                                </td>
                                 <td className='cvat-team-analytics-method-bar-cell'>
                                     <span
                                         className='cvat-team-analytics-method-bar'
@@ -99,7 +98,11 @@ function CreationMethodsCard({
                                         }}
                                     />
                                 </td>
-                                <td>{formatCount(model.objects)}</td>
+                                <td
+                                    title={`${MODEL_NAME}: ${formatCount(model.objects)} (${formatShare(model.share)})`}
+                                >
+                                    {formatCount(model.objects)}
+                                </td>
                                 <td>{formatShare(model.share)}</td>
                                 <td>{MISSING}</td>
                             </tr>

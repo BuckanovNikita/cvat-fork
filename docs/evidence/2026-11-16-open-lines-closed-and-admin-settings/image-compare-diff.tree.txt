@@ -1,0 +1,123 @@
+--- old.tree.txt (image 25b249e2e3e1)
++++ new.tree.txt (image baa5a8b72149)
+@@ -506,20 +506,20 @@
+ 88454f4b7e7055bf822f6a01e91689086a39364f47b40356701a71d9a1fef377  ./cvat/apps/team_analytics/__init__.py
+ 3453de46837812700b9541ddd1f09b8a71adbe941bf95d96c01be40c65dc51ca  ./cvat/apps/team_analytics/apps.py
+ bfb71f21327f3f3dc80ddaf5fbdd498c56dc5a4b630951a4cff92c4198383a9c  ./cvat/apps/team_analytics/core/__init__.py
+-e2d04724f3ec8e89edac241f96786e1320680ef6c3f89b114f0931757d54f228  ./cvat/apps/team_analytics/core/config.py
++cde6abe67cf09571565c47b094a1c96844573a82cfdf6183c487a1e79d5fcc8d  ./cvat/apps/team_analytics/core/config.py
+ 89f7d958e8601d928680bf771732d9eb6ff08d42fb4bae9f50a50fcf3b49703c  ./cvat/apps/team_analytics/core/cutover.py
+ 61e23692cc164b999509379b860f2e262ea80647f313e704f8bf7806bd5930e7  ./cvat/apps/team_analytics/core/endpoints/__init__.py
+-5b4585327025a3fe1e829ebafacd057271e27cffa711e1710be3ab376b94af9e  ./cvat/apps/team_analytics/core/endpoints/details.py
++1d566317aee37b5b8a47b39c00e77c2a2669ea3bd5ddd205141f519df6b9c3b7  ./cvat/apps/team_analytics/core/endpoints/details.py
+ d79a430d1630af83a6f87bfba7772153e2e227c65300bf8cd14cc72b0050d4ea  ./cvat/apps/team_analytics/core/endpoints/list.py
+ fbaf1aedfe17b363540750fa8914af3667bc92ebf7613486f44cb93db30f010c  ./cvat/apps/team_analytics/core/endpoints/overview.py
+ 7eef3e4d76807c647ba1dd42a16e6ebae29c635abec24b5e95f20b82e5d5e5b9  ./cvat/apps/team_analytics/core/endpoints/status.py
+ 5789a9716291c2288ba78738aa114755fe9182e487c8a55068b3545b48a32bb2  ./cvat/apps/team_analytics/core/endpoints/trends.py
+-b5a4d7ddb6bda9daddcaa7b6d660f502ae6cd10da1c9e2026a698f79a5892658  ./cvat/apps/team_analytics/core/engine.py
++aececddfba347105d42ea3ce15f98181a5b7cfcd398f1a6b72caae01c6d541db  ./cvat/apps/team_analytics/core/engine.py
+ c3d344deba405d8b72fad0b7c0175b20143a50817bb8648489d6f3d0cc0aa9e4  ./cvat/apps/team_analytics/core/history.py
+ 0f7c6e18bcb8c8146951778acd51ad2863a73bb95a340e50d8f67727628408dc  ./cvat/apps/team_analytics/core/overview/__init__.py
+ 39259d4ed4cb9c734002e45a51b86e602fe8e158876f63435a2041343d965671  ./cvat/apps/team_analytics/core/overview/by_annotator.py
+ 04b30a9df83c3ffd13f8fa68e075a6a286a37bca392fab9dbd5d85e441112e2a  ./cvat/apps/team_analytics/core/overview/by_project.py
+-e9ff607ec180b76fad5aaca9d9c86f43be9e68e43630edc48cf0b34f53744517  ./cvat/apps/team_analytics/core/overview/creation_methods.py
++cb6874b3f55e1d8dbb1009bb1130b374be2987329bcd9756d7e5581539a603d5  ./cvat/apps/team_analytics/core/overview/creation_methods.py
+ 32d75a0b69e65e8d23aa8e11aed29cb4aac7f55e7de6486cbc976432f76b3742  ./cvat/apps/team_analytics/core/overview/filters.py
+ 1d13c848c6597c70f52928e675020c2d979c0ed29e2ca6377830dea491702d4c  ./cvat/apps/team_analytics/core/overview/headline.py
+ a0a1ca641f0d09b21cc55335a008aa14caa0360a015248e4859c8ae565564b49  ./cvat/apps/team_analytics/core/overview/input.py
+@@ -531,24 +531,28 @@
+ 20e1a627fc65c815458e8e5503187e242c6bc4d731a03a94656a8152f0547d0c  ./cvat/apps/team_analytics/core/periods.py
+ 1d3d06c1ce64bb397702be0fe8e9d97ea81dba1d94bdb353e6628fb9001fb8f9  ./cvat/apps/team_analytics/core/redis_lock.py
+ 784b23ada2f10c843d453d1cc98a9e39a1f03b94e9101ca5c060a782df79a6da  ./cvat/apps/team_analytics/core/refresh.py
+-572d154f2f20eda3f537654ada4718b6793593aad6dfa4f2c06d08bdc1bb5a26  ./cvat/apps/team_analytics/core/request.py
++ce2bdf9b2c777a66b5e469a31cc637947c4bab08dade70672072fd8c703c82b7  ./cvat/apps/team_analytics/core/request.py
+ 4e6ed2c1f640ba020f30d8b34868402396b6314fc3697cb90ab9a04269fce8a5  ./cvat/apps/team_analytics/core/rows.py
+ 10c6435e25d3f943b0a9ad6be995415048f70c0d916df751cd0fa999137f84b7  ./cvat/apps/team_analytics/core/run.py
+-578d1bf1746096ba7ff19f573de4db7971b541f225d29e22343537a8a6751a19  ./cvat/apps/team_analytics/core/scope.py
++f94941f678f401e2315eb9ece76f38fb3c9ac8b12d242adee3edb3e49f0ef776  ./cvat/apps/team_analytics/core/scope.py
+ c3be93a986c59a565a6d7d6b2a9a2d7f26e5b6366bd92db57c3ca7c0b13ec70a  ./cvat/apps/team_analytics/core/sql.py
+ 1d8fceddf1093583fdf9b325a9876f99ca2c2f1e7540705f10b3afd21ed28be0  ./cvat/apps/team_analytics/core/status/__init__.py
+ a6acadbd60e3e344a3aa3003a51e77b1b52770553c19d3f25c0df93cde4106d4  ./cvat/apps/team_analytics/core/status/cutover.py
+-ddce247fdd968830d8d1385c893aa3572613d78fa1f3ff71037edac8b011c726  ./cvat/apps/team_analytics/core/status/history.py
++b0f5c4e636d84fcf928251ee4743307970f111f17ae4f6165b86e6e49a7487d2  ./cvat/apps/team_analytics/core/status/history.py
+ 0259028d7d22de1aa525ec75b36b913e5418dbb7a8f254a789101aea35065c4f  ./cvat/apps/team_analytics/core/status/refresh.py
+ 4f3406ffc4aa79fd4d1b6fb84787faff4c02b89f89d54003f4f76fa07266b141  ./cvat/apps/team_analytics/core/withheld.py
+ cdaea409f115a99bbc337e0f755173fe0115f18ab9db6521ffff9bf6472a6ae2  ./cvat/apps/team_analytics/core/worker.py
+-c9e85532c1136e369dcafa16823ad7fa3e00ba0e249d0b8b0c55e93abf81e4ae  ./cvat/apps/team_analytics/default_settings.py
+-4567bf7f705548c4a80af44377ebecccc762e0663b2b23769387d3c633fd9adb  ./cvat/apps/team_analytics/jobs.py
+-96cc12d4f0dbb1f23fd7bed1a55b855a108728da0cd97aa035683f18827c214a  ./cvat/apps/team_analytics/permissions.py
+-da91de12263304017a9c023a4a18a1cba44e99e2bf241f8240de4cfbca6401b3  ./cvat/apps/team_analytics/reads.py
+-a164e0834b0ecc89e1babd176a04c5bba491c348d00e6c64aec94eff483cd642  ./cvat/apps/team_analytics/rules/team_analytics.rego
+-079b6b17188009a57f965adceef39909e6e21a2c4caa104462dcaf68c3f0006f  ./cvat/apps/team_analytics/rules/tests/configs/team_analytics.csv
++822f9f7872ad586020a160f21c24fbebe8eac054598e1388a3176d354dee0ede  ./cvat/apps/team_analytics/default_settings.py
++db8aa31145beebdbf75086ef42d04f04fef63973bcd0966a16b2221aa695f242  ./cvat/apps/team_analytics/jobs.py
++353634a38fa2af53383bf62cc9842bf8fad0afdd00d7585b5df4fbe6c7f33834  ./cvat/apps/team_analytics/migrations/0001_initial.py
++e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./cvat/apps/team_analytics/migrations/__init__.py
++fe6da1a33795f251612e14225163416a243e6fe184f1f18fc913dac2fe8badf8  ./cvat/apps/team_analytics/models.py
++b311c7600d529c92d7bd8948fa6ac8906b7ede8a8b53cd00914ba0611f9409e8  ./cvat/apps/team_analytics/permissions.py
++61795335536b24521caa40cea89227b3ec933c70e57a99af443386c91907beee  ./cvat/apps/team_analytics/reads.py
++b7c12ac371651c164bd4ba94553f20b45d58aef68693d64adee125c72383846d  ./cvat/apps/team_analytics/rules/team_analytics.rego
++5c6b28b93060dc068aeccda509a11fc4d7c0793f94e2a5755023d428f6e8e3d8  ./cvat/apps/team_analytics/rules/tests/configs/team_analytics.csv
+ c64107e093e630cebbb9d863a8cbdbd8f794cf25bbc6f7c9212aedd855bcc991  ./cvat/apps/team_analytics/rules/tests/generators/team_analytics_test.gen.rego.py
++c5a85dc159502de0343d8ff607f8060687032e2068d855b6a4fed2861c324b27  ./cvat/apps/team_analytics/serializers.py
+ 6b610a6abe61c6b7597a5881da5f53048170b5c03c484f12c444da18aa5620c9  ./cvat/apps/team_analytics/sql/control/cutover_due.sql
+ 67e9e4805f7f840a91f6fde41c130e35361e447569db4884b5fd57273ae435fb  ./cvat/apps/team_analytics/sql/control/cutover_find.sql
+ 2d72cbe56372d02cbfc6e64c1ecfe4ff66cc4da7af9a32e74d96beaa665fd67a  ./cvat/apps/team_analytics/sql/control/drop_superseded.sql
+@@ -566,23 +570,23 @@
+ 4aa5d6298e853c80b09703e1262c52c7623cca2e956f489c77d6ab988eb6f32d  ./cvat/apps/team_analytics/sql/control/versioned_tables.sql
+ 49a45c8937f4d07021dbe8f5c2efdf8a7733bce6ef40c4f533024807561131ec  ./cvat/apps/team_analytics/sql/control/window_marked.sql
+ 88f33d043aa9f2d23cbcfc63317ac7a1c09771ba446246c0673308e1a3530e91  ./cvat/apps/team_analytics/sql/read/cutover.sql
+-1ee1c0ef6d543e5ccbefbabc102920facf8192d8f7660b76acf7a06deb7d1e82  ./cvat/apps/team_analytics/sql/read/details.sql
+-bcbf00085bfc305ad08a906794fda34aedb1c8d9713c1ca77c7ee2e8ae550227  ./cvat/apps/team_analytics/sql/read/details_scope.sql
+-973bab9564e35f5cd228d574ff43ee423d50a1f45bb4ecad4b947e4834063a7e  ./cvat/apps/team_analytics/sql/read/filter_annotator.sql
++91f66c4e0d8885c9fcd5741f384e55312c8796e374a4b2fd4fadac48a1a51ab0  ./cvat/apps/team_analytics/sql/read/details.sql
++7aa0c54a8e217c169c63d4d35d8e94a5208c599eab145fe8c876d7d631d5d1c6  ./cvat/apps/team_analytics/sql/read/details_scope.sql
++e979f7e890cef6984d88cff994ee55aa013d95e6527f6d27a729f7fe4955a49c  ./cvat/apps/team_analytics/sql/read/filter_annotator.sql
+ 74de2db0c32448d3c2e4bc35aeb7b229af21f031709c498d8efe2cc82e111332  ./cvat/apps/team_analytics/sql/read/history_last_check.sql
+ ec724454a38b522846c258da67325a9d8a0b606e8b3bf8da7c26e24601403e8b  ./cvat/apps/team_analytics/sql/read/history_state.sql
+-bdbb105a72d0cfdb67922ba114bf4be271ebe8f307b3ea399c6c8f5aee29c7d0  ./cvat/apps/team_analytics/sql/read/list_hotkeys.sql
+-768e57dcc5652230aa712534a5f88bf5e389233976955ce6e00af0d388b90f49  ./cvat/apps/team_analytics/sql/read/list_rows.sql
+-a0d8552b536bf07649a1811c6bd8472778b3136de2ce532362323622743c52ab  ./cvat/apps/team_analytics/sql/read/overview_creation_methods.sql
+-b5edb57bf107e635126cd4076a6b9860c08fc9f177b676df7bbda0314049c646  ./cvat/apps/team_analytics/sql/read/overview_headline.sql
+-992ef18aea8ba33bd20276616cf125928f5b52ce6e0b5d4a8ed2c74ad849559c  ./cvat/apps/team_analytics/sql/read/overview_input.sql
+-24477420e8e90fd1f6a3c92433f7283242bc4c9590643a042ddbee73dc668f54  ./cvat/apps/team_analytics/sql/read/overview_operations.sql
+-94308c5c7ec47c2ab26a28af4fa3673bf6b57be1d296939572475b2a359baf8a  ./cvat/apps/team_analytics/sql/read/overview_saved_boxes.sql
+-91b11cba8c33060adee4ec08b2c2110bb346d40335d65428c95c2bbcd06af80c  ./cvat/apps/team_analytics/sql/read/overview_sessions.sql
+-0993d4e4cd55e28444ac380b338eab3c308d3b2f1b74761cf26ba228a0347e3f  ./cvat/apps/team_analytics/sql/read/overview_time_series.sql
++669b45ce0bfff5aa432d755838de00bfdb1ffe8a5d6caa40c371dbe37a50ade2  ./cvat/apps/team_analytics/sql/read/list_hotkeys.sql
++c03e043fac6d4ac3109523261f7482915174fcb824293207cffd05d96a2dcd5c  ./cvat/apps/team_analytics/sql/read/list_rows.sql
++bb6e3f962e150d92b28d1bac4aa0fd876f676f4636ac343f824bf183c74135f0  ./cvat/apps/team_analytics/sql/read/overview_creation_methods.sql
++339ff991f3281d56f154c0812d1601a440f5e22c8c6f9ae920a26edf94ee87e8  ./cvat/apps/team_analytics/sql/read/overview_headline.sql
++88b06dea3e2adac55eb0222a235565d32b6241e6dec5459c161f162bb77e15c9  ./cvat/apps/team_analytics/sql/read/overview_input.sql
++15a682835a9c55e41967063882ff2be29ebf00bccddcc5616ba74dbe75361e06  ./cvat/apps/team_analytics/sql/read/overview_operations.sql
++61ea9650977ac1d72a48677108dcf9c506f8dfdfa23779e05ff1626131c0394f  ./cvat/apps/team_analytics/sql/read/overview_saved_boxes.sql
++827c328b3c33979a3696668c11e5f1251721d9deaff43bfafa30abccc7892499  ./cvat/apps/team_analytics/sql/read/overview_sessions.sql
++6a24d3b9026222668559ddc7b433437812f640a60b44440f188a64084b5284a2  ./cvat/apps/team_analytics/sql/read/overview_time_series.sql
+ b47d2c70483cebe7c59d924de667b62e1e4f220cae313f3a3fc0583fb32d26ed  ./cvat/apps/team_analytics/sql/read/status_last_refresh.sql
+-005a851fcc95fb5046a0f21a782de6a068f12e7dbde1d41bd3a49c2967f1043a  ./cvat/apps/team_analytics/sql/read/trends.sql
+-e2cb384b63b1985e290c4c0feb9aa49dfe4bfcff02f46b6bc4401ae0fd524719  ./cvat/apps/team_analytics/sql/read/trends_candidates.sql
++1337ad6e7befd262d98b64eaa7084106eaf6a055dfb28d8c87dd180b621896f1  ./cvat/apps/team_analytics/sql/read/trends.sql
++3a3111cfa6d3732cb5efb01728fe7d50b0f283da40c847e8dda8ef8d5a3cdb6b  ./cvat/apps/team_analytics/sql/read/trends_candidates.sql
+ 38681e03182b0d276865dcba57db4fe79510e899fbee8fd21049b006fa304b3f  ./cvat/apps/team_analytics/sql/refresh/boxes.sql
+ 4edee9416e2bd0cf15672b091619cc7c858ef96fb3f8c468e6815c1f2e5cba1c  ./cvat/apps/team_analytics/sql/refresh/input.sql
+ b3da1fc77ea2dc6ffeb88834649a59d90740b5e1a77f789bae173bf99a1362be  ./cvat/apps/team_analytics/sql/refresh/operations.sql
+@@ -599,8 +603,9 @@
+ 0850f3dcd8706f3e6ecbf155a239b1cf8d070b7851101bd7a490dc13a4117360  ./cvat/apps/team_analytics/sql/schema/050_input_hourly.sql
+ e6417df71fdac1b6302cabe245e153d913811c3e0221a141816af0d54e3bf693  ./cvat/apps/team_analytics/sql/schema/060_boxes_hourly.sql
+ da3f847824a1515c245f2f3017a76f342206f8688d6a433d10df92161f7ccf7f  ./cvat/apps/team_analytics/sql/schema/070_cutover.sql
++f7d27fae79c71b3fc0e60cb61f334089a9875953c9c9e0c38f144baed1f8dcf2  ./cvat/apps/team_analytics/technical_accounts.py
+ e78d22f516854d94a6476aa2b9ae307e3004d074677891fcbc94bdf9755e9e14  ./cvat/apps/team_analytics/urls.py
+-c83a3c63f0265af7f07c42ca7e8d56c4d5c85a303f154778d5d858833b13360d  ./cvat/apps/team_analytics/views.py
++a361bb31f7aa00478580ff008d2e25e10a55f00f41b0281c31226f7580c144b4  ./cvat/apps/team_analytics/views.py
+ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./cvat/apps/webhooks/__init__.py
+ d97f4d889949fb2ba8212f7631daa8a88e7b5faf53a35360c97402c9d50dd836  ./cvat/apps/webhooks/admin.py
+ b61948fb571b61e5ec84a5653129566fc4916b2d868fa66bd98839968645069f  ./cvat/apps/webhooks/apps.py
+@@ -660,7 +665,7 @@
+ eb5fc9d58652817bb2342700631706ab364d4f031e4e8a254a4346d705128907  ./cvat/rqworker.py
+ 2fc7a104d7890298e9da146c28d70001dcb4f93133a4bfbcbe6b9e5dcb125f21  ./cvat/schema.yml
+ 8d4b799a9408f777ee61a51355901aab7f61dc13f1c2250890689e2b553cf006  ./cvat/settings/__init__.py
+-4abf1f294413b3df29d1ff9ea1bec491ef76401c4ff8b59a4acc140ea66a106b  ./cvat/settings/base.py
++a3bdc4ac63ac34437b56b2fc2272f0bb6781921074445fc938c15b2d10aefe3d  ./cvat/settings/base.py
+ f59fd65b181097d45c3f49db2ff7dd2428d00a0df417362ed278b1fdd1b652e7  ./cvat/settings/development.py
+ c026aa0ef5f17c5e2dd38b431c665189d691fc1e457a7476d8bb93e3778318d6  ./cvat/settings/email_settings.py
+ d9997f3bb07820ee009391a4ed5d8000356bd6b9ab80e7d7e3ac0339a4a67573  ./cvat/settings/production.py

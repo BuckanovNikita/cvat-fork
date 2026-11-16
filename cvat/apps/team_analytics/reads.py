@@ -128,15 +128,14 @@ def advance_generation(cache: Any) -> None:
 def request_key(
     endpoint: str, scope: Mapping[str, Any], query: Mapping[str, str], hour: str
 ) -> str:
-    """Names one request: the endpoint, whose figures (the organization, or the whole instance), whether
-    the caller is an administrator (status differs), the parameters and the hour (a period ends at
-    the current hour). The state of the totals is not part of it: it is stored with the answer, so a
-    request that asks again while the totals move still finds the one job and the one entry of its
-    request."""
+    """Names one request: the endpoint, whose figures (the organization, or the whole instance), the
+    parameters and the hour (a period ends at the current hour). Who asks is not part of it: only
+    administrators read, and they all get the same answer for the same scope. The state of the
+    totals is not part of it either: it is stored with the answer, so a request that asks again
+    while the totals move still finds the one job and the one entry of its request."""
     parts = [
         endpoint,
         scope["org_id"],
-        bool(scope["admin"]),
         sorted(query.items()),
         hour,
     ]

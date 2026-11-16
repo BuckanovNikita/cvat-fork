@@ -10,7 +10,9 @@
 # - ruff takes the fork's Python as ruff.toml lists it, never upstream's,
 # - black and isort check the fork's code inside upstream's cvat/ tree (the Team Analytics app
 #   and the two settings files it is wired into) with upstream's settings (pyproject.toml),
-# - the type check, the policy tests and the suites cover what they always cover.
+# - the type check, the policy tests and the suites cover what they always cover. The three
+#   frontend suites run through tools/gate/node-suite.sh, which gives every process a memory
+#   limit and every test a time limit, so a runaway test fails the suite and nothing else.
 #
 # Tool versions: the UI tools from upstream's lock through node_modules, the
 # harness's browser environment from verify/package.json, ruff, black and
@@ -106,7 +108,7 @@ require_serial = true
 [[repos.hooks]]
 id = "task-progress"
 name = "suite: task progress"
-entry = "node --test verify/task_progress.cjs"
+entry = "tools/gate/node-suite.sh --may-start-browser verify/task_progress.cjs"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -115,7 +117,7 @@ require_serial = true
 [[repos.hooks]]
 id = "ta-logging"
 name = "suite: Team Analytics UI logging"
-entry = "node --test verify/team_analytics_logging.cjs"
+entry = "tools/gate/node-suite.sh verify/team_analytics_logging.cjs"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -124,7 +126,7 @@ require_serial = true
 [[repos.hooks]]
 id = "ta-page"
 name = "suite: Team Analytics page"
-entry = "node --test verify/team_analytics_page.cjs"
+entry = "tools/gate/node-suite.sh verify/team_analytics_page.cjs"
 language = "system"
 pass_filenames = false
 always_run = true

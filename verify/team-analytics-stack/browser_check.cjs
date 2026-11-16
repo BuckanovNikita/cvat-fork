@@ -2,9 +2,11 @@
 // A headless Chrome is driven over the DevTools protocol with Node's own WebSocket, so nothing
 // is installed. Each account signs in through CVAT's login form in a fresh browser context.
 //
-//   the maintainer of ta-org-a sees the header link, opens the page and reads the figures;
-//   the worker of ta-org-a sees no link, gets "not available" on a direct visit and a refusal
-//   from the service when the browser calls it with the worker's session.
+//   the administrator, with ta-org-a selected, sees the header link, opens the page and reads the
+//   organization's figures (Team Analytics answers only administrators);
+//   the owner, the maintainer and the worker of ta-org-a see no link, get "not available" on a direct
+//   visit while their pages send no request to /api/team-analytics/ at all, and a refusal from the API
+//   when the browser calls it with their session.
 //
 // Environment: TA_BASE_URL, TA_SEED_PASSWORD, TA_BROWSER_BIN (google-chrome),
 // TA_SCREENSHOT_DIR (optional: PNGs of what each account saw).
@@ -20,6 +22,10 @@ const PASSWORD = process.env.TA_SEED_PASSWORD;
 const BROWSER = process.env.TA_BROWSER_BIN || 'google-chrome';
 const SHOTS = process.env.TA_SCREENSHOT_DIR || '';
 const ORG = 'ta-org-a';
+const ADMIN = 'ta-admin';
+// an owner, a maintainer and a worker of ta-org-a, and an ordinary user of no organization (signed in without one)
+const REFUSED = ['ta-owner', 'ta-maintainer', 'ta-worker', 'ta-outsider'];
+const DENIED_TEXT = 'This page is for administrators of this CVAT instance.';
 // stack_api.py WORK for ta-org-a, as the page formats hours
 const EXPECTED_ROWS = [['ta-worker', '1.5 h'], ['ta-supervisor', '0.5 h']];
 
@@ -120,7 +126,8 @@ const LINK = '[...document.querySelectorAll(".cvat-header a, .cvat-header button
 async function signIn(browser, username, org = ORG) {
     const page = await openPage(browser);
     await page.goto(`${BASE}/auth/login`);
-    await page.evaluate(`localStorage.setItem("currentOrganization", ${JSON.stringify(org)})`);
+    // org "": no organization selected (CVAT's personal workspace; for an administrator, instance scope)
+    await page.evaluate(org ? `localStorage.setItem("currentOrganization", ${JSON.stringify(org)})` : 'localStorage.removeItem("currentOrganization")');
     await page.type('#credential', username);
     await page.type('#password', PASSWORD);
     // CVAT throttles sign-ins (429), as after the volume's hundred: the form is sent again after a pause,
@@ -134,9 +141,12 @@ async function signIn(browser, username, org = ORG) {
         log(`${username}: not signed in yet (attempt ${attempt}); sending the form again in 25 s`);
         await sleep(25000);
     }
+    if (!org) return page;
+    // an administrator opens organizations it is no member of the same way; if this times out for ta-admin, the
+    // UI did not accept that organization for it
     await page.waitFor(
         `document.querySelector(".cvat-header-menu-user-dropdown-organization")?.textContent.trim() === ${JSON.stringify(org)}`,
-        `${username} in ${org}`,
+        `${username} in ${org} (the header's organization)`,
     );
     return page;
 }
@@ -145,10 +155,12 @@ function check(condition, message) {
     if (!condition) throw new Error(message);
 }
 
-async function maintainer(browser) {
-    const page = await signIn(browser, 'ta-maintainer');
+// The administrator reads; it signs in with ta-org-a selected, an organization it is no member of (CVAT lets an
+// administrator open any organization).
+async function administrator(browser) {
+    const page = await signIn(browser, ADMIN);
     const linkShownAfter = Date.now();
-    await page.waitFor(`!!(${LINK})`, 'the Team Analytics link for ta-maintainer', 30000);
+    await page.waitFor(`!!(${LINK})`, `the Team Analytics link for ${ADMIN}`, 30000);
     const linkDelayMs = Date.now() - linkShownAfter;
     await page.evaluate(`(${LINK}).click()`);
     await page.waitFor('location.pathname === "/team-analytics"', 'the page route');
@@ -159,31 +171,57 @@ async function maintainer(browser) {
         ]);
         return rows.length ? rows : null;
     })()`, 'working time rows');
-    await page.screenshot('maintainer-team-analytics');
+    await page.screenshot('admin-team-analytics');
     check(JSON.stringify(rows) === JSON.stringify(EXPECTED_ROWS),
-        `ta-maintainer sees ${JSON.stringify(rows)}, expected ${JSON.stringify(EXPECTED_ROWS)}`);
-    log(`ta-maintainer: header link shown, page /team-analytics rows ${JSON.stringify(rows)}`);
+        `${ADMIN} in ${ORG} sees ${JSON.stringify(rows)}, expected ${JSON.stringify(EXPECTED_ROWS)}`);
+    log(`${ADMIN}, ${ORG}: header link shown, page /team-analytics rows ${JSON.stringify(rows)}`);
     return linkDelayMs;
 }
 
-async function worker(browser, linkDelayMs) {
-    const page = await signIn(browser, 'ta-worker');
-    // the maintainer's link appeared linkDelayMs after the organization showed; wait well past it
+// Everyone else, the maintainer of the organization included, sees no link, the not-available state on a direct
+// visit and CVAT's refusal from the API.
+async function refused(browser, username, linkDelayMs) {
+    const page = await signIn(browser, username, username === 'ta-outsider' ? '' : ORG);
+    // from here until the browser's own call below, the page itself must send nothing to /api/team-analytics/: not
+    // on CVAT's start page (loaded again once the network is watched), not on a direct visit that ends in the
+    // not-available state
+    const analyticsRequests = [];
+    const watch = (message) => {
+        if (message.sessionId !== page.sessionId || message.method !== 'Network.requestWillBeSent') return;
+        const { request } = message.params;
+        if (new URL(request.url).pathname.startsWith('/api/team-analytics/')) {
+            analyticsRequests.push(`${request.method} ${new URL(request.url).pathname}`);
+        }
+    };
+    browser.listeners.add(watch);
+    await page.send('Network.enable', {});
+    // the start page CVAT opened after sign-in, loaded again while the network is watched
+    await page.goto(await page.evaluate('location.href'));
+    await page.waitFor('!!document.querySelector(".cvat-header")', `CVAT's start page for ${username} loaded again`);
+    // the administrator's link appeared linkDelayMs after the organization showed; wait well past it
     await sleep(Math.max(5000, 3 * linkDelayMs));
-    check(!(await page.evaluate(`!!(${LINK})`)), 'ta-worker sees the Team Analytics link');
-    await page.screenshot('worker-header');
+    check(!(await page.evaluate(`!!(${LINK})`)), `${username} sees the Team Analytics link`);
+    await page.screenshot(`${username}-header`);
     await page.goto(`${BASE}/team-analytics`);
     const denied = await page.waitFor(
-        'document.querySelector(".cvat-team-analytics-denied")?.textContent.trim()', 'the not-available state',
+        'document.querySelector(".cvat-team-analytics-denied")?.textContent.trim()', `the not-available state for ${username}`,
     );
-    await page.screenshot('worker-team-analytics');
-    check(denied.includes('Team analytics is not available'), `ta-worker sees "${denied}"`);
+    await sleep(3000); // anything the page would send after it settled
+    browser.listeners.delete(watch);
+    check(analyticsRequests.length === 0, `${username}'s pages sent ${JSON.stringify(analyticsRequests)} to /api/team-analytics/, `
+        + 'expected no request at all (CVAT\'s start page loaded again after sign-in, then a direct visit to /team-analytics)');
+    await page.screenshot(`${username}-team-analytics`);
+    check(denied.includes('Team analytics is not available') && denied.includes(DENIED_TEXT),
+        `${username} sees "${denied}", expected "Team analytics is not available" and "${DENIED_TEXT}"`);
+    const extras = await page.evaluate('[".cvat-team-analytics-settings-button", ".cvat-team-analytics-filters"].filter((s) => document.querySelector(s))');
+    check(extras.length === 0, `${username}'s not-available page shows ${JSON.stringify(extras)}, expected neither the Settings button nor the filter row`);
     // the browser's own fetch sends Accept */*; CVAT's API answers 406 to a bare application/json
     const status = await page.evaluate(
         `fetch("/api/team-analytics/overview?period=week&tz=UTC&org=${ORG}").then((r) => r.status)`,
     );
-    check(status === 403, `CVAT's analytics API answered ta-worker with ${status}`);
-    log(`ta-worker: no header link, direct visit shows "${denied.slice(0, 60)}", API call ${status}`);
+    check(status === 403, `CVAT's analytics API answered ${username} with ${status}, expected 403`);
+    log(`${username}: no header link, direct visit shows "${denied.slice(0, 60)}" with no request to /api/team-analytics/, `
+        + `the browser's own API call ${status}`);
 }
 
 async function main() {
@@ -191,8 +229,8 @@ async function main() {
     let browser;
     try {
         browser = await launch(profile);
-        const linkDelayMs = await maintainer(browser);
-        await worker(browser, linkDelayMs);
+        const linkDelayMs = await administrator(browser);
+        for (const username of REFUSED) await refused(browser, username, linkDelayMs);
     } finally {
         await browser?.close();
         fs.rmSync(profile, { recursive: true, force: true });

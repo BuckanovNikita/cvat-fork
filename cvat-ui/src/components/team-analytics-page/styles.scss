@@ -17,12 +17,22 @@
     left: 0;
 }
 
+// the title and scope at the left, the Settings button at the right
 .cvat-team-analytics-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: $grid-unit-size $grid-unit-size * 2;
     margin-bottom: $grid-unit-size * 2;
 
     h4 {
         margin: 0;
     }
+}
+
+.cvat-team-analytics-heading {
+    min-width: 0;
 }
 
 .cvat-team-analytics-cards {
@@ -92,7 +102,10 @@
     margin: $grid-unit-size * 8 auto;
 }
 
-// filter row: period, range, freshness
+// filter row: period, shapes, range, the Project and Annotator selectors, freshness. Every control is
+// $filter-control-height tall (border included) and the row centres them on one line.
+$filter-control-height: 36px;
+
 .cvat-team-analytics-filters {
     display: flex;
     flex-wrap: wrap;
@@ -108,16 +121,21 @@
     gap: $grid-unit-size;
 }
 
-.cvat-team-analytics-periods {
+// the period control and the Bounding boxes / All shapes switch: a 2px tray around 32px buttons
+.cvat-team-analytics-periods,
+.cvat-team-analytics-shapes {
     display: inline-flex;
+    box-sizing: border-box;
+    height: $filter-control-height;
     padding: 2px;
     border-radius: $border-radius-base;
     background: $border-color-1;
 }
 
 .cvat-team-analytics-period,
+.cvat-team-analytics-shape,
 .cvat-team-analytics-step {
-    min-height: $grid-unit-size * 4;
+    height: $filter-control-height - 4px;
     padding: 0 $grid-unit-size * 2;
     border: 0;
     border-radius: 6px;
@@ -138,8 +156,10 @@
     }
 }
 
+// the month step arrows stand alone, at the full height
 .cvat-team-analytics-step {
-    padding: 0 $grid-unit-size;
+    height: $filter-control-height;
+    padding: 0 $grid-unit-size * 1.25;
     background: $border-color-1;
 }
 
@@ -153,6 +173,7 @@
     display: inline-flex;
     align-items: center;
     gap: $grid-unit-size;
+    min-height: $filter-control-height;
     margin-left: auto;
     color: $text-color-secondary;
 }

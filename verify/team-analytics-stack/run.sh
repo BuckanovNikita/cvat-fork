@@ -7,7 +7,8 @@
 #                         port-forward, seed, checks
 #   run.sh down           remove everything up created (succeeds when nothing exists)
 #   run.sh cycle          up, then down (also when up fails)
-#   run.sh seed           (re)load the synthetic accounts into a running stack
+#   run.sh seed           (re)load the synthetic accounts into a running stack and set the Technical
+#                         accounts list to TA_TECHNICAL_ACCOUNTS through the settings API
 #   run.sh check-worker   the analytics worker: its processes registered (the liveness probe's own
 #                         command), its restarts, its log since start
 #   run.sh check-event    send a client event through the API and find it in ClickHouse
@@ -26,8 +27,13 @@
 #                         in a browser with the stack's UI image: legend, segments, colours, total
 #   run.sh check-policies fetch the policy bundle the running server serves and check both
 #                         patched policies in it, each by itself
-#   run.sh forward        (re)start the port-forward of a running stack
-#   run.sh status         what exists now, and whether the namespace predates the cluster's last restart
+#   run.sh forward        (re)start the port-forward of a running stack; every subcommand that talks to the
+#                         stack over HTTP first checks that localhost:$TA_HOST_PORT is this namespace's own
+#                         port-forward (its arguments and the port's listener) and stops otherwise
+#   run.sh restore-chart  the release back to the stack's own values with analytics on (a release left
+#                         pending by a cut-off upgrade is rolled back first), the port-forward on the proxy;
+#                         what the evidence steps run when they end or fail, and print when that fails
+#   run.sh status        what exists now, and whether the namespace predates the cluster's last restart
 #   run.sh preflight      what up does before it touches the cluster: the server image check,
 #                         check-issue-policies on both sides, the chart build and the render
 #                         checks (render_guard.py, analytics on and off); creates and pulls nothing
@@ -40,30 +46,45 @@
 #   run.sh render-proxy   print the proxy's manifests as up checks and applies them
 #   run.sh seed-access    (re)load the access cases' accounts (access_accounts.json)
 #   run.sh check-access [CASE]
-#                         the access cases against the real CVAT: removed-member, group-admin,
+#                         the access cases against the real CVAT: revoked-admin, group-admin,
 #                         personal-workspace, header-credentials (all of them without CASE)
 #   run.sh check-org-creation
 #                         only administrators create organizations: user, worker, owner and maintainer refused
 #                         (403, nothing created), an administrator creates one (deleted again); part of up
+#   run.sh check-settings the Team Analytics settings API: non-administrators refused, bad bodies refused, a save
+#                         one generation step, the user search, project names, a deleted user kept on the list,
+#                         and an account joining and leaving the list changing and restoring the week's
+#                         figures (ta-org-s); part of up after check-final (its search needs more than 20 users)
 #   run.sh check-issues   the issue and comment matrix through the real API, with its own accounts
 #                         (issue_accounts.json, one without a global role), judged pass or fail
 #   run.sh check-issue-policies [patched|stock]
 #                         the same matrix's expectations against the policy engine, no server
 #   run.sh check-fixes [STEP]
 #                         the defect fixes along the path that failed (fixes_run.py, fixes_browser.cjs), each
-#                         judged: status-roles, technical-project, gestures, look, unprocessed (holds the
+#                         judged: status-roles, technical-project, gestures, look, page (the filter bar, the
+#                         operations card over a width sweep, the selectors, the terms' tooltips, the settings
+#                         modal), unprocessed (holds the
 #                         refresh lock), sessions-at-limit (a record), cutover-restart (restarts the analytics
 #                         worker); all, in this order, without STEP. Not part of up: run it on a stack up has
 #                         passed on
 #   Acceptance of the backend path (acceptance.py), not part of up, each judged and printing its numbers:
-#   run.sh check-cross-org  no cached answer is served across organizations, or from an administrator to a
-#                         maintainer
+#   run.sh check-cross-org  an administrator's cached answer is not served for another organization or for
+#                         instance scope (nor the instance answer for an organization), nor to a maintainer
 #   run.sh check-isolation [PART]
 #                         CVAT's core operations with the analytics worker at zero (twelve analytics requests
 #                         waiting), with ClickHouse at zero, and with the totals database dropped (parts
-#                         worker-down, clickhouse-down, totals-dropped); restores what it changed
+#                         worker-down, clickhouse-down, totals-dropped), then the in-memory Redis at zero
+#                         (redis-down: reads 503, the schedule and the figures back; always last); restores what
+#                         it changed
 #   run.sh check-load     p95 of the task list and of a job's annotations before and during twelve concurrent
-#                         uncached overviews, during a refresh and while history is filled (needs the volume)
+#                         uncached overviews, during a refresh and while history is filled (needs the volume), with
+#                         Postgres connections and Redis memory sampled; TA_LOAD_HEAVY=1: ClickHouse at 4 CPUs,
+#                         three volume organizations, the bursts at instance scope (chart upgraded and back)
+#   run.sh check-evidence STEP
+#                         ticket 09's evidence (evidence.py): rq-start-race (read-only), liveness, killed-worker,
+#                         idle-generation (refresh interval 600 s, upgraded and back), two-replicas (two worker
+#                         replicas, upgraded and back), off-then-on (analytics off and on by upgrades in place); each
+#                         puts the stack's own values back also on a failure or an interrupt
 #   run.sh check-review   the review fixes: ignored parameters from the cache, length limits, no-store on
 #                         refusals and 429, the generation a counter, the piled-up refresh copies removed
 #   run.sh check-analytics-off
@@ -200,10 +221,11 @@ build_chart() {
 }
 
 # The Team Analytics app's settings on every backend pod (cvat/apps/team_analytics/default_settings.py),
-# as the chart's additionalEnv. JSON, because --set would split the accounts' list at its commas.
+# as the chart's additionalEnv (JSON, so a value is passed as it is). The Technical accounts list is no
+# setting: the seed sets it through the settings API (stack_api.py seed, TA_TECHNICAL_ACCOUNTS).
 analytics_env() {
     python3 -I -c 'import json, sys; a = sys.argv[1:]; print(json.dumps([{"name": n, "value": v} for n, v in zip(a[::2], a[1::2])]))' \
-        TEAM_ANALYTICS_REFRESH_INTERVAL_S "$TA_REFRESH_INTERVAL_S" TEAM_ANALYTICS_TECHNICAL_ACCOUNTS "$TA_TECHNICAL_ACCOUNTS"
+        TEAM_ANALYTICS_REFRESH_INTERVAL_S "$TA_REFRESH_INTERVAL_S"
 }
 
 # TA_ANALYTICS=off: the same release with analytics disabled (check-analytics-off and its render check).
@@ -216,6 +238,9 @@ helm_args() {
         --set "grafana.grafana\.ini.server.root_url=$BASE_URL/analytics" \
         --set-json "cvat.backend.additionalEnv=$(analytics_env)"
     if [ "${TA_ANALYTICS:-on}" = off ]; then printf '%s\n' --set analytics.enabled=false; fi
+    # chart values an evidence step sets for itself (key=value, separated by spaces) and takes back after it
+    local s
+    for s in ${TA_EXTRA_SET:-}; do printf '%s\n' --set "$s"; done
 }
 
 render() {
@@ -268,11 +293,31 @@ approved() {
     return 1
 }
 
-# The fork server image (ADR 0004, build-server.sh) is in no registry: without it locally the
-# release could not start, so up stops here, before anything is built, pulled or created.
+# The fork server image (ADR 0007, build-server.sh: a full build from public bases) is in no
+# registry: without it locally the release could not start, so up stops here, before anything is
+# built, pulled or created. Then, each in a one-off container without network: the image is
+# Debian 12 and the python3 on its PATH is 3.12 (Debian's own 3.11 serves supervisord only), and
+# the policy bundle its server builds carries the tree's issue and comment policies, and with
+# analytics also the Team Analytics policy (verify/policy_bundle.sh, as build-server.sh checks).
 check_server_image() {
+    local os py work rc=0
     image_local "$TA_SERVER_IMAGE" \
         || die "fork server image $TA_SERVER_IMAGE is not local (IMAGE=$TA_SERVER_IMAGE ./build-server.sh); it is never pulled"
+    os="$(docker run --rm --pull=never --network none --cpus=1 --entrypoint sh "$TA_SERVER_IMAGE" -c '. /etc/os-release && echo "$ID $VERSION_ID"')" \
+        || die "could not read /etc/os-release in $TA_SERVER_IMAGE"
+    [ "$os" = "debian 12" ] || die "$TA_SERVER_IMAGE is '$os', expected 'debian 12' (ADR 0007)"
+    py="$(docker run --rm --pull=never --network none --cpus=1 --entrypoint sh "$TA_SERVER_IMAGE" -c 'python3 -c "import sys; print(\"%d.%d\" % sys.version_info[:2])"')" \
+        || die "could not run python3 in $TA_SERVER_IMAGE"
+    [ "$py" = "3.12" ] || die "python3 on the PATH of $TA_SERVER_IMAGE is $py, expected 3.12"
+    log "server image $TA_SERVER_IMAGE: $os, python3 $py"
+    work="$(mktemp -d)"
+    { "$ROOT/verify/policy_bundle.sh" from-image "$TA_SERVER_IMAGE" >"$work/fork.tar.gz" \
+        && "$ROOT/verify/policy_bundle.sh" check <"$work/fork.tar.gz" >&2; } || rc=1
+    { "$ROOT/verify/policy_bundle.sh" from-image "$TA_SERVER_IMAGE" analytics >"$work/analytics.tar.gz" \
+        && "$ROOT/verify/policy_bundle.sh" check-analytics <"$work/analytics.tar.gz" >&2; } || rc=1
+    rm -rf "$work"
+    [ "$rc" = 0 ] || die "the policy bundle of $TA_SERVER_IMAGE differs from the tree's policies (build it again from this tree)"
+    log "server image $TA_SERVER_IMAGE: its policy bundles, with and without analytics, carry the tree's policies"
 }
 
 # Pulls the render's missing images one at a time, at low priority, when they are approved
@@ -401,17 +446,47 @@ apply_proxy() {
 
 # ---------------------------------------------------------------- port-forward
 
-# The state file holds the PID and the process start time; a process is ours only when both
-# still match, so a reused PID is never signalled.
-pf_alive() {
+# The state file (one per namespace) holds the PID, the process start time and the host port; a
+# process is ours only when the PID and the start time still match, so a reused PID is never
+# signalled.
+pf_owned() {
     [ -f "$PF_STATE" ] || return 1
     local pid start
-    read -r pid start <"$PF_STATE"
+    read -r pid start _ <"$PF_STATE"
     [ -r "/proc/$pid/stat" ] && [ "$(awk '{print $22}' "/proc/$pid/stat")" = "$start" ]
+}
+# Ours, and forwarding TA_HOST_PORT: a namespace's port-forward on another port does not count.
+pf_alive() {
+    pf_owned || return 1
+    local port
+    read -r _ _ port <"$PF_STATE"
+    [ "$port" = "$TA_HOST_PORT" ]
+}
+
+# Every step that reads, writes or disrupts through $BASE_URL first makes sure that the address
+# serves TA_NAMESPACE: the namespace's own port-forward runs, its arguments name this namespace
+# and this port, and it is the process listening on the port. Otherwise kubectl would act on one
+# namespace while HTTP went to another stack (a TA_RUN_ID given without its TA_HOST_PORT).
+require_own_stack() {
+    local pid args listener recorded="" hint=""
+    if ! pf_alive; then
+        if pf_owned; then
+            read -r _ _ recorded <"$PF_STATE"
+            hint=" (the port-forward of $TA_NAMESPACE that runs forwards port ${recorded:-unrecorded}; set TA_HOST_PORT to it, or run.sh forward again)"
+        fi
+        die "no port-forward of $TA_NAMESPACE on port $TA_HOST_PORT is running$hint; run.sh forward with the same TA_RUN_ID (or TA_NAMESPACE) and TA_HOST_PORT"
+    fi
+    read -r pid _ <"$PF_STATE"
+    args=" $(tr '\0' ' ' <"/proc/$pid/cmdline")"
+    [[ "$args" == *" -n $TA_NAMESPACE "* && "$args" == *" port-forward "* && "$args" == *" $TA_HOST_PORT:8080 "* ]] \
+        || die "the port-forward (pid $pid) is not the one of $TA_NAMESPACE on port $TA_HOST_PORT: its arguments are$args"
+    listener="$(ss -Hltnp "sport = :$TA_HOST_PORT" || true)"
+    grep -q "pid=$pid," <<<"$listener" \
+        || die "port $TA_HOST_PORT is not served by the port-forward of $TA_NAMESPACE (pid $pid); listening there: ${listener:-nothing}"
 }
 
 stop_port_forward() {
-    if pf_alive; then
+    if pf_owned; then
         local pid
         read -r pid _ <"$PF_STATE"
         log "stopping port-forward (pid $pid)"
@@ -430,7 +505,7 @@ start_port_forward() {
     setsid "${K[@]}" -n "$TA_NAMESPACE" port-forward --address 127.0.0.1 "${PF_TARGET:-svc/ta-proxy}" "$TA_HOST_PORT:8080" \
         >"$STATE_DIR/port-forward.log" 2>&1 </dev/null &
     local pid=$!
-    echo "$pid $(awk '{print $22}' "/proc/$pid/stat")" >"$PF_STATE"
+    echo "$pid $(awk '{print $22}' "/proc/$pid/stat") $TA_HOST_PORT" >"$PF_STATE"
     for _ in $(seq 1 40); do
         if curl -fs -o /dev/null "$BASE_URL/api/server/about"; then
             log "stack reachable at $BASE_URL"
@@ -463,10 +538,13 @@ print(base64.b64encode(json.dumps(values).encode()).decode())')"
         "${K[@]}" -n "$TA_NAMESPACE" exec -i "$(backend_pod)" -c cvat-backend -- python manage.py shell
 }
 
+# The accounts of accounts.json, read back through the API; then the Technical accounts list set to
+# TA_TECHNICAL_ACCOUNTS through the settings API as the administrator (unchanged when it already is).
 seed() {
     log "loading synthetic accounts"
     backend_shell "$HERE/seed_users.py" "$(cat "$HERE/accounts.json")" >&2
-    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I "$HERE/stack_api.py" seed
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_TECHNICAL_ACCOUNTS="$TA_TECHNICAL_ACCOUNTS" \
+        python3 -I "$HERE/stack_api.py" seed
 }
 
 clickhouse_query() {
@@ -680,7 +758,7 @@ access_py() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/access_cases.py" "$@"
 }
 
-# The access cases' own accounts (access_accounts.json); makes the removed member a member again.
+# The access cases' own accounts (access_accounts.json); puts the revoked administrator back in the admin group.
 seed_access() {
     log "loading the access cases' accounts"
     backend_shell "$HERE/seed_access.py" "$(cat "$HERE/access_accounts.json")" >&2
@@ -688,7 +766,7 @@ seed_access() {
 
 # The four access cases against the real CVAT, each judged by access_cases.py; with an argument,
 # only that case.
-ACCESS_CASES=(removed-member group-admin personal-workspace header-credentials)
+ACCESS_CASES=(revoked-admin group-admin personal-workspace header-credentials)
 check_access_cases() {
     local only="${1:-}" c
     [ -z "$only" ] || [[ " ${ACCESS_CASES[*]} " == *" $only "* ]] || die "unknown access case $only (${ACCESS_CASES[*]})"
@@ -706,14 +784,31 @@ check_access_cases() {
 
 # Only administrators create organizations (ORGANIZATIONS_MIN_ROLE_TO_CREATE = "admin" in the fork's settings):
 # org_creation.py has accounts with the global role user and worker and an owner and a maintainer of an
-# organization refused, an administrator create one (deleted again), and the seeded organizations answer their
-# maintainers. Its worker and user accounts come from issue_accounts.json and accounts.json, loaded here (the
+# organization refused, an administrator create one (deleted again), and the administrator read both seeded
+# organizations. Its worker and user accounts come from issue_accounts.json and accounts.json, loaded here (the
 # seed creates organizations through the ORM, not through the API the rule guards).
 check_org_creation() {
     log "organization creation: loading the accounts of accounts.json and issue_accounts.json"
     backend_shell "$HERE/seed_users.py" "$(cat "$HERE/accounts.json")" >/dev/null
     backend_shell "$HERE/seed_users.py" "$(cat "$HERE/issue_accounts.json")" >/dev/null
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" python3 -I -B "$HERE/org_creation.py" check
+}
+
+# ---------------------------------------------------------------- settings
+
+# The Team Analytics settings API (settings_check.py): refusals, bad bodies, the generation step of a save, the user
+# search, project names, a deleted user kept on the list, and the list's retroactive effect on ta-org-s's week. The
+# accounts of accounts.json are loaded first (ta-org-s's probe accounts with them), and a throwaway user for the
+# deleted-account part, which deletes it. The Technical accounts list is put back as the seed set it.
+check_settings() {
+    local gone="ta-gone-$(date +%s)"
+    log "settings: loading the accounts of accounts.json and the throwaway user $gone"
+    backend_shell "$HERE/seed_users.py" "$(cat "$HERE/accounts.json")" >/dev/null
+    backend_shell "$HERE/seed_users.py" "{\"users\": {\"$gone\": {\"admin\": false}}, \"organizations\": {}}" >/dev/null
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
+        TA_NAMESPACE="$TA_NAMESPACE" TA_RELEASE="$TA_RELEASE" \
+        python3 -I -B "$HERE/settings_check.py" check "$((TA_REFRESH_INTERVAL_S * 3 + 60))" "$gone"
+    log "settings check passed"
 }
 
 # ---------------------------------------------------------------- issue matrix
@@ -767,7 +862,7 @@ check_issue_policies() {
 # unprocessed holds the refresh lock and adds a marker event for at most two minutes, cutover-restart
 # scales the analytics worker to zero, empties the stored cutover and the ready mark and scales it up again. Screenshots of look go to
 # TA_SCREENSHOT_DIR, by default beside the state directory, which down leaves alone.
-FIX_STEPS=(status-roles technical-project gestures look unprocessed sessions-at-limit cutover-restart)
+FIX_STEPS=(status-roles technical-project gestures look page unprocessed sessions-at-limit cutover-restart)
 FIX_SHOTS="${TA_SCREENSHOT_DIR:-$TA_CACHE_DIR/screenshots/$TA_NAMESPACE}"
 fixes_py() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
@@ -776,12 +871,13 @@ fixes_py() {
 }
 fixes_browser() {
     TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_BROWSER_BIN="$TA_BROWSER_BIN" \
-        TA_SCREENSHOT_DIR="$FIX_SHOTS" nice -n19 node "$HERE/fixes_browser.cjs" "$@"
+        TA_SCREENSHOT_DIR="$FIX_SHOTS" TA_TECHNICAL_ACCOUNTS="$TA_TECHNICAL_ACCOUNTS" TA_VOLUME_ORG="${TA_VOLUME_ORG:-ta-org-v}" \
+        nice -n19 node "$HERE/fixes_browser.cjs" "$@"
 }
 check_fixes() {
     local only="${1:-}" step state="$STATE_DIR/fixes-gestures.json"
     [ -z "$only" ] || [[ " ${FIX_STEPS[*]} " == *" $only "* ]] || die "unknown step $only (${FIX_STEPS[*]})"
-    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    require_own_stack
     mkdir -p "$STATE_DIR"
     for step in "${FIX_STEPS[@]}"; do
         [ -z "$only" ] || [ "$step" = "$only" ] || continue
@@ -797,6 +893,12 @@ check_fixes() {
                 fixes_browser look ta-org-c split
                 fixes_browser look "${TA_VOLUME_ORG:-ta-org-v}"
                 log "screenshots: $(show_path "$FIX_SHOTS")" ;;
+            page)
+                # ta-org-c: the real UI's work (Model objects among it) for the bar, the sweep, the terms, the
+                # settings modal and the screenshots; the selectors and their popups use the volume's organization
+                # (TA_VOLUME_ORG: forty projects, a hundred annotators); instance scope's names are judged against
+                # what the organizations' own selectors name
+                fixes_browser page ta-org-c ;;
             *) fixes_py "$step" ;;
         esac
     done
@@ -809,7 +911,7 @@ check_fixes() {
 # for a while (the worker or ClickHouse at zero, the totals database dropped, history marked for
 # recomputing) and restore it, also on a failure.
 acceptance() {
-    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    require_own_stack
     ops_py "$@"
 }
 
@@ -818,7 +920,7 @@ acceptance() {
 # 404. Checked through the backend's own Service on the stack's port: the proxy's nginx names Grafana,
 # which goes away with analytics. The stack stays so; run down after it.
 check_analytics_off() {
-    pf_alive || die "the stack's port-forward is not running (run.sh forward)"
+    require_own_stack
     build_chart
     TA_ANALYTICS=off install_chart_off
     "${K[@]}" -n "$TA_NAMESPACE" rollout status deploy/"$TA_RELEASE"-backend-server --timeout=15m >&2
@@ -845,6 +947,141 @@ install_chart_off() {
     mapfile -t args < <(helm_args)
     log "reinstalling chart release $TA_RELEASE with analytics disabled"
     "${H[@]}" upgrade --install "${args[@]}" --timeout 20m >&2
+}
+
+# ---------------------------------------------------------------- evidence (ticket 09)
+
+# Evidence checks for a verification stack (its own TA_RUN_ID and port), each judged by evidence.py or
+# acceptance.py. Steps that need other chart values upgrade the release in place with them (TA_EXTRA_SET, or
+# another TA_REFRESH_INTERVAL_S) and upgrade it back to the stack's own values afterwards, also on a failure or
+# an interrupt (an EXIT trap runs chart_restore); off-then-on likewise puts analytics back on and the
+# port-forward back on the proxy. When the restore itself fails, it prints the command to run by hand.
+EVIDENCE_STEPS=(rq-start-race liveness killed-worker idle-generation two-replicas off-then-on)
+ev_py() {
+    TA_BASE_URL="$BASE_URL" TA_SEED_PASSWORD="$TA_SEED_PASSWORD" TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" \
+        TA_NAMESPACE="$TA_NAMESPACE" TA_RELEASE="$TA_RELEASE" python3 -I -B "$HERE/evidence.py" "$@"
+}
+
+# The release upgraded in place with the environment's TA_EXTRA_SET and TA_REFRESH_INTERVAL_S, then rolled out.
+chart_upgrade() {
+    log "chart: upgrading in place (extra values: ${TA_EXTRA_SET:-none}; refresh interval ${TA_REFRESH_INTERVAL_S} s)"
+    build_chart
+    install_chart
+    wait_ready
+}
+# The release's own state. An upgrade, install or rollback cut off (an interrupt during helm upgrade) leaves
+# it pending-upgrade, pending-install or pending-rollback, and helm refuses every upgrade while it is: the
+# release is first rolled back to its revision before (the last one deployed).
+release_settle() {
+    local state
+    state="$("${H[@]}" status "$TA_RELEASE" -n "$TA_NAMESPACE" -o json \
+        | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["info"]["status"])')"
+    case "$state" in
+        pending-*)
+            log "release $TA_RELEASE is $state (an operation was cut off): rolling it back to its revision before"
+            "${H[@]}" rollback "$TA_RELEASE" -n "$TA_NAMESPACE" --wait --timeout 20m >&2 ;;
+        *) log "release $TA_RELEASE is $state" ;;
+    esac
+}
+# run.sh restore-chart: the stack's own values (stack.env's refresh interval, nothing extra, analytics on), the
+# workloads ready, and the port-forward on the proxy again.
+restore_chart() {
+    release_settle
+    log "chart: back to the stack's own values"
+    build_chart
+    install_chart
+    wait_ready
+    start_port_forward
+}
+# The command restore-chart runs with, for a person to run by hand from the repository root.
+restore_command() {
+    printf 'TA_KUBE_CONTEXT=%q TA_NAMESPACE=%q TA_RELEASE=%q TA_HOST_PORT=%q TA_REFRESH_INTERVAL_S=%q TA_SERVER_IMAGE=%q TA_UI_IMAGE=%q bash verify/team-analytics-stack/run.sh restore-chart' \
+        "$TA_KUBE_CONTEXT" "$TA_NAMESPACE" "$TA_RELEASE" "$TA_HOST_PORT" "$STACK_REFRESH_INTERVAL_S" "$TA_SERVER_IMAGE" "$TA_UI_IMAGE"
+}
+# Back to the stack's own values, in a process of its own: the values a step set for itself (TA_EXTRA_SET,
+# TA_ANALYTICS, another TA_REFRESH_INTERVAL_S, PF_TARGET) may still be in force when an interrupt runs the EXIT
+# trap in the middle of that step, and a fresh process has set -e in force wherever it is called from.
+chart_restore() {
+    env -u TA_EXTRA_SET -u TA_ANALYTICS -u PF_TARGET \
+        TA_KUBE_CONTEXT="$TA_KUBE_CONTEXT" TA_NAMESPACE="$TA_NAMESPACE" TA_RELEASE="$TA_RELEASE" \
+        TA_HOST_PORT="$TA_HOST_PORT" TA_REFRESH_INTERVAL_S="$STACK_REFRESH_INTERVAL_S" \
+        TA_SERVER_IMAGE="$TA_SERVER_IMAGE" TA_UI_IMAGE="$TA_UI_IMAGE" bash "$0" restore-chart && return 0
+    log "error: the stack could not be put back to its own values; run by hand, from the repository root:"
+    log "  $(restore_command)"
+    return 1
+}
+STACK_REFRESH_INTERVAL_S="$TA_REFRESH_INTERVAL_S"
+
+# The newest revision of the release and its description ("Upgrade complete" for an upgrade in place).
+helm_last() {
+    "${H[@]}" history "$TA_RELEASE" -n "$TA_NAMESPACE" -o json \
+        | python3 -I -c 'import json, sys; h = json.load(sys.stdin)[-1]; print(h["revision"], h["description"])'
+}
+expect_upgrade() {
+    local before="$1" what="$2" now rev
+    now="$(helm_last)"
+    rev="${now%% *}"
+    log "helm history after $what: revision $now (before: revision $before)"
+    [ "$rev" = "$((before + 1))" ] && [ "${now#* }" = "Upgrade complete" ] \
+        || die "$what: expected revision $((before + 1)) 'Upgrade complete' (an upgrade in place), saw '$now'"
+}
+
+check_evidence() {
+    local step="${1:-}" state rev
+    [[ " ${EVIDENCE_STEPS[*]} " == *" $step "* ]] || die "usage: run.sh check-evidence STEP (${EVIDENCE_STEPS[*]})"
+    require_own_stack
+    mkdir -p "$STATE_DIR"
+    case "$step" in
+        idle-generation)
+            trap chart_restore EXIT
+            TA_REFRESH_INTERVAL_S=600 chart_upgrade
+            ev_py idle-generation 600
+            trap - EXIT
+            chart_restore ;;
+        two-replicas)
+            trap chart_restore EXIT
+            TA_EXTRA_SET="cvat.backend.worker.teamAnalytics.replicas=2" chart_upgrade
+            ev_py two-replicas
+            trap - EXIT
+            chart_restore
+            [ "$("${K[@]}" -n "$TA_NAMESPACE" get deploy "$TA_RELEASE-backend-worker-team-analytics" -o jsonpath='{.spec.replicas}')" = 1 ] \
+                || die "the analytics worker is not back at one replica" ;;
+        off-then-on)
+            state="$STATE_DIR/evidence-off-then-on.json"
+            ev_py snapshot "$state"
+            rev="$(helm_last)"; rev="${rev%% *}"
+            # from here until analytics is on again and the port-forward is on the proxy, a failure or an
+            # interrupt restores both (check_analytics_off leaves analytics off and forwards to the backend)
+            trap chart_restore EXIT
+            check_analytics_off
+            expect_upgrade "$rev" "analytics off"
+            log "analytics on again, upgraded in place"
+            build_chart
+            install_chart
+            wait_ready
+            expect_upgrade "$((rev + 1))" "analytics on again"
+            stop_port_forward
+            start_port_forward
+            trap - EXIT
+            ev_py back-on "$state" ;;
+        *) ev_py "$step" ;;
+    esac
+}
+
+# The heavier load configuration (TA_LOAD_HEAVY=1 run.sh check-load): ClickHouse limited to 4 CPUs instead of 2,
+# three times the volume (ta-org-v, then ta-org-v2 and ta-org-v3 loaded the same way, with the same annotators),
+# and the bursts read at instance scope over all of it; the chart is upgraded back afterwards.
+check_load() {
+    if [ "${TA_LOAD_HEAVY:-}" != 1 ]; then acceptance load; return; fi
+    local org
+    trap chart_restore EXIT
+    TA_EXTRA_SET="clickhouse.resources.limits.cpu=4" chart_upgrade
+    for org in "${TA_VOLUME_ORG:-ta-org-v}" ta-org-v2 ta-org-v3; do
+        TA_VOLUME_ORG="$org" load_volume
+    done
+    TA_LOAD_SCOPE=instance acceptance load
+    trap - EXIT
+    chart_restore
 }
 
 # ---------------------------------------------------------------- teardown
@@ -922,6 +1159,7 @@ up() {
     apply_proxy
     wait_ready
     start_port_forward
+    require_own_stack
     check_worker
     check_policies
     seed
@@ -929,11 +1167,21 @@ up() {
     check_tracer
     check_task_progress
     check_final
+    check_settings
     check_issues
     check_access_cases
     check_org_creation
     log "up:$BASE_URL (accounts: see README.md, password \$TA_SEED_PASSWORD)"
 }
+
+# Every subcommand that talks to the stack through $BASE_URL checks first that the address serves TA_NAMESPACE.
+case "${1:-}" in
+    seed | check-event | check-tracer | check-final | check-final-ui | load-volume | check-volume \
+        | check-task-progress | check-policies | check-access | check-org-creation | check-settings | check-issues \
+        | check-fixes | check-cross-org | check-isolation | check-load | check-evidence | check-review \
+        | check-analytics-off)
+        require_own_stack ;;
+esac
 
 case "${1:-}" in
     up) up ;;
@@ -963,10 +1211,18 @@ case "${1:-}" in
     seed-access) seed_access ;;
     check-access) check_access_cases "${2:-}" ;;
     check-org-creation) check_org_creation ;;
+    check-settings) check_settings ;;
     check-fixes) check_fixes "${2:-}" ;;
     check-cross-org) acceptance cross-org ;;
-    check-isolation) acceptance isolation ${2:+"$2"} ;;
-    check-load) acceptance load ;;
+    check-isolation)
+        case "${2:-}" in
+            redis-down) require_own_stack; ev_py redis-down ;;
+            "") acceptance isolation; ev_py redis-down ;;  # Redis last: it restarts what depends on it
+            *) acceptance isolation "$2" ;;
+        esac ;;
+    check-load) check_load ;;
+    check-evidence) check_evidence "${2:-}" ;;
+    restore-chart) restore_chart ;;
     check-review) acceptance review ;;
     check-analytics-off) check_analytics_off ;;
     *) sed -n '5,/^set -euo/p' "$0" | sed '$d' >&2; exit 2 ;;

@@ -2,11 +2,8 @@
 
 A period is offered only when every hour of it is processed; trends need three complete weeks.
 
-An administrator gets the whole block. Everyone else gets whether history is complete, the percentage, the
-periods that can be offered and the trends' readiness; not the first day with events, the day counts or
-the moment from which history is processed. What remains still describes the whole instance, and while
-history is processed it lets a caller who polls work out the first day with events (docs/fork-specification.md,
-"Known limit of `status` for a caller outside the admin group").
+Only administrators read Team Analytics; they get the whole block, with or without an organization selected:
+it describes the whole instance either way.
 """
 
 from __future__ import annotations
@@ -55,17 +52,6 @@ def build(request: Request) -> dict:
     done, total = state.days()
     # rounded down, so it reads 100 only once history is complete
     percent = 100 if state.complete else min(99, done * 100 // total)
-    if not request.scope.admin:
-        # Built field by field, so a field added to the full block is not given away by default: no first day
-        # with events, no day counts, not the exact moment processing has reached.
-        return {
-            "complete": state.complete,
-            "percent": percent,
-            "periods": periods,
-            "earliest_month": earliest_month,
-            "complete_weeks": weeks,
-            "trends_ready": weeks >= TREND_MIN_WEEKS,
-        }
     return {
         "complete": state.complete,
         "percent": percent,

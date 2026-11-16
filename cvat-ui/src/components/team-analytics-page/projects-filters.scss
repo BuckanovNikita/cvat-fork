@@ -93,21 +93,24 @@ button.cvat-team-analytics-breakdown-row {
     border-top: 1px solid $border-color-1;
 }
 
+// The Project and Annotator selectors of the filter row (filter-select.tsx): a 36px bordered box (border
+// included, as every control of the row) holding the dropdown button and, for an active filter, the clear button.
 .cvat-team-analytics-filter-chips {
     display: flex;
     flex-wrap: wrap;
     gap: $grid-unit-size;
-    margin-bottom: $grid-unit-size * 2;
 }
 
 .cvat-team-analytics-filter {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: $grid-unit-size;
+    gap: $grid-unit-size * 0.5;
+    box-sizing: border-box;
     max-width: 100%;
     min-width: 0;
-    min-height: $grid-unit-size * 5;
-    padding: 0 $grid-unit-size * 0.75 0 $grid-unit-size * 1.75;
+    height: 36px;
+    padding: 0 $grid-unit-size * 0.25 0 0;
     border: 1px solid #c4c4c4;
     border-radius: $border-radius-base;
     background: $background-color-1;
@@ -115,6 +118,27 @@ button.cvat-team-analytics-breakdown-row {
     &.cvat-team-analytics-filter-active {
         border-color: $text-color;
     }
+}
+
+.cvat-team-analytics-filter-button {
+    display: inline-flex;
+    align-items: center;
+    gap: $grid-unit-size;
+    min-width: 0;
+    height: 100%;
+    padding: 0 $grid-unit-size * 0.75 0 $grid-unit-size * 1.75;
+    border: 0;
+    border-radius: $border-radius-base;
+    background: transparent;
+    color: $text-color;
+    font: inherit;
+    cursor: pointer;
+}
+
+.cvat-team-analytics-filter-arrow {
+    flex: none;
+    color: $text-color-secondary;
+    font-size: 10px;
 }
 
 .cvat-team-analytics-filter-label {
@@ -133,10 +157,80 @@ button.cvat-team-analytics-breakdown-row {
 
 .cvat-team-analytics-filter-clear {
     flex: none;
-    width: $grid-unit-size * 4;
-    height: $grid-unit-size * 4;
+    width: $grid-unit-size * 3.5;
+    height: $grid-unit-size * 3.5;
     border: 0;
     border-radius: $border-radius-base;
     background: $background-color-2;
     cursor: pointer;
+}
+
+// the dropdown under a selector, over the cards
+.cvat-team-analytics-filter-popup {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    left: -1px;
+    display: flex;
+    flex-direction: column;
+    gap: $grid-unit-size * 0.5;
+    box-sizing: border-box;
+    width: max-content;
+    min-width: max(100%, 260px);
+    max-width: min(360px, 90vw);
+    padding: $grid-unit-size * 0.75;
+    border: 1px solid #d9d9d9;
+    border-radius: $border-radius-base;
+    background: $background-color-1;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 12%);
+
+    // near the right edge of the page the popup opens from the box's right edge (filter-select.tsx, placePopup)
+    &.cvat-team-analytics-filter-popup-right {
+        right: -1px;
+        left: auto;
+    }
+}
+
+.cvat-team-analytics-filter-search {
+    box-sizing: border-box;
+    width: 100%;
+    height: 32px;
+    padding: 0 $grid-unit-size;
+    border: 1px solid #c4c4c4;
+    border-radius: $border-radius-base;
+    font: inherit;
+}
+
+.cvat-team-analytics-filter-options {
+    max-height: 280px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.cvat-team-analytics-filter-option {
+    overflow: hidden;
+    padding: $grid-unit-size * 0.625 $grid-unit-size;
+    border-radius: $border-radius-base;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &[aria-selected='true'] {
+        font-weight: 600;
+    }
+}
+
+.cvat-team-analytics-filter-option-active {
+    background: $background-color-2;
+}
+
+.cvat-team-analytics-filter-status {
+    padding: 0 $grid-unit-size;
+    color: $text-color-secondary;
+
+    &:empty {
+        display: none;
+    }
 }

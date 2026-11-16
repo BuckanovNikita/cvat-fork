@@ -126,6 +126,11 @@ Recorded, not fixed:
 
 ## Not established by either reviewer
 
+2026-11-16: two of the lines below were closed on that date (the failed-job registry, and
+Postgres connections and Redis memory under the load check's load); whether ClickHouse cancels
+an insert stays open. See
+[`2026-11-16-open-lines-closed-and-admin-settings.md`](2026-11-16-open-lines-closed-and-admin-settings.md).
+
 - Whether ClickHouse cancels an insert whose client disconnected; the statement limit makes
   the answer matter less.
 - Why the queue's failed-job registry once held the periodic job's id while the job's record

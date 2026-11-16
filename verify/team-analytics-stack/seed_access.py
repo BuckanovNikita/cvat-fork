@@ -1,8 +1,8 @@
 # Loaded into the stack's backend with `python manage.py shell` (run.sh seed-access).
 # Creates the accounts of the access cases (access_accounts.json, passed in TA_ACCOUNTS); safe to
 # run again. Unlike seed_users.py, the global group and the superuser flag are set apart, so an
-# administrator by group who is not a superuser exists. Every run makes the membership that the
-# removed-member case deletes active again.
+# administrator by group who is not a superuser exists. Every run puts each account back in its group
+# (the revoked-admin case takes ta-revoked-admin out of the admin group and puts it back itself).
 import json
 import os
 

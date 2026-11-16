@@ -14,12 +14,12 @@ owner). All numbers and names in it are invented sample data.
 
 - A new page, Team Analytics, as a readable alternative to the stock event dashboards.
   The existing header link to those dashboards is renamed Grafana.
-- Available to administrators and to owners and maintainers of the selected
-  organization, by role and automatically. An administrator is a member of the admin
-  group.
-- Organization scope for a selected organization; instance scope for an administrator
-  with none selected. An owner or maintainer with no organization selected is asked to
-  select one.
+- Available to administrators only. An administrator is a member of the admin group.
+  (Changed by the owner on 2026-11-15: owners and maintainers of the selected
+  organization read it too until then.)
+- Organization scope for a selected organization; instance scope with none selected.
+  (Changed on 2026-11-15: an owner or maintainer with no organization selected was
+  asked to select one.)
 - Organizations never see each other's figures.
 - Ordinary annotators have no access, not even to their own figures. For them the
   header link is hidden and a direct visit shows a "not available" message.
@@ -47,8 +47,10 @@ project filters combine.
 - **Saved boxes** per annotator and project, which is what a legacy period offers in
   place of bounding box operations.
 
-All job work counts, whatever the stage of the job. Technical accounts are a configured
-list; they are left out of annotator lists, and what they save is Model.
+All job work counts, whatever the stage of the job. Technical accounts are one list for
+the instance, kept by administrators in Team Analytics settings on the page (changed on
+2026-11-15: a configured list until then); they are left out of annotator lists, and
+what they save is Model.
 
 ## Reading the page
 
@@ -57,8 +59,9 @@ list; they are left out of annotator lists, and what they save is Model.
 - **Overview**, top to bottom: filters (period, shapes, project, annotator) with a
   "data as of" stamp; headline tiles; working time by day beside where working time
   goes; the operations table beside creation methods; working time by project beside
-  working time by annotator; keyboard and mouse; trends; the details table; short
-  definitions.
+  working time by annotator; keyboard and mouse; trends; the details table. Short
+  definitions are tooltips on the terms (changed on 2026-11-15: a block at the end
+  until then).
 - **Trends**: the last twelve weeks or months, independent of the period. Four charts:
   working time, boxes created, average time per box, hotkey share.
 - **Comparison**: up to five annotators or five projects, one line each. A line keeps

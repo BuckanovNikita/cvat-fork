@@ -20,8 +20,8 @@ The `upstream` remote is `https://github.com/cvat-ai/cvat.git` and has no
 default fetch rule, so a routine fetch never brings in upstream's branches and
 tags. Tags are fetched by name. On a fresh clone, add the remote without the
 rule `git remote add` writes, and fetch the tag the fork is on: the check
-pipeline, `build-server.sh` and the policy tests compare with it, and tags are
-not pushed.
+pipeline, the policy tests and the stack's stock policy check compare with it,
+and tags are not pushed.
 
 ```bash
 git remote add upstream https://github.com/cvat-ai/cvat.git
@@ -77,7 +77,9 @@ Expect conflicts only where the fork and upstream both changed a file:
   as for the settings.
 
 Upstream's `README.md` is not edited by the fork and merges cleanly; the
-fork's text is `README.fork.md`.
+fork's text is `README.fork.md`. Upstream's `Dockerfile` is not edited by the
+fork either and merges cleanly; a change to it is ported into
+`Dockerfile.server` in section 3.
 
 Then confirm the fork's delta against the new tag:
 
@@ -121,7 +123,7 @@ that is wanted; if not, the added rule needs an exclusion, which is a change to
 the specification. A new scope also needs its row in the test configuration.
 
 Update the release in the default tags together. The tools read the release
-tag as `STOCK_TAG` (`build-server.sh`, `verify/policy_test.sh`, the stack's
+tag as `STOCK_TAG` (`verify/policy_test.sh`, the stack's
 `check-issue-policies`) and `UPSTREAM_TAG` (`tools/gate/ui-lint.sh`). Search
 the fork's own files for the old release number, outside dated evidence and
 the tracker:
@@ -130,8 +132,8 @@ the tracker:
 git grep -n -F v2.82.0 -- $(git diff --name-only --diff-filter=AM "${TARGET}" HEAD -- . ':!docs/evidence' ':!.scratch')
 ```
 
-At least these name it: `build-ui.sh` (the UI tag), `build-server.sh` and
-`Dockerfile.server` (the stock base, the fork server tag and `STOCK_TAG`),
+At least these name it: `build-ui.sh` (the UI tag), `build-server.sh` (the
+fork server tag, and the release whose `Dockerfile` it records),
 `tools/gate/ui-lint.sh` (`UPSTREAM_TAG`), `verify/policy_test.sh`
 (`STOCK_TAG`), `verify/policy_bundle.sh` (its usage text),
 `verify/team_analytics_backend.sh` (its image), the stack's `stack.env` and
@@ -141,25 +143,61 @@ and its file list against `Dockerfile.ui.dockerignore`. Consult project
 dependency configuration for compatible tools rather than adding version pins
 to these instructions.
 
-Rebuild the fork server image on the target's stock server image (BUILD-1).
-The stock image must be local first; the script never pulls:
+The fork server image is built by `Dockerfile.server`, the fork's port of
+upstream's `Dockerfile` to Debian 12 (BUILD-1,
+[ADR 0007](adr/0007-the-fork-builds-its-images-from-public-bases-the-server-on-debian-12.md)),
+and `build-server.sh` refuses to build while upstream's `Dockerfile` differs
+from the one the port was made from (`PORTED_FROM_SHA256` in the script). See
+what the release changed in it:
 
 ```bash
-IMAGE="cvat/server:${TARGET}-fork" BASE_IMAGE="cvat/server:${TARGET}" STOCK_TAG="${TARGET}" ./build-server.sh
+git diff v2.82.0 "${TARGET}" -- Dockerfile
 ```
 
-It tags the image only when the build's bundle holds the merged policies and,
-with analytics enabled, the Team Analytics policy, and the base's bundle holds
-the four policy files of `STOCK_TAG`. Before it builds, it refuses a tree in
-which anything else the stock image is built from differs from `STOCK_TAG`
-(the Dockerfile, the requirements, the entry point, the process configuration
-and the other copied sources the specification lists), in which the fork
-deleted or renamed a file under `cvat/` or `backend_entrypoint.d/`, or in which
-a file there is not tracked. An untracked file is added or removed before
-building again. After a clean merge, the other refusals mean the fork changed
-one of those paths; the copy then cannot stand in for upstream's own
-`Dockerfile` build, on which ADRs 0004 and 0006 rest, and the tree needs that
-build instead. Check
+If nothing changed, nothing is ported. Otherwise port each change into the
+matching stage of `Dockerfile.server`: Ubuntu package names become Debian 12's
+(a package may have another name there, be in Debian's non-free component, or
+be missing), and the commented deviations stay, each with its comment. A path
+upstream's `COPY` gains is copied by its own `COPY` line and added to the list
+of copied paths in `build-server.sh` (`COPIED`), which makes the build
+context. Check the pinned bases against the change: a Python version upstream
+moves to, or a Rust or Go version its stages name, needs a new base, pinned by
+digest. All three bases are the defaults of `Dockerfile.server`'s `ARG`s:
+`BASE_IMAGE` (Python), `RUST_IMAGE` and `GOLANG_IMAGE` (the Go image of
+upstream's smokescreen stage, whose `FROM` names that `ARG`); the script
+refuses one that is not pinned. Then record the hash of the
+target's `Dockerfile` in `build-server.sh` as `PORTED_FROM_SHA256`:
+
+```bash
+sha256sum Dockerfile
+```
+
+A changed requirement under `cvat/requirements` needs no step of its own: the
+build installs the tree's requirements. A new system library that a package
+needs shows as a failed build or in the build's check for missing shared
+libraries.
+
+Build the fork server image from the merged tree. The build needs network
+access, compiles FFmpeg and takes long; `MAKE_JOBS` sets the parallel jobs of
+each compile step:
+
+```bash
+IMAGE="cvat/server:${TARGET}-fork" ./build-server.sh
+```
+
+It tags the image only when its six checks pass (BUILD-1): the bundle holds
+the merged policies and, with analytics enabled, the Team Analytics policy;
+the programs CVAT starts run on the venv's Python 3.12, supervisord runs and
+`nginx -t` accepts the shipped nginx configuration; no shared library is
+missing (judged by `ldd`'s output: any "not found" fails); Django sets up with
+analytics on and off; and no model change lacks a migration. The checks build
+and test the default configuration only: the `CLAM_AV=yes` and
+`CVAT_DEBUG_ENABLED=yes` builds have never been built. A ported package from
+Debian's non-free component goes in while that component is enabled, as
+`unrar` does; the final image's apt sources have the main component only. Before it builds, it refuses the unported
+`Dockerfile` above, a base not pinned by digest, and a tree with an untracked
+file, or a tracked file missing, under the copied paths; an untracked file is
+added or removed before building again. Check
 its bundle as under "Policies" in section 4. Check added or renamed chart
 services and images against the stack's render checks and image lists
 ([stack README](../verify/team-analytics-stack/README.md)). Update the
@@ -203,6 +241,19 @@ them, for undefined names and unused imports. black and isort check
 upstream's settings (the root `pyproject.toml`). Run the pipeline by its
 command; do not install it as git hooks.
 
+The three frontend suites run through `tools/gate/node-suite.sh`, which gives
+every process of the run a memory limit (address space, `NODE_SUITE_MEMORY_KB`,
+default 8 GiB) and every test a time limit (`NODE_SUITE_TEST_TIMEOUT_MS`,
+default one minute), so a runaway test fails its suite instead of exhausting
+the machine. Node's test runner has neither limit by default. Run a suite by
+hand through the same wrapper, as the commands below do. The browser check of
+the task legend (`BROWSER_BIN`) is not part of the pipeline and keeps its own
+command. A browser does not start inside an address-space limit, so the task
+progress hook passes `--may-start-browser`: for that suite alone, and only
+while `BROWSER_BIN` is set, the wrapper leaves the memory limit off, says so
+in one line, and keeps the time limit. The other two suites keep their memory
+limit whatever the environment holds.
+
 Prerequisites on a fresh checkout:
 
 - `prek`, `uv`, `python3`, Node and Docker on the path; network on the first
@@ -216,8 +267,8 @@ Prerequisites on a fresh checkout:
 Kept out of the pipeline, each a separate command with its own prerequisites:
 
 - `verify/team_analytics_backend.sh`: the calculation tests, under "Team
-  Analytics"; Docker, the stock server image of the release and the
-  ClickHouse and Redis images.
+  Analytics"; Docker, the fork server image built from the tree
+  (`build-server.sh`) and the ClickHouse and Redis images.
 - `verify/policy_bundle.sh`: the bundle check of the fork server image, under
   "Policies"; Docker and the built image.
 - `verify/team-analytics-stack/run.sh cycle`: the stack, under "Team
@@ -233,7 +284,7 @@ With the toolchain required by upstream's package configuration:
 ```bash
 DISABLE_HUSKY=1 yarn install --immutable
 npm ci --prefix verify
-node --test verify/task_progress.cjs
+tools/gate/node-suite.sh verify/task_progress.cjs
 SOURCE_MAPS_ENABLED=false yarn run build:cvat-ui
 ```
 
@@ -330,21 +381,20 @@ upstream changed a policy or its configuration; resolve it against IAM-1. The
 fork's configuration changes add rows and change none of upstream's.
 
 Then check what the rebuilt fork server image serves. The bundle is built by the
-server's own builder inside the image, so a copy to a directory the server does
-not read shows here; `build-server.sh` runs the same checks and tags nothing when
-one fails (an earlier image under the tag stays, unchecked by that run, and the
-failure names its ID), and the stack checks the served bundle again:
+server's own builder inside the image, so a policy installed where the server
+does not read it shows here; `build-server.sh` runs the same checks and tags
+nothing when one fails (an earlier image under the tag stays, unchecked by that
+run, and the failure names its ID), and the stack checks the served bundle
+again:
 
 ```bash
 verify/policy_bundle.sh from-image <fork server tag> | verify/policy_bundle.sh check
 verify/policy_bundle.sh from-image <fork server tag> analytics | verify/policy_bundle.sh check-analytics
-verify/policy_bundle.sh from-image <stock server tag> | verify/policy_bundle.sh check-stock "${TARGET}"
 ```
 
 The first check must report both policies equal to the tree's, the second the
-Team Analytics policy as well, the third the four stock files equal to the
-release tag's. Each policy is compared by itself, byte for byte; a marker in
-only one of them does not pass.
+Team Analytics policy as well. Each policy is compared by itself, byte for
+byte; a marker in only one of them does not pass.
 
 Check policy compilation with the same target helpers. If strict OPA lint fails,
 compare stock and patched rules before classifying an inherited warning. Retain
@@ -357,8 +407,8 @@ points. Check the upstream dependencies listed there against the target
 release: the `events` table schema, the server's allowed client scopes and
 working-time calculation, Vector's field allowlist, the cvat-core logger and
 plugin wrapper, saved annotation event names, the header's plugin flag and
-organization role, the project `id` filter, CVAT's minimum app width, and the
-shortcut action names. A changed name breaks figures without an error, so
+`admin` group, the selected organization in the UI's state, CVAT's minimum app
+width, and the shortcut action names. A changed name breaks figures without an error, so
 compare them, not only the build.
 
 Read the release's changes to the upstream internals the app depends on (the
@@ -368,7 +418,8 @@ specification's list under "Upstream internals the fork depends on"):
 git diff v2.82.0 "${TARGET}" -- \
     cvat/apps/iam/permissions.py cvat/apps/iam/middleware.py \
     cvat/apps/redis_handler/management/commands/syncperiodicjobs.py \
-    cvat/settings/base.py cvat/apps/organizations/models.py cvat/requirements \
+    cvat/settings/base.py cvat/requirements \
+    cvat/apps/iam/models.py cvat/apps/engine/models.py \
     cvat/apps/organizations/apps.py cvat/apps/organizations/default_settings.py \
     cvat/apps/organizations/permissions.py cvat/apps/organizations/rules/organizations.rego \
     backend_entrypoint.sh backend_entrypoint.d \
@@ -381,7 +432,10 @@ Look for: a changed signature of `OpenPolicyAgentPermission` or of what
 `PolicyEnforcer` calls; `load_app_iam_rules`; the names and format of
 `RQ_QUEUES`, `PERIODIC_RQ_JOBS` and `REDIS_INMEM_SETTINGS`, and how
 `syncperiodicjobs` reads them; the keys of `request.iam_context` and how the
-middleware resolves an organization; the `Membership` roles and `is_active`;
+middleware resolves an organization; the user model (`AUTH_USER_MODEL`, its
+`username`, `first_name` and `last_name`) and the project model's `name`, which
+the settings endpoints read, and a change in how upstream's migrations or
+`migrate` treat an app's own migrations;
 the format of the entry point's component files and `run worker`; the helper
 templates and backend values the worker template uses (compare it with
 upstream's other worker templates, which it is modelled on); new `rq` or
@@ -411,33 +465,39 @@ release and confirm them in the stack run below:
   run's held navigation key, compared with CVAT's `change:frame` events, shows
   it (ticket 27).
 
-Run the three seams. The calculation tests need Docker and the images below.
-The two frontend seams need the root `node_modules` and the harness's
-dependencies (`npm ci --prefix verify`, under "Frontend" above); without the
-latter they fail and name what is missing, they do not skip tests:
+Build the two images from the integrated tree first: the calculation tests
+run in the fork server image, and the stack runs both.
 
 ```bash
-verify/team_analytics_backend.sh               # calculation tests against a real ClickHouse
-node --test verify/team_analytics_logging.cjs  # events the UI logging sends
-node --test verify/team_analytics_page.cjs     # page with supplied responses
+IMAGE="cvat/server:${TARGET}-fork" ./build-server.sh
+IMAGE="cvat/ui:${TARGET}-fork" ./build-ui.sh
+```
+
+Run the three seams. The calculation tests need Docker, the fork server image
+and the ClickHouse and Redis images. The two frontend seams need the root
+`node_modules` and the harness's dependencies (`npm ci --prefix verify`, under
+"Frontend" above); without the latter they fail and name what is missing, they
+do not skip tests:
+
+```bash
+SERVER_IMAGE="cvat/server:${TARGET}-fork" verify/team_analytics_backend.sh   # calculation tests against a real ClickHouse
+tools/gate/node-suite.sh verify/team_analytics_logging.cjs  # events the UI logging sends
+tools/gate/node-suite.sh verify/team_analytics_page.cjs     # page with supplied responses
 ```
 
 The calculation tests (`verify/team-analytics-backend/`) run the app's code in
-a container of the stock server image of the release (`SERVER_IMAGE`), with
-the working tree's `cvat/apps/team_analytics` mounted over it, beside a
-throwaway ClickHouse and a throwaway Redis, and remove all three when they
-end. Set `SERVER_IMAGE` to the target release's image and `CLICKHOUSE_IMAGE`
-to the ClickHouse version of the target chart. If the server image's Python,
-`clickhouse_connect`, `redis`, `rq` or Django changed, check that the app
-still needs nothing beyond them.
+a container of the fork server image (`SERVER_IMAGE`, by default the fork
+server tag of the release the fork is on), with the working tree's
+`cvat/apps/team_analytics` mounted over it, beside a throwaway ClickHouse and
+a throwaway Redis, and remove all three when they end. Set `SERVER_IMAGE` to
+the image just built and `CLICKHOUSE_IMAGE` to the ClickHouse version of the
+target chart. If the image's Python, `clickhouse_connect`, `redis`, `rq` or
+Django changed, check that the app still needs nothing beyond them.
 
-Then build the two images from the integrated tree and run the stack once
-(`verify/team-analytics-stack/README.md`, which names its image variables,
-its subcommands and its reserved host port):
+Then run the stack once (`verify/team-analytics-stack/README.md`, which names
+its image variables, its subcommands and its reserved host port):
 
 ```bash
-IMAGE="cvat/server:${TARGET}-fork" BASE_IMAGE="cvat/server:${TARGET}" STOCK_TAG="${TARGET}" ./build-server.sh
-IMAGE="cvat/ui:${TARGET}-fork" ./build-ui.sh
 verify/team-analytics-stack/run.sh cycle
 ```
 
@@ -451,10 +511,22 @@ backend path are not part of `up`; run them on a stack brought up with
 
 ```bash
 verify/team-analytics-stack/run.sh check-cross-org
-verify/team-analytics-stack/run.sh check-isolation   # or one part: worker-down, clickhouse-down, totals-dropped
+verify/team-analytics-stack/run.sh check-fixes page   # the page in a browser: filter bar, selectors, operations card, tooltips, settings
+verify/team-analytics-stack/run.sh check-isolation   # or one part: worker-down, clickhouse-down, totals-dropped, redis-down
 verify/team-analytics-stack/run.sh check-load          # needs the volume data (see the README)
 verify/team-analytics-stack/run.sh check-analytics-off   # last: it leaves the stack with analytics disabled
 ```
+
+`check-isolation` without a part runs all four, `redis-down` (the in-memory
+Redis at zero: reads answer 503, then the refresh schedule and the figures come
+back) last, because it restarts what depends on Redis.
+
+`run.sh check-evidence STEP` (steps `rq-start-race`, `liveness`,
+`killed-worker`, `idle-generation`, `two-replicas`, `off-then-on`) is the
+one-off evidence run of the Team Analytics delivery, not part of every
+upgrade: several steps upgrade the release in place, and each puts the
+stack's own values back when it ends, also on a failure or an interrupt. The
+stack's README says what each step judges.
 
 Inspect the screenshots as well as the exit status.
 Record what ran and what stayed unverified in dated evidence.
@@ -463,9 +535,10 @@ Record what ran and what stayed unverified in dated evidence.
 
 The two images are built by their scripts (BUILD-1): `./build-ui.sh` with the
 chosen `IMAGE`/`NODE_IMAGE` overrides, and `./build-server.sh` with
-`IMAGE`/`BASE_IMAGE`/`STOCK_TAG`. `build-server.sh` never pulls; the stock
-server image must be local first, and it needs the release tag. Use `SAVE=1`
-only if an archive is needed. Inspect served assets in the built UI image and
+`IMAGE`/`MAKE_JOBS`. Both need network access; `build-server.sh` pulls only the
+three bases `Dockerfile.server` pins, and no `cvat/` image. Use
+`SAVE=1` only if an archive is needed, for example to carry an image to an
+installation without network access. Inspect served assets in the built UI image and
 check the fork server image's bundle (under "Policies"). Without touching the
 cluster, `verify/team-analytics-stack/run.sh preflight` runs what `up` does
 before its first change to the cluster: the image check, `check-issue-policies`
@@ -476,8 +549,10 @@ off (no worker); the stack's README has the full list.
 All live verification runs on the test stack under "Team Analytics", in the
 project's own namespace with a quota and its own teardown (`down`, or `cycle`).
 It needs no shared deployment and creates nothing in the cluster outside its
-namespace; `down` also stops only its own port-forward. Clean up only what a
-run created.
+namespace; `down` also stops only its own port-forward. Every subcommand that
+talks to the stack over HTTP first checks that the host port is served by the
+port-forward of the namespace it acts on, and refuses a port that does not
+belong to that namespace. Clean up only what a run created.
 
 ## 5. Record and hand off
 
@@ -495,3 +570,25 @@ or deployment requires its own authorization. Before an authorized deployment,
 retain the prior UI and fork server images and deployment configuration, and plan
 database backup/rollback according to the target upstream release; reverting
 the merge alone does not undo server database migrations.
+
+### An instance on a fork version that read `TEAM_ANALYTICS_TECHNICAL_ACCOUNTS`
+
+Fork versions before the Technical accounts list read the list of technical
+accounts from the environment variable `TEAM_ANALYTICS_TECHNICAL_ACCOUNTS`
+(user names separated by commas). The fork no longer takes the list from it (it
+only looks at it to warn, below): the list is kept
+in Postgres and edited by an administrator in Team Analytics settings on the
+page (TA-1). On such an instance:
+
+- Write down the user names the variable holds before the upgrade.
+- The migration `team_analytics 0001` creates the list's table; the entry
+  point's `init` applies it with CVAT's other migrations, where analytics is
+  enabled.
+- After the upgrade the list is empty, so every account counts as a person
+  until it is listed. An administrator opens Team Analytics, then Settings, and
+  adds each account; the change applies to every past period at the next read,
+  and nothing is recomputed.
+- Remove the variable from the deployment (for example
+  `cvat.backend.additionalEnv` or `cvat.backend.worker.teamAnalytics.additionalEnv`
+  in the chart's values). While it is set, each process that loads the app logs
+  a warning that it is ignored.

@@ -256,6 +256,11 @@ before the fixes (`cbd8f8f05c54`) when the branch was published.
 
 ## Not verified
 
+2026-11-16: the lines below, the unprovoked rename refusal of "On the final build, after the
+independent review" and the checks not run on a stack in "After the second review pass" were
+verified or ruled out on that date; see
+[`2026-11-16-open-lines-closed-and-admin-settings.md`](2026-11-16-open-lines-closed-and-admin-settings.md).
+
 - On the build of the first sequence, that each read ran once per burst and that the generation
   moved once per run were inferred from the timing, and `Cache-Control: no-store` on a refusal
   was not read again after `2c653fe6` added it. All three were read on the final build; see the

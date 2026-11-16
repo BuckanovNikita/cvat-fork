@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0007
 ---
 
 # The backend runs a fork server image that adds the patched policies and nothing else
@@ -23,3 +23,4 @@ The patched issue and comment policies reached a server only through bind mounts
 - **The image is no longer "nothing else".** With Team Analytics inside the backend ([ADR 0006](0006-team-analytics-inside-the-backend-with-reads-on-a-worker.md)) the fork server image carries the fork's backend tree: the patched policies and the Team Analytics app. It is still the stock release image with files copied over it, and still holds no added dependency. The last consequence above, that a change to analytics code never rolls out the CVAT backend, no longer holds.
 - **The policies are edited in the tree, not in an import.** The repository became a full-source fork ([ADR 0005](0005-a-full-source-fork-joined-to-upstream-history.md)); the policies sit at upstream's paths, and a release is merged, not re-imported.
 - **The second considered option was taken after all.** The conversion to a full-source fork, dropped on 2026-11-14, was decided by the owner on 2026-11-15.
+- **Superseded by [ADR 0007](0007-the-fork-builds-its-images-from-public-bases-the-server-on-debian-12.md).** The owner decided the same day that the fork server image is built from scratch on public bases, on Debian 12, through a Dockerfile the fork owns, and no longer from the stock release image. One backend image for the server and every worker, and the fork's files in it, still hold.

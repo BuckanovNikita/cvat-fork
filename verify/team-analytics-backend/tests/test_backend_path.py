@@ -43,7 +43,8 @@ class BackendPathTest(BackendCase):
         other_worker = RedisLock(self.stack.redis, 120, name=self.stack.lock_name)
         self.assertTrue(other_worker.acquire(), "the lock is given back after every step")
         other_worker.release()
-        rows = self.engine.answer("overview", Scope(ORG, 0, "", admin=False), {"period": "week"})["by_annotator"]["rows"]
+        rows = self.engine.answer("overview", Scope(ORG, 0, ""), {"period": "week"},
+                                   technical_accounts=())["by_annotator"]["rows"]
         self.assertEqual([(row["user_name"], row["working_time_ms"]) for row in rows],
                          [("bob", 3_600_000), ("alice", 600_000)])
 
@@ -60,9 +61,9 @@ class BackendPathTest(BackendCase):
     def test_a_refused_parameter_and_an_unknown_endpoint(self):
         self.engine.setup()
         with self.assertRaises(BadRequest):
-            self.engine.answer("overview", Scope(ORG, 0, "", admin=False), {"period": "century"})
+            self.engine.answer("overview", Scope(ORG, 0, ""), {"period": "century"}, technical_accounts=())
         with self.assertRaises(UnknownEndpoint):
-            self.engine.answer("nothing", Scope(ORG, 0, "", admin=False), {})
+            self.engine.answer("nothing", Scope(ORG, 0, ""), {}, technical_accounts=())
 
 
 class Recording(dict):
@@ -102,6 +103,6 @@ class EndpointParametersTest(BackendCase):
         for endpoint, queries in self.QUERIES.items():
             read: set = set()
             for query in queries:
-                self.engine.answer(endpoint, Scope(ORG, 0, "", admin=False), Recording(query, read))
+                self.engine.answer(endpoint, Scope(ORG, 0, ""), Recording(query, read), technical_accounts=())
             with self.subTest(endpoint=endpoint):
                 self.assertEqual(read, set(reads.ENDPOINT_PARAMETERS[endpoint]))

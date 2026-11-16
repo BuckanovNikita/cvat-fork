@@ -1,16 +1,18 @@
 """The defect fixes seen on the test stack along the path that failed (ticket 27 of the defect fixes), driven by
 run.sh check-fixes. Each step judges itself and stops at the first difference; sessions-at-limit only records.
 
-    fixes_run.py status-roles           status as a maintainer, an owner and an administrator: only the
-                                        administrator gets the first event day and the day counts
+    fixes_run.py status-roles           status is refused to a maintainer and an owner (403); an
+                                        administrator, with and without an organization, gets the full
+                                        state with the first event day and the day counts
     fixes_run.py technical-project      a project whose only work is boxes a technical account saved has its
                                         row in the details table by project
     fixes_run.py prepare-gestures       a new project, task and job in ta-org-c with FRAMES frames, one frame
                                         per chunk, for fixes_browser.cjs gestures (prints JSON)
     fixes_run.py check-gestures FILE    after fixes_browser.cjs gestures: the redo, the group drags and the
                                         held frame key read back from the events table, and their figures
-    fixes_run.py unprocessed            a period that is not fully processed, read directly by a maintainer
-                                        and an administrator: the envelope only, then figures once processed
+    fixes_run.py unprocessed            a period that is not fully processed, read directly by an
+                                        administrator with an organization and without one: the envelope
+                                        only, then figures once processed
     fixes_run.py sessions-at-limit      how many stored sessions reached the one-day limit (a record)
     fixes_run.py cutover-restart        the analytics worker restarted on a stack that already holds tagged
                                         work, with no cutover stored and the ready mark cleared (a fresh
@@ -57,7 +59,7 @@ from final_run import (  # noqa: E402
     wait_figures,
     wait_rows,
 )
-from stack_api import Session, check, upload_images  # noqa: E402
+from stack_api import ADMIN, Session, check, reader, refusal, upload_images  # noqa: E402
 from stack_ops import (  # noqa: E402
     WORKER,
     WORKER_SELECTOR,
@@ -111,15 +113,21 @@ def status_of(session: Session, org: str = "") -> dict:
 
 
 def status_roles() -> None:
+    # there is no reduced status any more: owners and maintainers are refused, an administrator gets the whole
+    # state in every scope
+    for username, org in (("ta-maintainer", "ta-org-a"), ("ta-owner", "ta-org-a"), ("ta-maintainer", "")):
+        status, body = service(Session(username), "status", org=org)
+        check((status, refusal(status, body)) == (403, "forbidden"),
+              f"{username} org={org or '-'} status: {status} {str(body)[:200]}, expected 403 forbidden")
+        log(f"{username}, org={org or '-'}: status 403 forbidden")
     cases = [
-        ("ta-maintainer", "ta-org-a", SHARED_HISTORY),
-        ("ta-owner", "ta-org-a", SHARED_HISTORY),
-        ("ta-admin", "", SHARED_HISTORY | ADMIN_ONLY_HISTORY),
-        ("ta-admin", "ta-org-a", SHARED_HISTORY | ADMIN_ONLY_HISTORY),
+        (ADMIN, "", SHARED_HISTORY | ADMIN_ONLY_HISTORY),
+        (ADMIN, "ta-org-a", SHARED_HISTORY | ADMIN_ONLY_HISTORY),
+        (ADMIN, UI_ORG, SHARED_HISTORY | ADMIN_ONLY_HISTORY),
     ]
     cutovers = set()
     for username, org, want in cases:
-        body = status_of(Session(username), org)
+        body = status_of(reader(org, username), org)
         check({"history", "refresh", "cutover"} <= set(body), f"{username} org={org or '-'} status keys {sorted(body)}")
         got = set(body["history"] or {})
         check(got == want, f"{username} org={org or '-'} history keys {sorted(got)}, expected {sorted(want)}")
@@ -168,6 +176,7 @@ def technical_project() -> None:
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     made = new_job(owner, f"ta-bot-only-{stamp}", 1)
     project, job = made["project_id"], made["job_id"]
+    admin = reader(UI_ORG)  # reads the figures
     bot = Session(TECHNICAL_ACCOUNT)
     labels = bot.request("GET", f"/api/labels?job_id={job}&org={UI_ORG}")["results"]
     shapes = [
@@ -206,11 +215,11 @@ def technical_project() -> None:
     def ready(body: dict) -> bool:
         return bool(body["processed"]) and any(r["id"] == project and r["saved_boxes"] > 0 for r in body["rows"])
 
-    body = wait_figures(owner, "details", {**query, "shapes": "all"}, ready, f"details row of project {project}",
+    body = wait_figures(admin, "details", {**query, "shapes": "all"}, ready, f"details row of project {project}",
                         REFRESH_S * 5 + 120)
     for shapes in ("all", "bounding_boxes"):
         if shapes != "all":
-            body = ok(owner, "details", **query, shapes=shapes)
+            body = ok(admin, "details", **query, shapes=shapes)
         row = by_key(body["rows"], "id").get(project)
         check(row is not None, f"details by project ({shapes}): no row for project {project}: {body['rows']}")
         # as the service suite's TechnicalAccountOnlyProjectTest (tests/test_details_table.py) expects
@@ -220,10 +229,10 @@ def technical_project() -> None:
         log(f"details by project ({shapes}): project {project} {got}")
     # the same search finds a real annotator with job work this week (up's final run: the UI's worker), so
     # that an empty answer for the technical account is not an empty table
-    real = ok(owner, "details", org=UI_ORG, period="week", by="annotators", search=UI_WORKER)
+    real = ok(admin, "details", org=UI_ORG, period="week", by="annotators", search=UI_WORKER)
     found = [r["user_name"] for r in real["rows"]]
     check(found == [UI_WORKER], f"a search for {UI_WORKER} by annotator finds {found}")
-    people = ok(owner, "details", org=UI_ORG, period="week", by="annotators", search=TECHNICAL_ACCOUNT)
+    people = ok(admin, "details", org=UI_ORG, period="week", by="annotators", search=TECHNICAL_ACCOUNT)
     names = [r["user_name"] for r in people["rows"]]
     check(not names, f"a search for the technical account by annotator finds {names}")
     log(f"details by annotator: {UI_WORKER} found by the same search, {TECHNICAL_ACCOUNT} not listed")
@@ -351,7 +360,7 @@ def check_gestures(state_file: str) -> None:
     check(not unexpected, f"hotkeys in the summaries under names not pressed: {unexpected} in {hotkeys}")
 
     # the figures: one creation for draw, undo, redo; one alignment per object moved, plus the plain drag
-    owner = Session("ta-owner-c")
+    admin = reader(UI_ORG)
     query = {"org": UI_ORG, "period": "week", "project": project, "shapes": "all"}
     alignments = sum(int(r["count"]) for r, _ in moves) + len(plain)
 
@@ -361,9 +370,9 @@ def check_gestures(state_file: str) -> None:
         ops = by_key(body["operations"]["rows"], "operation")
         return ops["alignment"]["objects"] >= alignments and body["input"]["hotkey_actions"] >= sum(hotkeys.values())
 
-    wait_figures(owner, "overview", query, ready, f"figures of project {project}", REFRESH_S * 5 + 120)
+    wait_figures(admin, "overview", query, ready, f"figures of project {project}", REFRESH_S * 5 + 120)
     time.sleep(REFRESH_S + 15)  # one more scheduled refresh, so that nothing is still on its way
-    body = ok(owner, "overview", **query)
+    body = ok(admin, "overview", **query)
     ops = by_key(body["operations"]["rows"], "operation")
     methods = by_key(body["creation_methods"]["rows"], "method")
     got = {
@@ -414,8 +423,8 @@ def bucket_of(day: date, buckets: list[dict]) -> int:
 
 
 def unprocessed() -> None:
-    admin, maintainer = Session("ta-admin"), Session("ta-maintainer")
-    callers = [(maintainer, "ta-org-a"), (admin, "")]
+    admin = reader("")
+    callers = [(reader("ta-org-a"), "ta-org-a"), (admin, "")]
     wait_figures(admin, "status", {}, lambda b: (b.get("history") or {}).get("complete"), "history complete", 900)
     # below the first event day and below every day already recorded as processed (an earlier run's probe
     # days stay recorded), so that the probe's days are new to the service
@@ -439,7 +448,7 @@ def unprocessed() -> None:
         log("marker event deleted; the probe days stay recorded as processed, before the first event")
 
 
-def unprocessed_with_marker(admin: Session, callers: list, probe_day: date, token: str, held_at: float) -> None:
+def unprocessed_with_marker(admin, callers: list, probe_day: date, token: str, held_at: float) -> None:
     try:
         clickhouse(
             "INSERT INTO events FORMAT JSONEachRow",
@@ -515,7 +524,7 @@ def sessions_at_limit() -> None:
 
 
 def cutover_restart() -> None:
-    admin, maintainer = Session("ta-admin"), Session("ta-maintainer")
+    admin, in_org = reader(""), reader("ta-org-a")
     first = clickhouse(
         f"SELECT toString(toStartOfHour(toDateTime(min(timestamp), 'Etc/UTC'))) AS at, count() AS n FROM events"
         f" WHERE {TAGGED}"
@@ -539,7 +548,7 @@ def cutover_restart() -> None:
         first_answers = {}
         while len(first_answers) < 2:
             check(time.monotonic() - started < 600, "the restarted worker did not answer status within 10 minutes")
-            for session, org in ((admin, ""), (maintainer, "ta-org-a")):
+            for session, org in ((admin, ""), (in_org, "ta-org-a")):
                 if session.username in first_answers:
                     continue
                 try:  # a dropped connection is tried again

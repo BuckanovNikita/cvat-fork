@@ -7,9 +7,11 @@ import Result from 'antd/lib/result';
 import Spin from 'antd/lib/spin';
 import Title from 'antd/lib/typography/Title';
 import Text from 'antd/lib/typography/Text';
+import Button from 'antd/lib/button';
+import { SettingOutlined } from '@ant-design/icons';
 
 import {
-    Overview, PageState, Period, ProjectNames, Status,
+    FilterKind, FilterOptions, Overview, PageState, Period, ProjectNames, Status,
 } from './service';
 import { Address, currentMonth } from './address';
 import { Filters } from './filters';
@@ -34,7 +36,6 @@ import { LegacyNotices } from './legacy-notice';
 import ShapeSwitch from './shape-switch';
 import { DEFAULT_SHAPES } from './shapes';
 import FullView from './full-view';
-import Definitions from './definitions';
 import { FullView as FullViewKey, viewOfTrend } from './full-views';
 
 interface Props {
@@ -52,7 +53,7 @@ interface Props {
     pending?: boolean;
     status?: Status | null;
     timeZone?: string;
-    // names of the shown projects as CVAT returns them to the viewer
+    // names of the shown projects (the fork's project-names lookup)
     projectNames?: ProjectNames;
     // the viewer's keymap: hotkey action -> name and keys
     hotkeyLabels?: HotkeyLabels;
@@ -61,6 +62,12 @@ interface Props {
     renderTrends?: (scopeLabel: string, options?: TrendsOptions) => React.ReactNode;
     // the details table (loads on its own); it stays on the overview and has no full view
     renderDetails?: () => React.ReactNode;
+    // the options of the Project and Annotator selectors for the period shown (loaded when one opens)
+    loadFilterOptions?: (kind: FilterKind) => Promise<FilterOptions>;
+    // opens "Team Analytics settings"; without it the header has no Settings button
+    onOpenSettings?: () => void;
+    // changes when the page's data is loaded again (after a settings change): a full view loads its rows again
+    reloadKey?: number;
 }
 
 export interface TrendsOptions {
@@ -87,10 +94,10 @@ function annotatorLabel(id: number | null, overview: Overview | null): string {
     return shown ?? echoed ?? `Annotator #${id}`;
 }
 
-function scopeLabel(organization: string | null, state: PageState): string {
+// Only administrators read Team Analytics: with an organization selected, organization scope; with none,
+// instance scope.
+function scopeLabel(organization: string | null): string {
     if (organization) return `Organization ${organization}`;
-    // without an organization only an administrator reads instance scope
-    if (state.kind === 'select-organization') return 'No organization selected';
     return 'All organizations and personal workspaces';
 }
 
@@ -98,7 +105,7 @@ function scopeLabel(organization: string | null, state: PageState): string {
 export default function TeamAnalyticsView({
     organization, state, onBackToTasks, address, onAddressChange, pending = false, status = null,
     timeZone = 'UTC', currentMonth: latestMonth = currentMonth(), projectNames = {},
-    hotkeyLabels, renderTrends, renderDetails,
+    hotkeyLabels, renderTrends, renderDetails, loadFilterOptions, onOpenSettings, reloadKey = 0,
 }: Props): JSX.Element {
     const filters: Filters = { project: address?.project ?? null, annotator: address?.annotator ?? null };
     // clicking a row sets it as the filter; clicking the selected row again removes it
@@ -117,9 +124,8 @@ export default function TeamAnalyticsView({
                     className='cvat-team-analytics-denied'
                     status='403'
                     title='Team analytics is not available'
-                    subTitle={'This page is for administrators and for owners and maintainers of the current ' +
-                        'organization. The analytics service checks the same roles before it returns any data, ' +
-                        'so a direct link shows nothing more.'}
+                    subTitle={'This page is for administrators of this CVAT instance. The server checks the same ' +
+                        'before it returns any data, so a direct link shows nothing more.'}
                     extra={(
                         <a
                             className='cvat-team-analytics-back'
@@ -153,15 +159,6 @@ export default function TeamAnalyticsView({
                 subTitle='Sign in again to see team analytics.'
             />
         );
-    } else if (state.kind === 'select-organization') {
-        content = (
-            <Result
-                className='cvat-team-analytics-select-organization'
-                status='info'
-                title='Select an organization'
-                subTitle='Team analytics shows one organization at a time. Choose it in the organization menu at the top right.'
-            />
-        );
     } else if (state.overview.processed === false) {
         // partial figures are never shown: one gate for every card
         content = <NotProcessedNotice />;
@@ -172,6 +169,7 @@ export default function TeamAnalyticsView({
         const where = filters.project === null ? 'All projects' : projectName(filters.project, projectNames);
         const full = (
             <FullView
+                key={reloadKey}
                 view={address.view}
                 rows={address.rows ?? 'annotators'}
                 overview={overview}
@@ -271,23 +269,34 @@ export default function TeamAnalyticsView({
                     })}
                 </TrendsGate>
                 {renderDetails?.()}
-                <Definitions />
             </div>
         );
     }
 
     const showFilters = !!address && !!onAddressChange && ['ready', 'loading', 'error'].includes(state.kind);
+    const showSettings = !!onOpenSettings && ['ready', 'loading', 'error'].includes(state.kind);
     const refresh = state.kind === 'ready' ? status?.refresh : undefined;
     const history = state.kind === 'ready' ? status?.history : undefined;
     const shownOverview = state.kind === 'ready' ? state.overview : null;
     return (
         <div className='cvat-team-analytics-page'>
             <div className='cvat-team-analytics-header'>
-                <Title level={4}>Team analytics</Title>
-                <Text type='secondary'>
-                    {scopeLabel(organization, state)}
-                    {' · annotation work inside jobs'}
-                </Text>
+                <div className='cvat-team-analytics-heading'>
+                    <Title level={4}>Team analytics</Title>
+                    <Text type='secondary'>
+                        {scopeLabel(organization)}
+                        {' · annotation work inside jobs'}
+                    </Text>
+                </div>
+                {showSettings ? (
+                    <Button
+                        className='cvat-team-analytics-settings-button'
+                        icon={<SettingOutlined />}
+                        onClick={onOpenSettings}
+                    >
+                        Settings
+                    </Button>
+                ) : null}
             </div>
             {showFilters ? (
                 <div className='cvat-team-analytics-filters'>
@@ -313,6 +322,11 @@ export default function TeamAnalyticsView({
                         projectLabel={filters.project === null ? '' : projectName(filters.project, projectNames)}
                         annotatorLabel={annotatorLabel(filters.annotator, shownOverview)}
                         onChange={onAddressChange as (change: Partial<Filters>) => void}
+                        loadOptions={loadFilterOptions}
+                        optionsKey={[
+                            organization ?? '', (address as Address).period, (address as Address).month ?? '', reloadKey,
+                        ].join('|')}
+                        projectNameOf={(id) => projectName(id, projectNames)}
                     />
                     {refresh ? <FreshnessStamp refresh={refresh} timeZone={timeZone} /> : null}
                 </div>

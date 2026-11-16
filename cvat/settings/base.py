@@ -879,8 +879,9 @@ USER_LAST_ACTIVITY_UPDATE_MIN_INTERVAL = timedelta(days=1)
 HEALTH_CHECK = {"DISK_USAGE_MAX": int(os.getenv("CVAT_HEALTH_DISK_USAGE_MAX", 90))}
 
 # Fork: only administrators create organizations (upstream's default lets every account with the
-# "user" role). An organization's owner reads its Team Analytics, so whoever may create an
-# organization may make themself a reader. The environment variable is upstream's and still wins.
+# "user" role). It was set while an organization's owner read its Team Analytics; that is now read
+# by administrators only, and the setting stays the fork's default. The environment variable is
+# upstream's and still wins.
 ORGANIZATIONS_MIN_ROLE_TO_CREATE = os.getenv("CVAT_ORGANIZATIONS_MIN_ROLE_TO_CREATE", "admin")
 
 # Team Analytics (fork): the app and the periodic refresh of its stored totals, only where analytics

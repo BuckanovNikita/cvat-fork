@@ -1,2 +1,3 @@
 Scope,Resource,Context,Ownership,Method,URL,Privilege,Membership
-view,N/A,Organization,N/A,GET,"/team-analytics/status, /team-analytics/overview, /team-analytics/trends, /team-analytics/list, /team-analytics/details",None,Maintainer
+view,N/A,N/A,N/A,GET,"/team-analytics/status, /team-analytics/overview, /team-analytics/trends, /team-analytics/list, /team-analytics/details, /team-analytics/settings, /team-analytics/settings/users, /team-analytics/project-names",Admin,N/A
+update,N/A,N/A,N/A,PUT,/team-analytics/settings,Admin,N/A

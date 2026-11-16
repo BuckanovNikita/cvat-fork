@@ -56,7 +56,8 @@ The fork's complete delta inside upstream's paths:
   `components/team-analytics-page/` and `utils/team-analytics-logging/`.
 - `cvat/apps/engine/rules/`, edited: `issues.rego`, `comments.rego`,
   `tests/configs/issues.csv` and `tests/configs/comments.csv`.
-- `cvat/apps/team_analytics/`, added: the Team Analytics app.
+- `cvat/apps/team_analytics/`, added: the Team Analytics app, with its one
+  model and its migration (`migrations/0001_initial.py`).
 - `cvat/settings/base.py` and `cvat/urls.py`, edited by lines appended at the
   end of each file: in `base.py` the organization creation rule (IAM-2) and
   the Team Analytics wiring (TA-1).
@@ -207,9 +208,14 @@ merged with that release. The upgrade procedure has the review step.
 
 ## IAM-2: Only administrators create organizations
 
-The owner of an organization reads its Team Analytics (TA-1), so whoever may
-create an organization may make themself a reader of figures. The owner
-decided on 2026-11-15 that only administrators create organizations.
+The owner decided on 2026-11-15 that only administrators create
+organizations. The reason then was that the owner of an organization read its
+Team Analytics, so whoever could create an organization could make themself a
+reader of figures. That reason no longer holds: the owner has since decided,
+on 2026-11-15 as well, that only administrators read Team Analytics (TA-1),
+and no organization role reads it. The rule stays as decided. What it still does is
+keep the creation of organizations, and so the choice of who owns one, with
+administrators.
 
 The fork sets upstream's own setting `ORGANIZATIONS_MIN_ROLE_TO_CREATE` to
 `admin` in the lines appended to `cvat/settings/base.py`, on every instance,
@@ -243,11 +249,13 @@ checked on the stack (IAM-D).
 The fork ships two custom images, each built by a script in this repository
 from the working tree. Neither is pulled from a registry; each must be present
 on the node that runs it. Every other image is upstream's or a dependency's.
+No Dockerfile of the fork starts from a `cvat/` image
+([ADR 0007](adr/0007-the-fork-builds-its-images-from-public-bases-the-server-on-debian-12.md)).
 
 | Image | Built by | Content |
 | --- | --- | --- |
 | UI | `build-ui.sh`, `Dockerfile.ui.dockerignore` | Upstream `Dockerfile.ui` built from the repository root, with the fork's UI changes |
-| Fork server image | `build-server.sh`, `Dockerfile.server` | The stock release server image with the fork's changed and added files under `cvat/` and `backend_entrypoint.d/` copied over it ([ADR 0004](adr/0004-a-fork-server-image-that-adds-only-the-patched-policies.md), [ADR 0006](adr/0006-team-analytics-inside-the-backend-with-reads-on-a-worker.md)) |
+| Fork server image | `build-server.sh`, `Dockerfile.server` | CVAT's whole backend built from the fork's tree by the fork's port of upstream's `Dockerfile` to Debian 12 with Python 3.12 ([ADR 0007](adr/0007-the-fork-builds-its-images-from-public-bases-the-server-on-debian-12.md)) |
 
 `build-ui.sh` compiles the frontend inside upstream `Dockerfile.ui`, with the
 repository root as the build context. `Dockerfile.ui.dockerignore`, which
@@ -264,50 +272,93 @@ build needs the network by design (it installs from upstream's lock with
 Node image in `build-ui.sh`, and in upstream's `Dockerfile.ui` the nginx base
 and an unpinned `corepack` install. That is upstream's build, kept as it is.
 
-The fork server image is the stock release image named by `BASE_IMAGE`, with
-every tracked file under `cvat/` and `backend_entrypoint.d/` that the working
-tree adds, changes or changes the type of against the release tag `STOCK_TAG`
-copied over
-`/opt/cvat/`, owned by root as the stock sources are: the two patched policies
-and their test configurations, the Team Analytics app, its wiring in
-`cvat/settings/base.py` and `cvat/urls.py`, and the worker's component file.
-The copied Python is compiled in the image, as the stock image compiles its
-own. No package is installed and nothing else changes. The build context holds
-exactly those files at their paths. `build-server.sh` never pulls or pushes:
-the stock base must already be local, and the build runs without network.
-`IMAGE` (default `cvat/server:v2.82.0-fork`), `BASE_IMAGE` and `STOCK_TAG`
-(the upstream release tag, which must be local) are its supported overrides.
+The fork server image is a full build of the fork's tree by
+`Dockerfile.server`, the fork's port of upstream's `Dockerfile`, stage for
+stage, to `python:3.12-slim-bookworm`: Debian 12, with Python 3.12 from the
+official Python image, the version upstream builds and pins its requirements
+for. Rust for the Datumaro wheel comes from a `rust:1.85-slim-bookworm` stage,
+and smokescreen from the Go image upstream's `Dockerfile` names. Every base is
+pinned by digest, all three (`BASE_IMAGE`, `RUST_IMAGE`, `GOLANG_IMAGE`) as
+the defaults of `Dockerfile.server`'s `ARG`s, and every `FROM` names one of
+them or an earlier stage. Each place
+where `Dockerfile.server` differs from upstream's `Dockerfile` carries a
+comment that says why. Upstream's `Dockerfile` stays as upstream wrote it, and
+the fork's build does not use it. `Dockerfile.server` has no `# syntax=` line,
+so the Dockerfile frontend built into Docker's BuildKit builds it and no
+frontend image is pulled.
 
-The image stands in for upstream's own build of the fork's tree only while
-those copied files are the fork's whole difference in what the server image is
-made of. `build-server.sh` refuses, before it builds, when:
+The build needs network access: `build-server.sh` pulls the three pinned bases
+and no other image, and the build downloads and compiles OpenH264 and FFmpeg,
+downloads the Python packages and builds those without a wheel from source
+(python-ldap, Datumaro with its Rust extension, and PyAV, as upstream does). It
+takes long. `MAKE_JOBS` (default 5, upstream's fixed `make -j5`) sets the
+parallel jobs of each compile step; the compile stages run at the same time,
+so the build can use several times as many cores. The build context is a
+temporary directory with the tracked files of the paths `Dockerfile.server`
+copies (`cvat/`, `backend_entrypoint.d/`, `supervisord/`, `utils/`,
+`backend_entrypoint.sh`, `components/analytics/clickhouse/init.py`,
+`manage.py`, `rqscheduler.py` and `wait_for_deps.sh`), as they are in the
+working tree. The script never pushes. `IMAGE` (default
+`cvat/server:v2.82.0-fork`) and `MAKE_JOBS` are its supported overrides.
 
-- `IMAGE` equals `BASE_IMAGE`, so the stock tag is never overwritten;
-- `BASE_IMAGE` is not local, or `STOCK_TAG` is not a local tag;
-- anything else the stock image is built from differs from `STOCK_TAG`:
-  upstream's `Dockerfile`, `cvat/requirements`, `backend_entrypoint.sh`,
-  `supervisord`, `utils`, `manage.py`, `rqscheduler.py`, `wait_for_deps.sh`,
-  `components/analytics/clickhouse/init.py` or `cvat/nginx.conf`. A changed
-  requirement is a package the stock image does not have, and such a tree
-  needs upstream's own build;
-- the fork deleted a file under `cvat/` or `backend_entrypoint.d/`, which a
-  copy cannot do; a rename counts as a deletion and an addition, so a renamed
-  file is refused too;
-- a file under those two directories is not tracked: the image is made of
-  tracked files, and the working tree would differ from it;
-- nothing under those two directories differs from `STOCK_TAG`.
+`build-server.sh` refuses, before it builds, when:
 
-It builds the image untagged and tags it `IMAGE` only after three checks with
-the server's own bundle builder, each in a one-off container without network:
-the built image's bundle holds the tree's two patched policies; the built
-image's bundle with analytics enabled also holds the Team Analytics policy, so
-the app is installed and loads its rules; and the base image's bundle holds the
-two policies and their two helpers exactly as `STOCK_TAG` has them, so a base
-of another release is refused. If one fails, the script removes only what this
-run built, tags nothing, saves nothing and exits non-zero; an earlier image
-under `IMAGE` stays, and the failure names its ID and says that this run did
-not check it. `SAVE=1` additionally exports a compressed image archive, after
-the checks.
+- upstream's `Dockerfile` differs from the one `Dockerfile.server` was ported
+  from: the script records that file's SHA-256 (`PORTED_FROM_SHA256`), so a
+  release that changes upstream's `Dockerfile` cannot be built until the
+  change is ported ([upgrade procedure, section 3](upstream-upgrade.md#3-merge-the-policies-and-update-the-images));
+- a base named by `Dockerfile.server` is not one image pinned by digest;
+- a file under the copied paths is not tracked (the image would lack it while
+  the working tree has it), or a tracked file there is missing from the
+  working tree;
+- `MAKE_JOBS` is not a positive integer.
+
+It builds the image under a temporary tag and tags it `IMAGE` only after six
+checks, each in a one-off container of the image without network:
+
+1. the image's bundle, built by the server's own builder, holds the tree's two
+   patched policies;
+2. the image's bundle with analytics enabled also holds the tree's Team
+   Analytics policy, so the app is installed and loads its rules;
+3. `python`, `python3`, `django-admin` and `uvicorn`, the programs the process
+   configuration starts, are the venv's and run on Python 3.12,
+   `supervisord` runs, and `nginx -t` accepts the image's nginx configuration
+   as the unprivileged user;
+4. no shared object under the venv and no FFmpeg or OpenH264 library has a
+   dependency that is not found: the check judges `ldd`'s output, not its exit
+   status (which is 0 when a dependency is missing), fails on any "not found"
+   in it and skips only files that are not dynamic (the libraries a wheel
+   bundles in its own `.libs` directory are loaded through the wheel's
+   modules, which are scanned);
+5. Django sets up on the production settings with `CVAT_ANALYTICS` set to 1
+   and to 0, with the Team Analytics app installed and its API routed exactly
+   when analytics is enabled;
+6. `makemigrations --check --dry-run` with analytics enabled finds no model
+   change without a migration.
+
+If one fails, the script removes only what this run built, tags nothing,
+saves nothing and exits non-zero; an earlier image under `IMAGE` stays, and
+the failure names its ID and says that this run did not check it. `SAVE=1`
+additionally exports a compressed image archive, after the checks, for an
+installation without network access.
+
+The checks cover the default build. The `CLAM_AV=yes` and
+`CVAT_DEBUG_ENABLED=yes` branches of `Dockerfile.server` are covered by no
+check and have never been built.
+
+The image is not byte for byte upstream's (ADR 0007). Known deviations:
+Debian 12's glibc and system packages where upstream's image has Ubuntu
+24.04's, among them older nginx, git, poppler and OpenLDAP, and `unrar` from
+Debian's non-free component (enabled in the apt sources only while `unrar`,
+and in the `CLAM_AV=yes` branch the ClamAV library `libclamunrar`, are
+installed; the final image's sources have the main component only); the official image's Python 3.12 under
+`/usr/local` in place of Ubuntu's; a second interpreter, Debian's Python 3.11
+under `/usr/bin`, which Debian's `supervisor` package brings and which runs
+supervisord only (check 3 holds that every program CVAT starts runs on the
+venv's Python 3.12); the base image's own environment variables
+(`PYTHON_VERSION`, `PYTHON_SHA256`, `GPG_KEY`). The installed sources are
+at upstream's paths under `/opt/cvat/`, and the image runs as upstream's
+`django` user with its numeric id.
 
 The chart has one backend image setting, so the server, every worker, the
 Team Analytics worker and the initializer run the fork server image. The
@@ -330,20 +381,20 @@ stopped through the values. Its liveness probe is upstream's worker probe for th
 or Ingress.
 
 The policies are patched in the tree (IAM-1). The server packages the bundle it
-serves at `/api/auth/rules` from its installed rules directories, so the copy
-must land in the directory the server builds that bundle from. Upstream moved
-the installed sources from `/home/django` to `/opt/cvat` in 2.72.0; a copy to a
-directory the server does not read raises no error in the build itself and
-leaves the stock policies in force. The bundle check finds that, and
-`build-server.sh` runs it before it tags the image:
+serves at `/api/auth/rules` from its installed rules directories, so the tree's
+files must land in the directory the server builds that bundle from. Upstream
+moved the installed sources from `/home/django` to `/opt/cvat` in 2.72.0, and
+`Dockerfile.server` writes upstream's one `COPY --parents` as one plain `COPY`
+per path; a destination the server does not read raises no error in the build
+itself. The bundle check finds that, and `build-server.sh` runs it before it
+tags the image:
 `verify/policy_bundle.sh from-image IMAGE [analytics]` builds the bundle with
 the server's own builder in a one-off container of the image, without network
 (with `analytics`, configured as where analytics is enabled), and
 `verify/policy_bundle.sh check` compares each of the two policies in a bundle
 given on stdin, by itself and byte for byte, with the tree's file (with
 `check <tag>`, with the file at that release tag; `check-analytics` also
-compares the Team Analytics policy; `check-stock <tag>` compares the four
-policy files). It first refuses a bundle with two file entries whose names are
+compares the Team Analytics policy). It first refuses a bundle with two file entries whose names are
 one name once normalised (`rules//issues.rego` is `rules/issues.rego`), which
 the server builds when a policy exists in two registered rules directories, an
 entry anywhere that is neither a regular file nor a directory (a link to a
@@ -360,8 +411,9 @@ server caches the bundle it built.
 
 Team Analytics shows how annotation work is done: working time, sessions,
 operations, creation methods, Model, saved boxes, keyboard and mouse use,
-projects and trends. Admins and organization owners and maintainers see it at
-`/team-analytics`, linked from the header. The terms are defined in
+projects and trends. Only administrators see it, at `/team-analytics`, linked
+from the header; the page, its API and its settings are for administrators
+only (Access, below). The terms are defined in
 [`GLOSSARY.md`](../GLOSSARY.md), the decisions in
 [ADR 0001](adr/0001-thin-analytics-service-with-stored-totals.md) (the figures:
 stored hourly totals, every calculation in SQL files, the trailing-window
@@ -382,12 +434,17 @@ refresh, history a day at a time),
   totals database, the refresh calculations, the reads and the control
   statements; Python binds parameters and shapes rows. `views.py`, `urls.py`,
   `permissions.py` and `rules/` are the endpoints and their access check,
-  `reads.py` the read path of the API process, `jobs.py` the worker's two
-  jobs, and `default_settings.py` the settings. The app has no Django models,
-  no migrations and no signal handlers.
-- It reads only CVAT's ClickHouse `events` table and writes its stored totals
-  to its own database (`TEAM_ANALYTICS_DB`) on the same ClickHouse server. It
-  adds no dependency to the stock server image.
+  `serializers.py` and `technical_accounts.py` the rules of the settings
+  endpoints, `reads.py` the read path of the API process, `jobs.py` the
+  worker's two jobs, and `default_settings.py` the settings. `models.py` holds
+  the app's one model, the Technical accounts list (`TechnicalAccount`, table
+  `team_analytics_technicalaccount`), created by the migration
+  `team_analytics 0001`. The app has no signal handlers.
+- In ClickHouse it reads only CVAT's `events` table and writes its stored
+  totals to its own database (`TEAM_ANALYTICS_DB`) on the same ClickHouse
+  server. In Postgres it keeps the Technical accounts list, and reads CVAT's
+  users (for the list and its user search) and projects (for project names).
+  It adds no Python dependency: `cvat/requirements` is upstream's.
 - The app is installed and its refresh scheduled only where analytics is
   enabled (`CVAT_ANALYTICS`, read by upstream as `ANALYTICS_ENABLED`). The
   lines appended to `cvat/settings/base.py` add the queue `team_analytics` to
@@ -397,6 +454,12 @@ refresh, history a day at a time),
   (`cvat.apps.team_analytics.jobs.refresh_totals`, cron `* * * * *`) to
   `PERIODIC_RQ_JOBS`. The line appended to `cvat/urls.py` includes the app's
   routes under `api/` when the app is installed.
+- The app's migration is applied with CVAT's own, by `migrate` in the entry
+  point's `init`, once the app is installed. With analytics off it is not
+  applied, and Django does not drop the table of an app that is no longer
+  installed, so a list kept before analytics was switched off is there when it
+  is switched on again (read from Django's behaviour, not yet seen on a
+  stack).
 - The queue is defined everywhere because CVAT's `syncperiodicjobs`, which the
   entry point's `init` runs, looks only at the queues in `RQ_QUEUES`: for each
   of them it removes every stored periodic job that the configuration no longer
@@ -411,46 +474,195 @@ refresh, history a day at a time),
 
 ### Endpoints
 
-- `GET /api/team-analytics/{status,overview,trends,list,details}`, without a
-  trailing slash. They are left out of the published schema, so
-  `cvat/schema.yml` and the SDK do not describe them. Parameters and answer
-  bodies are those of the calculation code's endpoints.
+- The figures: `GET /api/team-analytics/{status,overview,trends,list,details}`,
+  without a trailing slash. Parameters and answer bodies are those of the
+  calculation code's endpoints. They are answered from the cache or by the
+  worker (Reads, below).
+- The settings and the lookups, answered by the API process from Postgres and
+  never through the read queue (Technical accounts list, below):
+  `GET` and `PUT /api/team-analytics/settings`,
+  `GET /api/team-analytics/settings/users` and
+  `GET /api/team-analytics/project-names`.
+- All of them are left out of the published schema, so `cvat/schema.yml` and
+  the SDK do not describe them.
 - Answers: 200 with the endpoint's JSON; 400 `{"error": "bad_request",
-  "detail": ...}` for a parameter refused; 401 for a caller who is not signed
-  in; 403 for a refusal; 403 `{"error": "organization_required"}` for an owner
-  or maintainer with no organization selected; 404 for an unknown
-  organization; 429 with `Retry-After` and no body when the answer is not
-  ready; 503 `{"error": "unavailable"}` when the read failed. Every response
+  "detail": ...}` for a parameter or body refused; 401 for a caller who is not
+  signed in; 403, the plain refusal of CVAT's permission system, for every
+  other caller who is not let in; 404 for an
+  unknown organization; 429 with `Retry-After` and no body when the answer is
+  not ready; 503 `{"error": "unavailable"}` when the read failed, or when a
+  saved list could not retire the answers computed before it. Every response
   of the view set carries `Cache-Control: no-store`, refusals included.
+- Only these paths are routed: a path with a format suffix, such as
+  `status.json` or `settings.json`, is CVAT's 404 like any unknown path.
 
 ### Access
 
 - Access is decided by CVAT's permission system on every request: the policy
   `rules/team_analytics.rego`, loaded with the other apps' rules
   (`load_app_iam_rules`), and the permission class `TeamAnalyticsPermission`
-  on upstream's `OpenPolicyAgentPermission`, with one scope, `view`, for all
-  five endpoints. Administrators (the `admin` group, from which CVAT derives
-  the global privilege) are allowed anywhere. Inside an organization its
-  owners and maintainers are allowed, whatever their global role. Everyone
-  else is refused, in an organization and outside one.
+  on upstream's `OpenPolicyAgentPermission`, with two scopes: `update` for
+  `PUT settings`, `view` for every other request. The policy has one rule:
+  administrators (the `admin` group, from which CVAT derives the global
+  privilege) are allowed, with or without an organization selected, for both
+  scopes. Everyone else is refused, in an organization and outside one: no
+  organization role reads Team Analytics, an owner's and a maintainer's
+  included.
+- Why: the owner decided on 2026-11-15 that the page, its API and its
+  settings are for administrators only, and closed issue 19 of the Team
+  Analytics tracker
+  (`.scratch/team-analytics/issues/19-any-account-can-move-the-cutover-and-add-its-own-figures.md`)
+  as an accepted risk on that ground. Any account can still send events that
+  move the cutover or add figures for itself (the trust model under "Figures
+  and their limits" stands), but only administrators read the figures.
 - The organization comes from CVAT's own context (the `org` or `org_id`
   parameter or the `X-Organization` header; cvat-core attaches the current
   organization to every request). An unknown organization is CVAT's own 404,
-  before the policy is asked. A member who was removed is refused on the next
-  request: the app keeps no cache of who the caller is.
-- Scope: inside an organization, organization scope. An administrator with no
-  organization selected reads instance scope. CVAT itself reads "no
+  before the policy is asked. A caller who is no longer an administrator is
+  refused on the next request: the app keeps no cache of who the caller is.
+- Scope of the figures: an administrator with an organization selected reads
+  organization scope; with none, instance scope. CVAT itself reads "no
   organization" as the caller's personal workspace; the app maps it to
   instance scope itself (`scope_of` in `views.py`), the one place where the
   app's scope differs from CVAT's context. Team Analytics has no figures of a
-  single personal workspace.
-- A caller refused with no organization selected who is an active owner or
-  maintainer of some organization gets the 403 body
-  `{"error": "organization_required"}`, and the page asks them to select an
-  organization. The policy only allows or refuses; the view tells this case
-  apart.
+  single personal workspace. The settings and the two lookups are
+  instance-wide whether or not an organization is selected.
 - A 401, 403 or 404 from any endpoint puts the open page into the matching
-  refusal; a 404 reads as "not available", as a 403 does.
+  refusal; a 404 reads as "not available", as a 403 does. A signed-in caller
+  who is not an administrator and opens the page's address sees "not
+  available", which says that the page is for administrators of the
+  instance.
+
+### Technical accounts list
+
+- The Technical accounts list (glossary, Technical account) is one list for
+  the whole instance, kept in Postgres by user id with the user's name as it
+  was at the last save that listed it. Administrators edit it in Team
+  Analytics settings on the page. It is not a setting of the deployment: the
+  environment variable `TEAM_ANALYTICS_TECHNICAL_ACCOUNTS`, which held a list
+  of user names before, no longer gives the list. It is looked at once, when
+  a process loads the app's settings, only to warn: where it is still set and
+  not empty, that process logs one warning that it is ignored and where the
+  list is kept now.
+- Membership is applied when figures are read: every read matches the
+  technical accounts by user id in the stored totals, and no history is
+  recomputed. A change therefore applies to every past period at the next
+  read. A save advances the answer generation (Reads, below), so no answer
+  computed on the old list is served as it is after the save. The worker
+  reads the list after it reads the generation, so an answer computed on a
+  list read before a save is stored as older than that save.
+- `GET settings` answers `{"technical_accounts": [{"user_id": 12,
+  "user_name": "...", "deleted": false}, ...]}`, ordered by user name, then
+  id. `user_name` is the user's current name; for a user that no longer
+  exists it is the stored name and `deleted` is true. A user deleted from CVAT
+  stays on the list until an administrator removes it; the page shows it as
+  "deleted account, id N".
+- `PUT settings` with `{"technical_accounts": [12, 40]}` replaces the whole
+  list and answers as `GET settings` does after the save. The body must be a
+  JSON object whose `technical_accounts` is a list of positive integers, with
+  no duplicates and at most 1,000 of them; an id not yet on the list must be
+  an existing user, and an id already on the list is kept even when its user
+  is gone, so a deleted user can stay on the list but cannot be added again.
+  Anything else is refused with 400 and a sentence in `detail`, and nothing
+  changes; a body that is not JSON, or is sent with another content type than
+  JSON, gets the same 400, not DRF's own answer. The save takes a lock on the
+  table against other writers, so two saves take turns and the second one
+  replaces the first one's list; readers are not held up. It commits, then
+  advances the generation and logs who added and removed which ids. A save
+  advances the generation even when the list is unchanged. When the
+  generation cannot be advanced after the commit, or the step after the
+  commit does not run at all, the answer is 503 `{"error": "unavailable"}`
+  and the error is logged: the list is saved either way, and answers computed
+  before it can be served until the generation next advances (the next
+  refresh run that writes, or another save). Saving again repairs it.
+- `GET settings/users?search=<text>` answers `{"users": [{"id", "username",
+  "first_name", "last_name"}, ...]}`: at most 20 users of the whole instance,
+  in any organization or none, active or not, whose user name, first name or
+  last name contains the text, ignoring case, ordered by user name. An empty
+  or absent search gives the first 20. A search longer than 150 characters is
+  refused with 400. It exists because CVAT's `/api/users` is narrowed to the
+  selected organization even for an administrator.
+- `GET project-names?ids=4,8,9` answers `{"names": {"4": "...", "8": "..."}}`:
+  the names of the existing projects among the ids, whatever their
+  organization; an unknown id is left out. At most 500 ids, each a positive
+  integer, separated by commas; duplicates count once; no ids answers an empty
+  map. Anything else is refused with 400. It exists because CVAT's projects
+  API returns an administrator with no organization selected only the
+  projects of the personal workspace (seen on a stack on 2026-11-15: 1 of 45
+  projects), so the page could not name projects at instance scope.
+- Known limits of the list: matching is by user id, so an account that was
+  deleted and created again under the same name is a different account and
+  is not on the list until it is added. The stored name of a listed user is
+  as fresh as the last save; `GET settings` shows the current name of a user
+  that exists, so the stored one matters only once the user is deleted. A
+  user deleted while a save that adds it is in progress can end up on the
+  list as a deleted account. After a 503 on a committed save the figures keep
+  the old list until the generation next moves. A very deeply nested JSON
+  body ends as a 500, as it does anywhere in CVAT. Figures are not kept per
+  list: a period read before and after a change shows different figures, and
+  nothing records which list a figure was read with, beyond the log of each
+  save. The page waits at most 30 s for a save; after that the user can save
+  again while the first request is still held somewhere on its way. Saves
+  take turns under the table lock and the page sends no precondition, so if
+  the first request reaches the server last, the older list is the one kept,
+  and the page does not say so.
+
+### The page
+
+- The header's Team Analytics link is shown only to administrators, and only
+  where analytics is enabled. The page reads the organization CVAT has
+  selected and keeps it in its address.
+- The page decides from the signed-in account's groups, by the same rule as
+  the header link (the `admin` group): an account that is not an
+  administrator sees the "not available" panel on the first render, and the
+  page sends no Team Analytics request at all, whatever its address says. An
+  administrator's page asks the API; a 403 that arrives anyway (the account's
+  rights changed) leads to the same panel, and a refusal that arrives while
+  the settings dialog is open closes the dialog.
+- The filter bar holds the period, the Bounding boxes / All shapes switch, the
+  Project and Annotator selectors and the "data as of" stamp; its controls
+  share one height. Project and Annotator are searchable dropdowns that pick
+  one value each, "All" first; their options come from the full view's list
+  read for the period, without the other filters, loaded when the dropdown
+  opens. For a period that is not processed yet they offer only "All" and the
+  current value. After typing, the first match is the active option, so Enter
+  picks it (with no match, Enter picks nothing); clearing a filter leaves the
+  focus in its selector. An open dropdown closes when its period or
+  organization changes, and its popup is placed so that it stays inside the
+  page and never makes it scroll sideways. Clicking a row of a card still
+  sets the filter.
+- The operations card has five columns (Operation, Boxes or Objects, Avg time,
+  Total time, Share); the hotkey and mouse split of each operation is a
+  second line under it, so the card is designed to fit its narrowest width
+  without sideways scrolling.
+- The terms Session, Working time, Time per operation and Model carry their
+  definitions as tooltips where the Overview shows them (shown on hover,
+  keyboard focus, click or tap), in place of the block of definitions that
+  ended the Overview. The full views are unchanged.
+- A Settings button at the right of the page header opens "Team Analytics
+  settings", a dialog with the Technical accounts list: the listed accounts,
+  each with a remove button, a search for users to add, Save and Cancel, and
+  the sentence that a change applies to every past period the next time the
+  page is loaded. In the search, accounts already on the list are shown
+  disabled and marked "already on the list", so the answer of at most 20
+  does not look shorter than it is; a search that fails says so instead of
+  "No users found"; the search text is at most 150 characters, the server's
+  limit. While a save is on its way the dialog cannot be closed (Cancel, the
+  close button, Escape and the mask do nothing) and a second Save sends
+  nothing. The dialog waits for a save for at most 30 seconds: after that it
+  says the save may or may not have been stored and can be closed or used
+  again, and an answer that still arrives is ignored. After a successful
+  save the dialog closes and everything the page
+  shows is loaded again, the selectors' options included. A refused save
+  shows the server's sentence; a save that may or may not have been stored
+  says so and asks to open the settings again.
+- A definition's tooltip, opened by hover or focus, is hidden by Escape
+  wherever the focus is.
+- Project names come from the fork's `project-names`, in requests of at most
+  500 ids and 3,000 characters of ids, so the request line stays under 4,096
+  characters. Ids a request answered without a name are not asked again
+  until the page's data is reloaded; the ids of a request that failed are
+  asked again.
 
 ### Reads
 
@@ -467,9 +679,9 @@ refresh, history a day at a time),
   by the worker; a parameter it refuses is answered as 400, and that answer is
   kept only for `TEAM_ANALYTICS_FAILURE_TTL_S`.
 - The key names the request only: a SHA-256 over the endpoint, the
-  organization (none for instance scope), whether the caller is an
-  administrator (`status` differs by it), the kept parameters and the current
-  UTC hour. There is one job and one cache entry per request key. Access is
+  organization (none for instance scope), the kept parameters and the current
+  UTC hour. Who asks is not part of it: only administrators read, and every
+  one of them gets the same answer for the same scope. There is one job and one cache entry per request key. Access is
   checked before the cache is read and the key names the scope, so an entry
   is never served across organizations. An entry expires after
   `TEAM_ANALYTICS_ANSWER_TTL_S`, and a new hour is a new key.
@@ -518,7 +730,8 @@ refresh, history a day at a time),
   decide between two answers. The worker
   advances it once at the end of a refresh run that may have changed what
   readers see (below), not after every step, and once the first make-ready is
-  done. Answers computed on an earlier generation are then no
+  done; the API process advances it after each save of the Technical accounts
+  list. Answers computed on an earlier generation are then no
   longer used as they are; each is computed again when it is next asked for.
 - Consequence: an answer can be older than the totals by at most one refresh
   run. An answer computed while a run writes is stored with the generation
@@ -541,7 +754,12 @@ refresh, history a day at a time),
   when the cache fails: a failure is logged, and CVAT's handlers for failed
   jobs never see it.
 - `read_answer` computes one answer through the engine and stores it under its
-  key for `TEAM_ANALYTICS_ANSWER_TTL_S`. Each statement of a read runs with a
+  key for `TEAM_ANALYTICS_ANSWER_TTL_S`. It reads the generation, then the
+  Technical accounts list from Postgres, and passes the list's ids to the
+  engine as a value (the calculation code names no Django); a failure to read
+  the list is a failed read. The job closes its Postgres connection right
+  after it reads the list, so the ClickHouse read that follows holds none.
+  Each statement of a read runs with a
   time limit (`TEAM_ANALYTICS_READ_STATEMENT_S`) and a memory limit
   (`TEAM_ANALYTICS_READ_STATEMENT_MEMORY_BYTES`) that ClickHouse enforces; the
   job has the timeout `TEAM_ANALYTICS_READ_JOB_TIMEOUT_S`. A read that fails
@@ -659,7 +877,6 @@ host, port, account, and the database of the `events` table).
 | Setting | Default | Meaning | Minimum |
 | --- | --- | --- | --- |
 | `TEAM_ANALYTICS_DB` | `team_analytics` | Database of the stored totals, on CVAT's ClickHouse server | text |
-| `TEAM_ANALYTICS_TECHNICAL_ACCOUNTS` | empty | User names of technical accounts, separated by commas | text |
 | `TEAM_ANALYTICS_REFRESH_INTERVAL_S` | `600` | Age of the last refresh of recent hours at which the next is due | 1 |
 | `TEAM_ANALYTICS_REFRESH_WINDOW_HOURS` | `48` | Recent hours the refresh recomputes | 1 |
 | `TEAM_ANALYTICS_LOOKBACK_S` | `300` | How far before the refresh window the computation reads events | 0 |
@@ -674,16 +891,21 @@ host, port, account, and the database of the `events` table).
 | `TEAM_ANALYTICS_ANSWER_TTL_S` | `900` | How long an answer stays in the cache | 1 |
 | `TEAM_ANALYTICS_FAILURE_TTL_S` | `5` | How long a failed read (503) or a parameter the worker refused (400) is remembered | 1 |
 
+The Technical accounts list is not a setting: administrators keep it on the
+page (Technical accounts list, above), and `TEAM_ANALYTICS_TECHNICAL_ACCOUNTS`
+is ignored with a warning.
+
 Fixed in the code, not settings: the lock's 120 s, the cutover search's limits
 (23 s in the make-ready, 60 s in the daily check, 512 MiB in both), the 50 ms between
 looks into the cache, the parameters each endpoint reads and the longest value
-of each.
+of each, and the limits of the settings endpoints (1,000 technical accounts,
+20 users and 150 characters for the user search, 500 project ids).
 
 ### When something is unavailable
 
 The API process does no analytical work, so the failures below show on the
 Team Analytics page and nowhere else in CVAT. The stack checks this on a
-running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-dropped]`, see the
+running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-dropped|redis-down]`, see the
 [stack's README](../verify/team-analytics-stack/README.md)).
 
 - The worker stopped: reads are queued up to the queue limit, each request
@@ -713,7 +935,7 @@ running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-droppe
     other section is null whole, rows and all;
   - full-view list: `period`, `processed`, `by` and the legacy flags;
   - details table: `by`, `page_size`, `processed`, `technical_accounts` (how
-    many accounts are configured as technical) and the legacy flags; it
+    many accounts are on the Technical accounts list) and the legacy flags; it
     returns neither the period nor a filter echo, in any answer;
   - trends: each bucket says whether it is processed; in every line the point
     of a bucket that is not fully processed keeps `legacy` and
@@ -749,39 +971,27 @@ running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-droppe
   A caller must not read them as final while `processed` is false. The page
   hides the shape switch while the overview's `operations.legacy` is true, so
   the switch can appear or vanish when a period's processing completes.
-- `status` depends on who asks. An administrator, with or without an
-  organization selected, gets the whole history block: `complete`, `percent`,
-  `ready_from`, `ready_from_day`, `first_day`, `days_ready`, `days_total`,
-  `periods`, `earliest_month`, `complete_weeks`, `trends_ready`. Everyone else
-  who may read gets `complete`, `percent`, `periods`, `earliest_month`,
-  `complete_weeks` and `trends_ready`. Both get `refresh` (freshness) and
-  `cutover`. Every one of these fields describes the whole instance, not the
-  caller's organization: history is processed for the instance as a whole.
-- Known limit of `status` for a caller outside the admin group: while history
-  is processed, such a caller who polls status can work out the instance's
-  exact first event day, and so the length of its history. The percentage is
-  "days processed / days in the instance"; each time `earliest_month` changes
-  the processed days begin on that month's first day, and each time
-  `complete_weeks` changes (below twelve) on a Monday, so the processed day
-  count is known exactly at those moments and the percentage then gives the
-  total. The `processed` flags of the overview, the list and the details table
-  for any `month`, and the trends' per-bucket flags, bound the same to the
-  month or the week. After history is complete the window reopens briefly: an
-  event dated before the instance's first day makes `complete` false again for
-  a step or two, and for that time the same applies to the older history.
-  Making the percentage coarser (rounded, or not tied to the instance's day
-  counts) would blunt this; that is an open decision for the owner.
+- `status` has one form, with or without an organization selected: the whole
+  history block (`complete`, `percent`, `ready_from`, `ready_from_day`,
+  `first_day`, `days_ready`, `days_total`, `periods`, `earliest_month`,
+  `complete_weeks`, `trends_ready`), `refresh` (freshness) and `cutover`.
+  Every one of these fields describes the whole instance, not the selected
+  organization: history is processed for the instance as a whole.
 - The details table by project lists every project in the caller's scope with
   working time, operations or saved boxes, so a project whose only work is
   boxes saved by a technical account has a row (no working time, its saved
   boxes and its Model boxes). A technical account never appears in the table
   by annotator or in any other list of people, and under an annotator filter
-  on its id its saved boxes neither list a project nor count for one.
+  on its id its saved boxes neither list a project nor count for one. The
+  Overview's saved boxes follow the details: under an annotator filter on a
+  technical account's id they are empty, the total and the rows per project.
 - The page's project and annotator filters belong to the organization named
   by `org` in the page address. Filters of another organization, or of an
-  address that names none while one is selected, are not applied. Requests to
-  CVAT for project names and the details project search stay bounded: names
-  go 100 ids per request, and the search sends one table page of ids.
+  address that names none while one is selected, are not applied. Requests
+  for project names and the details project search stay bounded: names go to
+  the fork's `project-names` in requests of at most 500 ids and 3,000
+  characters of ids (commas counted encoded), and the search sends one
+  table page of ids.
 - Known limit of the annotator search in the details table: the page sends
   the search text, trimmed, as `search`, and the API refuses a value longer
   than 200 characters with 400. The page's search input has no length limit
@@ -858,11 +1068,11 @@ running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-droppe
   (stock CVAT allows every authenticated caller to send events, sets the user
   and organization of a client event from the request, and takes the job,
   task and project ids, counts, durations, payload and time from the client).
-  Whether to bound the cutover search (for example by a configured earliest
-  date, or by an administrator's setting) is open for the owner: the search is
-  the owner's decision (ticket 17 of the defect fixes), and the question is
-  filed as
-  `.scratch/team-analytics/issues/19-any-account-can-move-the-cutover-and-add-its-own-figures.md`.
+  The owner closed the question of bounding the cutover search on 2026-11-15
+  (`.scratch/team-analytics/issues/19-any-account-can-move-the-cutover-and-add-its-own-figures.md`)
+  as an accepted risk: the search stays as decided in ticket 17 of the defect
+  fixes, events stay unchecked, and only administrators read the figures
+  (Access, above).
 - Known limits of the app's reach into ClickHouse: it uses CVAT's own account
   (`CLICKHOUSE["events"]`, which the chart fills from `cvat-analytics-secret`),
   the account CVAT writes its events with, so it could write to or drop CVAT's
@@ -874,20 +1084,12 @@ running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-droppe
   day of history have a time limit (`TEAM_ANALYTICS_REFRESH_STATEMENT_S`) and
   no memory limit of the app's own: their memory is bounded only by
   ClickHouse's server limits.
-- Who can read, and what remains: only administrators create organizations
-  (IAM-2), so the readers besides administrators are the owners and
-  maintainers of organizations an administrator created, each in their own
-  organization. Two things remain. Organizations created before the rule keep
-  their owners, since the setting does not look back. And an owner or
-  maintainer still sees in `status` the instance-wide state that the limit of
-  `status` for a caller outside the admin group (above) describes; what
-  `status` shows such a caller was decided by the owner on 2026-11-14 and is
-  unchanged. An instance that overrides
-  `CVAT_ORGANIZATIONS_MIN_ROLE_TO_CREATE` with a lower role makes every
-  account at that role a possible reader of its own organization's figures.
+- Who can read: administrators only. Neither an organization role nor
+  `CVAT_ORGANIZATIONS_MIN_ROLE_TO_CREATE` makes anyone else a reader; an
+  owner of an organization created before IAM-2 reads nothing either.
 - Known limit of the read queue: there is no per-user limit on waiting
-  requests or queued reads. The queue limit is shared by everyone, so one
-  account that sends many different valid requests can make others get 429
+  requests or queued reads. The queue limit is shared by every reader, so one
+  administrator who sends many different valid requests can make others get 429
   from Team Analytics. CVAT's own endpoints are not affected: a waiting
   request holds a thread of the API process and no database connection, as
   with the worker stopped (TA-G).
@@ -1046,7 +1248,8 @@ running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-droppe
   Each part's hover gives its own hours. The overview's "where working time
   goes" reads Other with the same floor over its whole scope. For such a row
   the parts shown add up to more than its working time, while the page's
-  definitions say of working time that every breakdown of time adds up to it.
+  definition of working time (its tooltip) says that every breakdown of time
+  adds up to it.
   The rule is the calculation's; the owner has not been asked about the
   wording beside it. Whether to change the definition's wording or how such a
   row is shown is an open decision for the owner.
@@ -1058,7 +1261,9 @@ running CVAT (`run.sh check-isolation [worker-down|clickhouse-down|totals-droppe
   to the read limits above; what it costs on a large scope belongs in dated
   evidence.
 - The page fits a narrow window inside CVAT's 1024 px minimum app width: cards
-  stack, and wide tables scroll inside their cards.
+  stack, and wide tables scroll inside their cards. The operations card is
+  laid out not to need that (The page, above); the creation-methods card, among
+  others, can still scroll sideways.
 
 ### Team Analytics integration map
 
@@ -1074,7 +1279,7 @@ paths in this table are under `cvat-ui/src/`.
 | File | Responsibility / upstream changes to inspect |
 | --- | --- |
 | `components/cvat-app.tsx` | `/team-analytics` route (lazy page with its own error boundary); one call `listenForInput(window)` in `componentDidMount`, which attaches the logging's own capture listeners for key presses and clicks (upstream's listener is unchanged) |
-| `components/header/header.tsx` | Former "Analytics" link renamed "Grafana"; "Team Analytics" link shown by `canOpenTeamAnalytics` from the analytics plugin flag, `user.groups` and the current organization role |
+| `components/header/header.tsx` | Two imports; former "Analytics" link renamed "Grafana"; "Team Analytics" link shown by `canOpenTeamAnalytics` from the analytics plugin flag and `user.groups` (administrators only) |
 | `components/annotation-page/annotation-page.tsx` | `trackInputJob(job)` where the job logger is set; on unmount `untrackInputJob().then(saveLogs)` |
 | `utils/mousetrap-react.tsx` | `hotkeyUsed(action, event)` before every shortcut handler |
 | `components/annotation-page/canvas/views/canvas2d/canvas-wrapper.tsx` | Shape fields on draw, canvas paste, drag and resize; `drawingStarted`/`drawingEnded` for the input method; `groupMoved(job, e.detail)` in the `canvas.groupmoved` handler before its first `await` (the grabbed object's drag then gets the group mark through the drag's shape fields) |
@@ -1116,10 +1321,16 @@ For each, what breaks if upstream changes it and how it would show:
   of a configured queue that the configuration no longer names, an instance
   where analytics was switched off keeps its refresh schedule; the stack's
   `check-analytics-off` shows it.
-- The organization middleware and `request.iam_context` (`organization`,
-  `privilege`), with `IAM_ADMIN_ROLE` and the `Membership` model's roles and
-  `is_active`: a change gives a wrong scope, a missing `organization_required`,
-  or a 500; the stack's access cases fail.
+- The organization middleware and `request.iam_context` (`organization`),
+  and the policy helper `utils.is_admin`: a change gives a wrong scope, a
+  refusal of administrators, or a 500; the stack's access cases fail.
+- CVAT's user model (`AUTH_USER_MODEL`, `cvat.apps.iam.models.User`: `id`,
+  `username`, `first_name`, `last_name`) and the project model
+  (`cvat.apps.engine.models.Project`: `id`, `name`), which the settings, the
+  user search and `project-names` read, and Django's migrations, which create
+  the app's table: a renamed model or field fails those endpoints with a 500,
+  or the app's import at start; `build-server.sh`'s Django set-up and
+  migration checks and the stack's `check-settings` show it.
 - The entry point's component files (`backend_entrypoint.d/*.conf`, merged by
   `backend_entrypoint.sh`, and `run worker <component>` with `NUMPROCS`): a
   change in their format stops the worker from starting; its pod fails and the
@@ -1145,11 +1356,10 @@ For each, what breaks if upstream changes it and how it would show:
   `Retry-After` delay): without it every miss shows the error panel at once
   instead of the figures after a retry.
 - cvat-core's error text (`generateError` in `cvat-core/src/server-proxy.ts`
-  writes an unknown JSON body as `**<field>**: <value>` lines of the error's
-  message): the page recognises `organization_required` from that text. If the
-  format changes, an owner or maintainer with no organization selected sees
-  "not available" instead of the request to select one; the page suite's
-  stand-in for cvat-core does not follow such a change.
+  makes the error's message of the answer's body): the settings dialog shows
+  that text for a refused save (400). If the format changes, the dialog shows
+  another text for the same refusal; nothing else depends on it, and the page
+  suite's stand-in for cvat-core does not follow such a change.
 - `ORGANIZATIONS_MIN_ROLE_TO_CREATE` (IAM-2): its name, its environment
   variable, the organizations app's way of taking its default only when the
   Django settings have none, and its use in `organizations.rego`. A rename or
@@ -1174,10 +1384,10 @@ it:
   with the shape type in `obj_name`);
 - `createAnnotationsAsync` in `actions/annotation-actions.ts` resolving to the
   created client ids, and to `[]` when creation failed;
-- `/api/server/plugins` (`ANALYTICS`), the `admin` group in `user.groups`, and
-  the UI's current organization role (`organizations.currentRole`), from which
-  the header decides whether to offer the link;
-- the project list filter on `id` that the page uses for project names;
+- `/api/server/plugins` (`ANALYTICS`) and the `admin` group in `user.groups`,
+  from which the header decides whether to offer the link;
+- the selected organization in the UI's state (`organizations.current`),
+  which the page reads for its address and its requests;
 - CVAT's `#root` minimum width and header layout;
 - the shortcut action names in the UI keymaps, which the page shows with the
   viewer's own keys;
@@ -1225,18 +1435,20 @@ decision on whether it is an operation. A rename breaks the figures silently.
 
 | ID | Expected observable outcome | Existing evidence mechanism |
 | --- | --- | --- |
-| TA-A | The real server accepts every record the UI logging adds, and each reaches the events table with its fields | Seam 2 (`node --test verify/team_analytics_logging.cjs`) for the serialized batch; `verify/team-analytics-stack/run.sh check-final` for a real browser, server and ClickHouse |
+| TA-A | The real server accepts every record the UI logging adds, and each reaches the events table with its fields | Seam 2 (`tools/gate/node-suite.sh verify/team_analytics_logging.cjs`) for the serialized batch; `verify/team-analytics-stack/run.sh check-final` for a real browser, server and ClickHouse |
 | TA-B | Stock event logging and working time are unchanged by the new logging; the closing input summary leaves with the closing save | Seam 2; `check-final` (client scopes, `client_id`, `send:working_time`, all event POSTs answered 201) |
 | TA-C | For given events the app returns the agreed figures for sessions, working time, operations, creation methods, Model, saved boxes, keyboard and mouse, projects, trends, history and late events | Seam 1 (`verify/team_analytics_backend.sh`, the calculation tests against a real ClickHouse); `check-final` for real UI work and loaded volume |
-| TA-D | Each role gets exactly what the access rules allow, on every endpoint, with real accounts; a removed member is refused on the next request; no cached answer is served across organizations | Upstream's generated policy tests for `rules/team_analytics.rego`; `check-tracer`, `check-final` and `check-access` against the real CVAT; `check-cross-org` for cached answers |
-| TA-E | The page renders every state, filters, full views, comparison, long names and large numbers | Seam 3 (`node --test verify/team_analytics_page.cjs`); `check-final` in a browser |
-| TA-F | With a hundred annotators and forty long-named projects the overview keeps its length and nothing overflows; on a narrow window cards stack and wide tables scroll sideways | `check-final` in headless Chrome (seam 3 has no layout) |
+| TA-D | Administrators read Team Analytics with and without an organization selected, and every other account, an organization's owner and maintainer included, is refused with 403 on every endpoint, the settings included; signed out is 401; an administrator taken out of the admin group is refused on the very next request, in the session it has and in a fresh one; a non-administrator's page shows "not available" at once and sends no Team Analytics request; no cached answer is served across organizations or between an organization and the instance | Upstream's generated policy tests for `rules/team_analytics.rego`; `check-tracer`, `check-final`, `check-access` and `check-settings` against the real CVAT; seam 3 and `check-tracer` for the non-administrator's page; `check-cross-org` for cached answers |
+| TA-E | The page renders every state, filters (the Project and Annotator selectors among them), full views, comparison, long names and large numbers; the terms' tooltips carry their definitions; the settings dialog shows, edits and saves the Technical accounts list, offers an account already on the list disabled, cannot be closed or saved twice while a save is on its way, and says why a save or a search failed | Seam 3 (`tools/gate/node-suite.sh verify/team_analytics_page.cjs`); `check-final` and `check-fixes page` in a browser |
+| TA-F | With a hundred annotators and forty long-named projects the overview keeps its length and nothing overflows; on a narrow window cards stack and wide tables scroll sideways, the operations card's table excepted; the filter bar's controls share one height; an open selector's popup stays inside the page and never makes it scroll sideways | `check-final` and `check-fixes page` in headless Chrome (seam 3 has no layout) |
 | TA-G | With the Team Analytics worker stopped, with ClickHouse stopped and with the totals database missing, the page shows its error panel, and signing in, the task list and opening and saving a job still work | `check-isolation [worker-down\|clickhouse-down\|totals-dropped]`; `check-worker` (part of `up`) for the worker itself |
-| TA-H | The fork server image adds no dependency to the stock server image and carries the app; the UI image serves the page; with analytics off the server starts, no worker is rendered, no refresh is scheduled and the endpoints answer 404 | `build-server.sh` (its refusals and its analytics bundle check), `build-ui.sh`; the stack run uses both images; `check-analytics-off`, and the analytics-off render check inside `preflight` |
+| TA-H | The fork server image is built from the fork's tree on public bases with upstream's requirements and carries the app with its migration; the UI image serves the page; with analytics off the server starts, no worker is rendered, no refresh is scheduled and the endpoints answer 404 | `build-server.sh` (its refusals and its six checks), `build-ui.sh`; the stack run uses both images; `check-analytics-off`, and the analytics-off render check inside `preflight` |
 | TA-I | While others load uncached Team Analytics views, CVAT's own endpoints answer as fast as without them, and the views return figures within cvat-core's retries (29 s with the defaults) | `check-load` |
+| TA-J | The Technical accounts list: a save refuses a bad body and changes nothing, advances the answer generation by one, a save of the unchanged list too, and applies to past periods at the next read; removing an account restores the figures; a deleted user stays listed; the user search and the project names reach the whole instance | Seam 1 for the list's rules and the reads by user id; `check-settings` against the real CVAT |
 
 Seams 1 to 3 run real code with the boundaries supplied: the calculation tests
-run the working tree's app in the stock server image against a throwaway ClickHouse and
+run the working tree's app in the fork server image (`SERVER_IMAGE`, default
+`cvat/server:v2.82.0-fork`, which must be built first) against a throwaway ClickHouse and
 a throwaway Redis (`verify/team-analytics-backend/`, run by
 `verify/team_analytics_backend.sh`), and include the read path's rules with the
 cache and the queue supplied and the check that the API side imports nothing
@@ -1251,12 +1463,39 @@ scenarios it drives: the detector record is produced by the real UI with only
 the model list and the model's answer supplied in the browser, the current week
 of the volume goes through the events API (older weeks are inserted directly,
 since the API cannot date records back), and `run.sh check-access` runs a
-removed member, an administrator by group, a personal workspace and header
-credentials against the real CVAT. `run.sh check-fixes` drives each defect fix
-along the path that failed. The stack does not cover a deployed model function.
+revoked administrator, an administrator by group, a personal workspace and
+header credentials against the real CVAT. Its `revoked-admin` case
+(`verify/team-analytics-stack/access_cases.py`) has an account in the
+`admin` group without the superuser flag read the status with and without an
+organization, an organization's overview and the settings; an administrator
+then takes it out of the group through CVAT's API, and its very next
+requests, in the session it already has and in a fresh one, must each be the
+plain 403 with no wait; the account is put back in the group afterwards. `run.sh check-settings` runs the settings
+endpoints against it: refusals, writes with their CSRF and token rules, bad
+bodies, the generation, the user search, a retroactive change of the list,
+project names and a deleted user. `run.sh check-fixes` drives each defect fix
+along the path that failed; its `page` step checks the page in a browser as an
+administrator: the filter bar's height and centre line, the operations card
+over a sweep of window widths, the selectors, the terms' tooltips and the
+settings dialog. The refusal page for non-administrators is part of
+`check-tracer`, which also holds that their pages (the start page's header
+and a direct visit to `/team-analytics`) send no request to
+`/api/team-analytics/`. The stack does not cover a deployed model function.
+Known limits of these checks, recorded by the independent review on
+2026-11-16 and not fixed: the settings check's "HEAD answers with no body"
+half cannot fail, because its HTTP client reads no body for HEAD (its status
+half is real); the `page` step's instance-scope project-names part takes an
+organization whose switch failed for one with no project names this week and
+passes on the others; `check-load` takes the end of a refresh run from rq's
+"Job OK" line, milliseconds after the generation moved, and one `current`
+run per pod's log, two narrow windows in which a real repeated read would be
+excused (otherwise the rule errs towards false failures).
 The stack's own subcommands and what each judges are in its
-[README](../verify/team-analytics-stack/README.md). The independent review of
-the access rules is recorded with the dated evidence.
+[README](../verify/team-analytics-stack/README.md). Two independent reviews
+are recorded with the dated evidence: the record of 2026-11-15 is of the
+access rules before Team Analytics became administrators-only, and the
+record of 2026-11-16 is of the administrators-only rules, the settings and
+the checks described here.
 
 ## Acceptance scenarios
 
@@ -1271,7 +1510,7 @@ the access rules is recorded with the dated evidence.
 | IAM-B | Nonmembers, removed members, other organizations and sandbox/context mismatches do not gain access from the patch | Same policy suites; the stack's matrix for a nonmember, another organization's member, each organization's members on the other's issue, the personal workspace and an account with no global role. A removed member is covered by the policy suites only |
 | IAM-C | Sandbox behavior and upstream filter shape remain compatible with the target release | Stock-versus-patched policy suite with the release's helpers; upstream's generated suite on the merged tree |
 | IAM-D | Only administrators create organizations: an account with the `user` or `worker` role, and an organization's owner or maintainer, is refused with 403 and nothing is created; an administrator creates one | The stack's `run.sh check-org-creation` (part of `up`) against the real API |
-| BUILD-A | Built image serves the changed UI without stale bundles/source maps; the backend runs the fork server image, which differs from the stock release only in the copied fork files | Image inspection and browser verification; `build-server.sh`'s refusals and bundle checks, and the dated comparison of the fork and stock images (`docs/evidence/2026-11-14-fork-server-image.md`, made when the image carried only the two policies) for the content; the stack's render check for the backend image name only |
+| BUILD-A | Built image serves the changed UI without stale bundles/source maps; the backend runs the fork server image, built from the fork's tree by `Dockerfile.server` with the known deviations from upstream's image (BUILD-1) and no other | Image inspection and browser verification; `build-server.sh`'s refusals and six checks; a one-time comparison of the first image built this way with the previous fork server image, in `docs/evidence/2026-11-16-open-lines-closed-and-admin-settings.md` (the earlier comparison, `docs/evidence/2026-11-14-fork-server-image.md`, is of the overlay image and does not cover this build); the stack's render check for the backend image name only |
 | BUILD-B | Both served policy files equal the tree's, each by itself, and real requests exhibit the patched behavior | `verify/policy_bundle.sh` on the image, `run.sh check-policies` on the served bundle, and `run.sh check-issues`; not marker presence alone |
 
 The frontend suite executes real TypeScript, Redux and server-rendered React
@@ -1356,10 +1595,11 @@ current kube context names; it is not run against a shared cluster.
 ## Changes that do not need reimplementation
 
 The fork carries no ClickHouse change: `components/analytics/clickhouse/init.py`
-is upstream's, and `build-server.sh` refuses to build when it differs from the
-release. Earlier submodule, patch-series, filtered-import and custom-Dockerfile
-workflows have been replaced by the merge of upstream releases and upstream's
-own Dockerfile build of the UI. The old HTML head fix is absent from the current
+is upstream's, and the fork's delta (Ownership and scope, above) does not list
+it. Earlier submodule, patch-series and filtered-import workflows have been
+replaced by the merge of upstream releases. The UI is built by upstream's own
+`Dockerfile.ui`; the server by `Dockerfile.server`, a port of upstream's
+`Dockerfile` that is re-ported when a release changes it (BUILD-1). The old HTML head fix is absent from the current
 baseline diff, and upstream Google Fonts links are retained. Reapply current
 behavior, not every historical commit.
 

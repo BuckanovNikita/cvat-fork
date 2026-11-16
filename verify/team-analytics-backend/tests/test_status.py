@@ -11,7 +11,7 @@ ALICE = (11, "alice")
 class FreshnessTest(StackTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.stack.callers.add_user("lead", FakeUser(2, "lead", memberships={"org7": (ORG, "owner", True)}))
+        self.stack.callers.add_user("lead", FakeUser(2, "lead", groups=["admin"], memberships={"org7": (ORG, "owner", True)}))
         self.stack.add_events([working_time(at("2026-11-13 14:00:00"), 100_000, user=ALICE, org=ORG)])
 
     def refresh_status(self, session="lead") -> dict:

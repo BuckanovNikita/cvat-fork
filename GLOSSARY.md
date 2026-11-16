@@ -7,7 +7,7 @@ The language for measuring how annotation work is done in this CVAT fork: who wo
 ### Who and where
 
 **Team Analytics**:
-The page that shows work figures for a team, per annotator, per project and overall.
+The page that shows work figures for a team, per annotator, per project and overall. Only administrators see it.
 _Avoid_: Analytics, dashboard, statistics page
 
 **Grafana**:
@@ -19,15 +19,22 @@ Any person who did job work in the period, whatever their role or the stage of t
 _Avoid_: User, member, reviewer, worker
 
 **Technical account**:
-A user account that stands for an automated process rather than a person. It is never listed among people, and every box it saves counts as a Model box.
+A user account that stands for an automated process rather than a person. It is never listed among people, and every box it saves counts as a Model box. An account is a technical account while it is on the Technical accounts list.
 _Avoid_: Service user, bot, script user
+
+**Technical accounts list**:
+The one list of technical accounts for the whole instance, kept by administrators in Team Analytics settings. An account stays on it until an administrator removes it, also after the account is deleted; an account deleted and created again under the same name is another account. A change applies to every past period.
+
+**Team Analytics settings**:
+The settings of Team Analytics for the whole instance, opened from the page by an administrator. They hold the Technical accounts list.
+_Avoid_: Preferences, configuration
 
 **Job work**:
 Activity performed inside an opened job. Only job work is measured; browsing lists, settings and other pages is not. In 3D jobs only sessions and working time are measured.
 _Avoid_: Activity, usage
 
 **Organization scope**:
-The figures of one organization, seen by its owners and maintainers and by administrators who selected it.
+The figures of one organization, seen only by an administrator who selected it. Its owners and maintainers do not see them.
 
 **Instance scope**:
 The figures of every organization and of personal workspaces together, seen only by an administrator with no organization selected.

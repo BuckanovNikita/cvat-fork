@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: MIT
 
-// The page's only boundary to the analytics figures: CVAT's own API at `<backendAPI>/team-analytics/`, asked
-// through cvat-core. Tests replace `requestService`.
+// The page's only boundary to Team Analytics: CVAT's own API at `<backendAPI>/team-analytics/` (the figures, the
+// project names and the settings), asked through cvat-core. Tests replace `requestService` and `requestSettings`.
 
 import { getCore, ServerError } from 'cvat-core-wrapper';
 
@@ -156,7 +156,7 @@ export interface AppliedFilters {
     annotator: { user_id: number; user_name: string | null } | null;
 }
 
-// project id -> name as CVAT returns it to the viewer; a project missing here is shown by its id
+// project id -> name (GET project-names); a project missing here (deleted) is shown by its id
 export type ProjectNames = Record<number, string>;
 
 // In a period not wholly processed (`processed: false`) the service sends no figures: every section but
@@ -182,16 +182,16 @@ export interface Overview {
 }
 
 // How far history is processed (status section `history`), in the viewer's time zone. The fields marked
-// "administrators only" describe the whole instance and are absent from everyone else's status.
+// "whole instance" describe the whole instance whatever the scope (only administrators read the status).
 export interface HistoryStatus {
     complete: boolean;
     percent?: number; // whole percent of the days with events that are processed; 100 only when complete
-    // administrators only. ISO time from which everything is processed; null when complete or nothing is
+    // whole instance. ISO time from which everything is processed; null when complete or nothing is
     ready_from?: string | null;
-    ready_from_day?: string | null; // administrators only. YYYY-MM-DD: the viewer's first whole processed day
-    first_day?: string | null; // administrators only. YYYY-MM-DD: the first day with events
-    days_ready?: number; // administrators only
-    days_total?: number; // administrators only
+    ready_from_day?: string | null; // whole instance. YYYY-MM-DD: the viewer's first whole processed day
+    first_day?: string | null; // whole instance. YYYY-MM-DD: the first day with events
+    days_ready?: number; // whole instance
+    days_total?: number; // whole instance
     periods: Record<string, boolean>; // period key -> wholly processed
     earliest_month: string | null; // YYYY-MM: the earliest wholly processed month (null: none, or all when complete)
     complete_weeks: number;
@@ -216,30 +216,24 @@ export type PageState =
     | { kind: 'loading' }
     | { kind: 'ready'; overview: Overview }
     | { kind: 'denied' }
-    | { kind: 'select-organization' }
     | { kind: 'signed-out' }
     | { kind: 'error' };
 
-export type Endpoint = 'status' | 'overview' | 'trends' | 'list' | 'details';
+// The figures' endpoints and the fork's lookups (project names; the settings are asked through requestSettings)
+export type Endpoint =
+    | 'status' | 'overview' | 'trends' | 'list' | 'details' | 'project-names' | 'settings/users';
 
 // An HTTP answer of the API: its status and its body (null when there is none the page can read).
 export interface ServiceAnswer {
     status: number;
     body: any;
+    // for a refusal or failure: the text cvat-core made of the error body (a 400's `detail` sentence)
+    message?: string;
 }
 
 // Asks one endpoint with the given query parameters. Answers every HTTP answer, a refusal or failure too;
 // throws only when there is no answer at all (CVAT unreachable, a timeout).
 export type RequestService = (endpoint: Endpoint, params: Record<string, string>) => Promise<ServiceAnswer>;
-
-// cvat-core keeps no body in the error it throws for a non-2xx answer: it turns a JSON body it does not know
-// into "**<field>**: <value>" lines of the error's message (`generateError` in cvat-core/src/server-proxy.ts).
-// So the one error body the page needs, {"error": "organization_required"}, is read back from that message.
-const ORGANIZATION_REQUIRED = /(^|\n)\*\*error\*\*: organization_required(\n|$)/;
-
-function errorBody(error: ServerError): any {
-    return ORGANIZATION_REQUIRED.test(error.message) ? { error: 'organization_required' } : null;
-}
 
 export const requestService: RequestService = async (endpoint, params) => {
     const core = getCore();
@@ -254,7 +248,7 @@ export const requestService: RequestService = async (endpoint, params) => {
     } catch (error) {
         // a ServerError without an HTTP status (code 0: no response, a timeout) is no answer at all
         if (error instanceof ServerError && error.code >= 100) {
-            return { status: error.code, body: errorBody(error) };
+            return { status: error.code, body: null };
         }
         throw error;
     }
@@ -303,14 +297,12 @@ function serviceParams(query: OverviewQuery): Record<string, string> {
 
 // --- refusals: the page state for a 401, 403 or 404 from any endpoint -----------------------------------------
 
-export type RefusedState = { kind: 'denied' } | { kind: 'select-organization' } | { kind: 'signed-out' };
+export type RefusedState = { kind: 'denied' } | { kind: 'signed-out' };
 
-// A 404 (analytics switched off on the server, or an unknown organization) reads as "not available", as a 403
-// does. Any other failure, a 429 that outlived cvat-core's retries too, is no refusal: the loaders' error.
+// Team Analytics is for administrators only: every 403 is the "denied" state. A 404 (analytics switched off on
+// the server, or an unknown organization) reads as "not available" too. Any other failure, a 429 that outlived
+// cvat-core's retries too, is no refusal: the loaders' error.
 export function refusalOf(answer: ServiceAnswer): RefusedState | null {
-    if (answer.status === 403 && answer.body?.error === 'organization_required') {
-        return { kind: 'select-organization' };
-    }
     if (answer.status === 401) return { kind: 'signed-out' };
     if (answer.status === 403 || answer.status === 404) return { kind: 'denied' };
     return null;
@@ -520,6 +512,62 @@ export async function loadList(
     }
 }
 
+// --- filter options: the projects or annotators of the Project and Annotator selectors ---------------------------
+
+export type FilterKind = 'projects' | 'annotators';
+
+// One option of a selector: a project (0 = No project, named by the page) or an annotator with their name
+export interface FilterOption {
+    id: number;
+    user_name: string | null;
+}
+
+// The options, or why there are none: the period is not processed yet (`withheld`), or the list failed.
+export type FilterOptions =
+    | { kind: 'ready'; options: FilterOption[] }
+    | { kind: 'withheld' }
+    | { kind: 'failed' };
+
+// Everyone of `kind` with job work in the period, asked through the full view list (GET list) without the
+// project, annotator and shapes parameters, so that one selector's options do not depend on the other filter.
+export async function loadFilterOptions(
+    query: OverviewQuery & { by: FilterKind }, request: RequestService = requestService,
+): Promise<FilterOptions> {
+    const list = await loadList({
+        organization: query.organization,
+        timeZone: query.timeZone,
+        period: query.period,
+        month: query.month,
+        by: query.by,
+    }, request) as RowsList | null;
+    if (!list) return { kind: 'failed' };
+    if (!list.rows) return { kind: 'withheld' };
+    return { kind: 'ready', options: list.rows.map((row) => ({ id: row.id, user_name: row.user_name })) };
+}
+
+// --- project names (GET project-names): names of any projects, whatever their organization -------------------
+
+// Ids asked per request; the API refuses more (400).
+export const PROJECT_NAMES_PER_REQUEST = 500;
+
+// The names of the existing projects among `ids` (at most PROJECT_NAMES_PER_REQUEST positive ids); an unknown
+// id is simply absent. Throws when the answer is not a success. CVAT's own projects API names, with no
+// organization selected, only personal-workspace projects, so the fork's API names them for the page.
+export async function requestProjectNames(
+    ids: number[], request: RequestService = requestService,
+): Promise<ProjectNames> {
+    const answer = await request('project-names', { ids: ids.join(',') });
+    const names = answer.body?.names;
+    if (!succeeded(answer) || !names || typeof names !== 'object') {
+        throw new Error(`project names were not returned (${answer.status})`);
+    }
+    const result: ProjectNames = {};
+    for (const [id, name] of Object.entries(names)) {
+        if (typeof name === 'string') result[Number(id)] = name;
+    }
+    return result;
+}
+
 // --- details (GET details): the paged, searchable table by annotator or by project ------------------------------
 
 export type DetailsKind = 'annotators' | 'projects';
@@ -587,6 +635,110 @@ export async function loadDetails(
         const readable = succeeded(answer) && !!data &&
             ((Array.isArray(data.rows) && typeof data.total === 'number') || data.processed === false);
         return readable ? data as Details : null;
+    } catch {
+        return null;
+    }
+}
+
+// --- Team Analytics settings (GET and PUT settings, GET settings/users): the Technical accounts list -----------
+
+// One technical account: its user, by id, with the live user's name, or the last known name of a user that no
+// longer exists (`deleted`).
+export interface TechnicalAccount {
+    user_id: number;
+    user_name: string;
+    deleted: boolean;
+}
+
+export interface TeamAnalyticsSettings {
+    technical_accounts: TechnicalAccount[];
+}
+
+// A user the settings screen offers to add: any user of the instance.
+export interface SettingsUser {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+}
+
+// Reads (GET) or replaces (PUT, with `body`) the settings. Answers every HTTP answer, a refusal or failure
+// too, with the text cvat-core made of an error body; throws only when there is no answer at all. Tests
+// replace it.
+export type RequestSettings = (method: 'GET' | 'PUT', body?: object) => Promise<ServiceAnswer>;
+
+export const requestSettings: RequestSettings = async (method, body) => {
+    const core = getCore();
+    try {
+        const response = await core.server.request(`${core.config.backendAPI}/${SERVICE_PATH}/settings`, {
+            method,
+            ...(body === undefined ? {} : { data: body }),
+        }) as { status: number; data: unknown };
+        return { status: response.status, body: response.data ?? null };
+    } catch (error) {
+        if (error instanceof ServerError && error.code >= 100) {
+            return { status: error.code, body: null, message: error.message };
+        }
+        throw error;
+    }
+};
+
+function readableSettings(body: any): body is TeamAnalyticsSettings {
+    return !!body && Array.isArray(body.technical_accounts) && body.technical_accounts.every(
+        (account: TechnicalAccount) => typeof account?.user_id === 'number' && typeof account.user_name === 'string',
+    );
+}
+
+// The settings, or null when they cannot be read (the settings screen says so). A refusal takes the page to it.
+export async function loadSettings(request: RequestSettings = requestSettings): Promise<TeamAnalyticsSettings | null> {
+    try {
+        const answer = await request('GET');
+        reportRefusal(answer);
+        return succeeded(answer) && readableSettings(answer.body) ? answer.body : null;
+    } catch {
+        return null;
+    }
+}
+
+// Without an answer, or with a server failure, the list may or may not have been saved (the server answers 503
+// when the list was saved but older answers could not be retired)
+export const SAVE_UNFINISHED = 'The save did not finish, so the list may not have changed. Open the settings again ' +
+    'to see the saved list.';
+
+export type SaveResult = { kind: 'saved'; settings: TeamAnalyticsSettings } | { kind: 'failed'; error: string };
+
+// Replaces the Technical accounts list with `ids` (the whole list). A failure is said in a sentence the screen
+// shows: a refused list (400) in the server's words.
+export async function saveSettings(
+    ids: number[], request: RequestSettings = requestSettings,
+): Promise<SaveResult> {
+    let answer: ServiceAnswer;
+    try {
+        answer = await request('PUT', { technical_accounts: ids });
+    } catch {
+        return { kind: 'failed', error: SAVE_UNFINISHED };
+    }
+    if (succeeded(answer) && readableSettings(answer.body)) return { kind: 'saved', settings: answer.body };
+    if (answer.status === 400) {
+        return { kind: 'failed', error: answer.message || answer.body?.detail || 'The list was refused.' };
+    }
+    if (answer.status === 401) return { kind: 'failed', error: 'Your session has ended. Sign in again to save.' };
+    if (answer.status === 403) {
+        return { kind: 'failed', error: 'Only administrators can change Team Analytics settings.' };
+    }
+    return { kind: 'failed', error: SAVE_UNFINISHED };
+}
+
+// Users of the whole instance whose user name, first or last name contains `search` (at most 20, by user name),
+// or null when the search failed.
+export async function searchUsers(
+    search: string, request: RequestService = requestService,
+): Promise<SettingsUser[] | null> {
+    try {
+        const answer = await request('settings/users', { search });
+        reportRefusal(answer);
+        const users = answer.body?.users;
+        return succeeded(answer) && Array.isArray(users) ? users as SettingsUser[] : null;
     } catch {
         return null;
     }

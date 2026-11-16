@@ -91,7 +91,7 @@ export default function TrendsSection({
         return () => { current = false; };
     }, [organization, timeZone, project, annotator, shapes, step, kind, idsKey, historyProgress]);
 
-    // names of the projects that can be compared, as CVAT returns them to the viewer
+    // names of the projects that can be compared (the fork's project-names lookup)
     const known = { ...projectNames, ...names };
     const wanted = trends && trends.compare === 'projects' ?
         [...new Set([...trends.candidates.map((row) => row.id), ...ids])]
@@ -100,7 +100,7 @@ export default function TrendsSection({
     useEffect(() => {
         if (wanted.length === 0) return undefined;
         let current = true;
-        lookupProjectNames(wanted).then((found) => {
+        lookupProjectNames(wanted, requestService).then((found) => {
             if (current) setNames((shown) => ({ ...shown, ...found }));
         }).catch(() => { /* shown by identifier */ });
         return () => { current = false; };

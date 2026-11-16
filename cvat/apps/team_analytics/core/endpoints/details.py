@@ -98,7 +98,7 @@ def handle(request: Request) -> dict:
         **legacy.describe(job_work=bool(summary["job_work"])),
         "shapes": "all" if summary["all_shapes"] else "bounding_boxes",
         "processed": processed,
-        "technical_accounts": len(request.config.technical_accounts),
+        "technical_accounts": len(request.technical_accounts),
         "rows": [
             {
                 "id": int(row["id"]),

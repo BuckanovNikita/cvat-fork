@@ -4,18 +4,20 @@
 #   verify/team_analytics_backend.sh                            # every test
 #   verify/team_analytics_backend.sh tests.test_working_time    # unittest names, relative to verify/team-analytics-backend
 #
-# Runs the tests with stdlib unittest inside a container of the stock CVAT server image (the backend's
-# runtime) against a throwaway ClickHouse container and a throwaway Redis for the refresh lock. The code
-# under test is the working tree's cvat/apps/team_analytics, mounted where the image keeps CVAT's apps;
-# CVAT's own ClickHouse init script creates each test's events database. Container and network names
-# are unique per run, no host port is published, and everything started here is removed on exit.
-# Images: SERVER_IMAGE (default cvat/server:v2.82.0), CLICKHOUSE_IMAGE (default the Helm chart's
-# cvat/clickhouse:23.12.2-debian-11-r0; clickhouse/clickhouse-server:23.11-alpine also works),
-# REDIS_IMAGE (default the chart's redis:7.2.11). None is pulled here.
+# Runs the tests with stdlib unittest inside a container of the fork server image (the backend's
+# runtime, built by build-server.sh) against a throwaway ClickHouse container and a throwaway Redis
+# for the refresh lock. The code under test is the working tree's cvat/apps/team_analytics, mounted
+# where the image keeps CVAT's apps; CVAT's own ClickHouse init script creates each test's events
+# database. Container and network names are unique per run, no host port is published, and
+# everything started here is removed on exit.
+# Images: SERVER_IMAGE (default cvat/server:v2.82.0-fork; set it to a work build's tag to test that
+# build), CLICKHOUSE_IMAGE (default the Helm chart's cvat/clickhouse:23.12.2-debian-11-r0;
+# clickhouse/clickhouse-server:23.11-alpine also works), REDIS_IMAGE (default the chart's
+# redis:7.2.11). None is pulled here.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-server_image="${SERVER_IMAGE:-cvat/server:v2.82.0}"
+server_image="${SERVER_IMAGE:-cvat/server:v2.82.0-fork}"
 clickhouse_image="${CLICKHOUSE_IMAGE:-cvat/clickhouse:23.12.2-debian-11-r0}"
 redis_image="${REDIS_IMAGE:-redis:7.2.11}"
 run_id="ta-backend-$(printf '%s' "$repo" | sha1sum | cut -c1-8)-$$-${RANDOM}"

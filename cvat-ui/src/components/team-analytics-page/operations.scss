@@ -1,0 +1,91 @@
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+@import 'base';
+
+// The operations table of the overview: five columns and, under each operation, a row with how its objects were
+// started. It has no minimum width, so it fits a 420 px card (388 px inside its padding) without scrolling:
+// headers may wrap, values stay on one line. The shared .cvat-team-analytics-table of the other cards is not
+// used here and keeps its own rules.
+.cvat-team-analytics-operations-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+
+    thead th {
+        color: #595959;
+        font-size: 12px;
+        font-weight: 400;
+        line-height: 1.3;
+        vertical-align: bottom;
+        white-space: normal;
+        border-bottom: 1px solid #d9d9d9;
+    }
+
+    th,
+    td {
+        padding: $grid-unit-size * 0.75 $grid-unit-size;
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    th:first-child,
+    td:first-child {
+        padding-left: 0;
+        text-align: left;
+    }
+
+    th:last-child,
+    td:last-child {
+        padding-right: 0;
+    }
+
+    // the operation's name is the row header: it reads like a cell, not like a column header
+    tbody th {
+        font-weight: 400;
+    }
+
+    .cvat-team-analytics-operation-row > * {
+        padding-bottom: $grid-unit-size * 0.25;
+    }
+
+    .cvat-team-analytics-input-split-row td {
+        padding-top: 0;
+        padding-bottom: $grid-unit-size;
+        font-size: 12px;
+        text-align: left;
+        border-bottom: 1px solid #ececec;
+    }
+}
+
+.cvat-team-analytics-input-split {
+    white-space: nowrap;
+}
+
+.cvat-team-analytics-input-split-bar {
+    display: inline-flex;
+    width: 96px;
+    height: 8px;
+    margin-right: $grid-unit-size;
+    vertical-align: middle;
+    border-radius: 4px;
+    overflow: hidden;
+
+    > span {
+        height: 8px;
+    }
+}
+
+// text for screen readers only
+.cvat-team-analytics-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}

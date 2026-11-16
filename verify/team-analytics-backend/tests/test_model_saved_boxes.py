@@ -42,7 +42,7 @@ def detector(when: datetime, rectangles: int, objects: int, **kwargs) -> dict:
 
 
 class ModelCase(OperationsCase):
-    stack_options = {"technical_accounts": ("importer",)}
+    stack_options = {"technical_accounts": (99,)}
 
     def overview(self, **query) -> dict:
         self.stack.keep_refreshing_since(at("2026-11-05 00:00:00"))
@@ -158,6 +158,61 @@ class ConfiguredListTest(ModelCase):
         self.assertEqual(body["saved_boxes"]["by_annotator"],
                          [{"user_id": IMPORTER[0], "user_name": "importer", "boxes": 5}])
 
+    def test_a_change_of_the_list_applies_to_past_hours_on_the_next_read(self):
+        self.stack.add_events([
+            working_time(seconds(T, 10), 600_000, user=IMPORTER, org=ORG),
+            saved("create", seconds(T, 20), 5),
+        ])
+        self.assertEqual(self.model(shapes="bounding_boxes"), 0)
+
+        # the worker reads the list for every answer; the stored totals stay as they are
+        self.stack.technical_accounts = (IMPORTER[0],)
+        status, body = self.stack.overview("lead", org="org7", shapes="bounding_boxes")
+
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["creation_methods"]["model"]["objects"], 5)
+        self.assertEqual(body["creation_methods"]["technical_accounts"], 1)
+        self.assertEqual(body["by_annotator"]["rows"], [])
+        self.assertEqual(body["saved_boxes"]["by_annotator"], [])
+
+
+class TechnicalAccountByIdTest(ModelCase):
+    """The list holds user ids: a technical account stays technical under every name it had, and another user
+    who has one of its names is a person."""
+
+    def test_a_renamed_technical_account_is_technical_in_every_hour(self):
+        self.stack.add_events([
+            working_time(at("2026-11-12 10:00:10"), 600_000, user=(99, "ingest-bot"), org=ORG),
+            saved("create", at("2026-11-12 10:00:20"), 3, user=(99, "ingest-bot")),
+            working_time(seconds(T, 10), 600_000, user=IMPORTER, org=ORG),
+            saved("create", seconds(T, 20), 5),
+            working_time(seconds(T, 10), 300_000, user=ALICE, org=ORG),
+        ])
+
+        body = self.overview(shapes="bounding_boxes")
+
+        self.assertEqual(body["creation_methods"]["model"]["objects"], 8)
+        self.assertEqual([row["user_name"] for row in body["by_annotator"]["rows"]], ["alice"])
+        self.assertEqual(body["saved_boxes"]["by_annotator"], [])
+        status, details = self.stack.get("/api/team-analytics/details", "lead", org="org7")
+        self.assertEqual(status, 200, details)
+        self.assertEqual([row["user_name"] for row in details["rows"]], ["alice"])
+
+    def test_another_user_with_a_technical_accounts_name_is_a_person(self):
+        namesake = (98, "importer")
+        self.stack.add_events([
+            working_time(seconds(T, 10), 600_000, user=namesake, org=ORG),
+            saved("create", seconds(T, 20), 4, user=namesake),
+            saved("create", seconds(T, 20), 5),  # the technical account itself
+        ])
+
+        body = self.overview(shapes="bounding_boxes")
+
+        self.assertEqual(body["creation_methods"]["model"]["objects"], 5)
+        self.assertEqual([(row["user_id"], row["user_name"]) for row in body["by_annotator"]["rows"]],
+                         [(98, "importer")])
+        self.assertEqual(body["saved_boxes"]["by_annotator"], [{"user_id": 98, "user_name": "importer", "boxes": 4}])
+
 
 class DetectorTest(ModelCase):
     def setUp(self) -> None:
@@ -230,6 +285,63 @@ class SavedBoxesTest(ModelCase):
         self.assertEqual(self.overview(annotator=ALICE[0])["saved_boxes"]["boxes"], 4)
         self.assertEqual(self.overview(shapes="all")["saved_boxes"]["boxes"],
                          self.overview(shapes="bounding_boxes")["saved_boxes"]["boxes"])
+
+
+class TechnicalAccountFilterTest(ModelCase):
+    """An annotator filter on a technical account's id (a shared link can carry one): the account is no annotator,
+    so every figure of people and every saved-box figure is empty, on the overview, the full views and the details
+    alike."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.stack.add_events([
+            client("load:job", seconds(T, 0)),
+            draw(seconds(T, 10), **BOX),  # alice draws one box in project 1
+            working_time(seconds(T, 10), 600_000, user=ALICE, org=ORG),
+            saved("create", seconds(T, 20), 4, user=ALICE),
+            # the technical account works, draws, runs the detector and saves in project 2
+            client("load:job", seconds(T, 0), user=IMPORTER, project=2, task=2, job=2),
+            draw(seconds(T, 15), user=IMPORTER, project=2, task=2, job=2, **BOX),
+            working_time(seconds(T, 15), 600_000, user=IMPORTER, org=ORG, project=2, task=2, job=2),
+            detector(seconds(T, 25), 2, 2, user=IMPORTER, project=2, task=2, job=2),
+            saved("create", seconds(T, 30), 5, project=2, task=2, job=2),
+        ])
+
+    def get(self, endpoint: str, **query) -> dict:
+        status, body = self.stack.get("/api/team-analytics/" + endpoint, "lead", org="org7", **query)
+        self.assertEqual(status, 200, body)
+        return body
+
+    def test_without_a_filter_its_saved_boxes_count_in_total_and_for_their_project(self):
+        boxes = self.overview(shapes="bounding_boxes")["saved_boxes"]
+        self.assertEqual(boxes["boxes"], 9)
+        self.assertEqual(boxes["by_project"], [{"project_id": 2, "boxes": 5}, {"project_id": 1, "boxes": 4}])
+
+    def test_the_overview_under_its_id_is_empty(self):
+        body = self.overview(shapes="bounding_boxes", annotator=IMPORTER[0])
+        self.assertEqual(body["saved_boxes"], {"boxes": 0, "by_annotator": [], "by_project": []})
+        self.assertEqual(body["headline"], {"annotators": 0, "projects": 0})
+        # the rows by annotator drop their own filter, as the full view does: every annotator stays
+        # listed so another can be picked, and the technical account is never one of them
+        self.assertEqual([row["user_id"] for row in body["by_annotator"]["rows"]], [ALICE[0]])
+        self.assertEqual(body["by_project"]["rows"], [])
+        self.assertEqual(body["creation_methods"]["model"]["objects"], 0)
+        self.assertEqual(body["creation_methods"]["total"]["objects"], 0)
+        self.assertEqual(self.by_name(body["operations"])["creation"]["objects"], 0)
+
+    def test_the_full_views_under_its_id_list_no_project_and_no_technical_account(self):
+        self.overview()  # refreshed and processed
+        self.assertEqual(self.get("list", by="projects", annotator=IMPORTER[0])["rows"], [])
+        # the list by annotators drops its own filter: every annotator stays listed, the account is none
+        annotators = self.get("list", by="annotators", annotator=IMPORTER[0])["rows"]
+        self.assertEqual([row["id"] for row in annotators], [ALICE[0]])
+
+    def test_the_details_under_its_id_list_no_project_and_no_technical_account(self):
+        self.overview()  # refreshed and processed
+        projects = self.get("details", by="projects", annotator=IMPORTER[0])
+        self.assertEqual((projects["rows"], projects["total"]), ([], 0))
+        annotators = self.get("details", annotator=IMPORTER[0])
+        self.assertEqual([row["user_name"] for row in annotators["rows"]], ["alice"])
 
 
 class LegacyPeriodTest(ModelCase):

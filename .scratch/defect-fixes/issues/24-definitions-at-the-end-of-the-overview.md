@@ -33,3 +33,5 @@
 2026-11-15: The narrow-window criterion, restated as what was shown, is ticked from ticket 27's final run (evidence: `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`): at 400 px the definitions are one column, inside the page's column and the window, after every card and below the details table; at 1400 px they are four columns there; a full view shows none. The page itself fits the window at 400 px; the document still scrolls sideways because CVAT's own header keeps the app 1025 px wide, as before.
 
 2026-11-15: Resolved on `feat/team-analytics-page` by merge `ba33aeb4` (ticket 27's final run); the narrow window on the stack is in `docs/evidence/2026-11-15-final-run-on-a-fresh-stack.md`.
+
+2026-11-15: Reversed by the owner's later decision. The definitions move into tooltips on the terms they explain (ticket 04 of `.scratch/team-analytics-admin-settings/`), and the block at the end of the Overview goes. The four texts and their glossary wording are kept; only where they are shown changes. This ticket's status is left as it was, since what it built was delivered.

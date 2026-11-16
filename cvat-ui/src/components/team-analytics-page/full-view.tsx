@@ -271,7 +271,7 @@ export default function FullView({
     const [names, setNames] = useState<ProjectNames>({});
     const known = { ...projectNames, ...names };
 
-    // names of every listed project, as CVAT returns them to the viewer
+    // names of every listed project (the fork's project-names lookup)
     // a list without figures (a period not wholly processed) has no rows to name
     const wanted = list && list.by === 'projects' && list.rows ?
         [...new Set(list.rows.map((row) => row.id))]
@@ -281,7 +281,7 @@ export default function FullView({
     useEffect(() => {
         if (wanted.length === 0) return undefined;
         let current = true;
-        lookupProjectNames(wanted).then((found) => {
+        lookupProjectNames(wanted, requestService).then((found) => {
             if (current) setNames((shown) => ({ ...shown, ...found }));
         }).catch(() => { /* shown by identifier */ });
         return () => { current = false; };

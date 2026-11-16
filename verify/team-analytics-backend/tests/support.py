@@ -136,8 +136,9 @@ class NotAllowed(Exception):
 class PermissionStandIn:
     """A stand-in for CVAT's permission check (rules/team_analytics.rego and views.scope_of), so that tests can
     name their callers. It hands over the scope the backend would: a member of the admin group reads the named
-    organization, or instance scope when none is named; an active owner or maintainer reads the named
-    organization. Anything else raises `NotAllowed`. Test scaffolding, not product code."""
+    organization, or instance scope when none is named. Anyone else raises `NotAllowed`: only administrators read
+    Team Analytics. A user's memberships only make the organizations' slugs known. Test scaffolding, not product
+    code."""
 
     def __init__(self) -> None:
         self.users: dict[str, FakeUser] = {}  # session -> user
@@ -153,19 +154,15 @@ class PermissionStandIn:
         user = self.users.get(session or "")
         if user is None or (org_slug and org_slug not in self.organizations):
             raise NotAllowed(session, org_slug)
-        org_id = self.organizations[org_slug] if org_slug else None
-        if "admin" in user.groups:
-            return Scope(org_id=org_id, user_id=0, username="", admin=True)
-        membership = user.memberships.get(org_slug) if org_slug else None
-        if membership and membership[0] == org_id and membership[2] and membership[1] in ("owner", "maintainer"):
-            return Scope(org_id=org_id, user_id=0, username="", admin=False)
-        raise NotAllowed(session, org_slug)
+        if "admin" not in user.groups:
+            raise NotAllowed(session, org_slug)
+        return Scope(org_id=self.organizations[org_slug] if org_slug else None, user_id=0, username="")
 
 
 # --- the stack a test runs against -------------------------------------------------------------------
 
 class Stack:
-    def __init__(self, *, now: datetime = NOW, technical_accounts: tuple[str, ...] = (),
+    def __init__(self, *, now: datetime = NOW, technical_accounts: tuple[int, ...] = (),
                  refresh_window_hours: int = 48, config_options: dict | None = None) -> None:
         suffix = uuid.uuid4().hex[:12]
         self.events_db = f"ta_test_events_{suffix}"
@@ -176,6 +173,9 @@ class Stack:
         _create_events_database(self.events_db)
         self.callers = PermissionStandIn()
         self.now = now
+        # the user ids on the Technical accounts list, as the worker reads them from Postgres for each answer
+        # (jobs.technical_account_ids); a test may change them between two reads
+        self.technical_accounts = tuple(technical_accounts)
         self.config = Config(
             clickhouse_host=os.environ["CLICKHOUSE_HOST"],
             clickhouse_port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
@@ -183,7 +183,6 @@ class Stack:
             clickhouse_password=os.environ.get("CLICKHOUSE_PASSWORD", "user"),
             events_db=self.events_db,
             totals_db=self.totals_db,
-            technical_accounts=technical_accounts,
             refresh_window_hours=refresh_window_hours,
             **(config_options or {}),  # any other setting of the engine, e.g. a shorter limit
         )
@@ -241,11 +240,12 @@ class Stack:
     def answer(self, endpoint: str, scope: Scope, query: dict[str, str],
                clock: Callable[[], datetime] | None = None) -> tuple[int, dict]:
         """What the worker's read job stores for one read (jobs.read_answer), as a client decodes it: the engine is
-        built for the read with the worker's read limit; a refused parameter is a 400."""
+        built for the read with the worker's read limit and given the stack's technical accounts; a refused
+        parameter is a 400."""
         engine = Engine(self.config, clock=clock or (lambda: self.now), lock=self.lock(), read_limit=READ_LIMIT,
                         statement_limit=STATEMENT_LIMIT)
         try:
-            status, body = 200, engine.answer(endpoint, scope, query)
+            status, body = 200, engine.answer(endpoint, scope, query, technical_accounts=self.technical_accounts)
         except BadRequest as error:
             status, body = 400, {"error": "bad_request", "detail": str(error)}
         return status, json.loads(json.dumps(body))
