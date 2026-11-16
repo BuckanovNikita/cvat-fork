@@ -387,7 +387,10 @@ limit.
   the load check's two narrow windows.
 - The corrected repeat rule allowing a repeat on a stack: no repeat occurred in the run that used
   it.
-- Which rq release changed `clean_intermediate_queue`; rq's changelog was not read.
+- That a newer rq no longer does this. rq's changelog was read afterwards, not tried: under
+  1.16.2 (2024-05-01) it lists "Fixed a bug that may cause jobs from intermediate queue to be
+  moved to FailedJobRegistry", and nothing about it under 1.16.0, 1.16.1 or 2.0. The fork keeps
+  upstream's pin of 1.16.0.
 - The failed job's `exc_info`: the record had none (it is recreated every minute), so the cause
   rests on the log order and the source, not on the stored failure text.
 - Whether ClickHouse cancels an insert whose client disconnected.
