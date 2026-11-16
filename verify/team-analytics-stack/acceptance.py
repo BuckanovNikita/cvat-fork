@@ -41,7 +41,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # run with python3 -I, which leaves it out
@@ -678,11 +677,11 @@ def load() -> None:
     memory: list = []
     report = {}
     all_ok = True
-    duplicates: list = []
     generation_moves: list = []
 
     def condition(name: str, param_sets: list[list[dict]], before, each=None) -> None:
         nonlocal all_ok
+        duplicates: list = []  # this condition's own repeats, not judged against another condition
         base = Sampler(client, tasks_path, annotations_path)
         base.run(BASELINE_SAMPLES)
         log(f"{name}: baseline tasks {summary(base.samples['tasks'])}; annotations {summary(base.samples['annotations'])}"
@@ -701,8 +700,10 @@ def load() -> None:
             if each:
                 each(i)
             pending_start = pending_days()
+            # the window reaches two minutes back: a refresh run ending right at the burst's start is read whole
+            burst_start = time.time()
             generation_start = generation()
-            since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 1))
+            since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(burst_start - 120))
             readers, held = burst(in_volume, sampler, sets, memory)
             readers_all += readers
             times = sorted(round(r[2], 1) for r in readers)
@@ -712,19 +713,25 @@ def load() -> None:
             # the worker's log over the burst: every read of these parameters ran once, and the generation moved once
             # per refresh run, not once per day of history
             lines = worker_log(since)
-            reads = Counter(m.group(1) for m in (READ_LINE.search(line) for line in lines) if m)
-            days = sum(1 for line in lines if "history: computed" in line)
-            runs = sum(1 for line in lines if "Job OK (team_analytics_refresh)" in line)
-            repeated = {k: n for k, n in reads.items() if n > 1}
+            reads, allowed, repeated = judge_repeats(lines, burst_start)
+            in_burst = [line for line in lines if (line_time(line) or burst_start) >= burst_start - 1]
+            days = sum(1 for line in in_burst if "history: computed" in line)
+            runs = sum(1 for line in in_burst if "Job OK (team_analytics_refresh)" in line)
             generation_end = generation()
             log(f"{name} burst {i + 1}, worker log: {sum(reads.values())} read jobs for {len(reads)} distinct requests, "
-                f"repeated {repeated or 'none'}; {days} history days computed in {runs} refresh runs; generation "
-                f"{generation_start} -> {generation_end}")
-            duplicates.extend(repeated)
+                f"repeated without cause {repeated or 'none'}; {days} history days computed in {runs} refresh runs; "
+                f"generation {generation_start} -> {generation_end}")
+            for read, first, second, why in allowed:
+                log(f"{name} burst {i + 1}: allowed repeat of {read}: started "
+                    f"{time.strftime('%H:%M:%S', time.gmtime(first))}.{int(first * 1000) % 1000:03d} and "
+                    f"{time.strftime('%H:%M:%S', time.gmtime(second))}.{int(second * 1000) % 1000:03d}; a refresh run "
+                    f"that wrote ended between: {why[:200]}")
+            duplicates.extend(f"{read}: {why}" for read, why in repeated.items())
             generation_moves.append((generation_start, generation_end, runs, days))
         bad = [r for r in readers_all if not (r[1] == 200 and r[4] and r[2] <= client_budget_s())]
         if duplicates:
-            bad.append(("reads repeated within a burst", duplicates[:3]))
+            bad.append(("reads repeated within a burst with no refresh run that wrote between, or three times",
+                        duplicates[:3]))
         verdicts = []
         for endpoint in ("tasks", "annotations"):
             b, l_ = percentile(base.samples[endpoint], 95), percentile(sampler.samples[endpoint], 95)
@@ -830,6 +837,63 @@ def read_jobs_since(since: str) -> list[str]:
 
 
 _LOG_TIME = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),(\d{3})\]")
+
+
+def line_time(line: str) -> float | None:
+    """A worker log line's time (epoch seconds, UTC), or None when it has none."""
+    m = _LOG_TIME.match(line)
+    if not m:
+        return None
+    return calendar.timegm(time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")) + int(m.group(2)) / 1000
+
+
+def judge_repeats(lines: list[str], burst_start: float) -> tuple[dict, list, dict]:
+    """The read jobs a burst's window of the worker log ran, judged by the product's rule. A stored answer is served
+    only under the generation it was computed for (reads.fetch), and a read computed while a refresh run wrote is
+    stored as older than the totals that run leaves (jobs._read_answer): its request's next attempt computes it
+    again. So a read may run twice when a refresh run that wrote ended (it advances the generation as it ends)
+    between its first start and its second; any other repeat, a read run three times or more, and a read line
+    without a time are failures.
+
+    `lines` reach back before the burst, so that a run ending right at its start is read whole; only reads that
+    started at `burst_start` or later (less a second) are judged. Returns (runs of each read, the repeats allowed as
+    (read, first start, second start, the line of the run that explains it), the failures {read: why})."""
+    starts: dict[str, list[float]] = {}
+    writing_ends: list[tuple[float, str]] = []
+    failures: dict[str, str] = {}
+    current = None
+    for line in lines:
+        at = line_time(line)
+        read = READ_LINE.search(line)
+        if read:
+            if at is None:
+                failures[read.group(1)] = f"a read line without a time: {line[:160]}"
+            elif at >= burst_start - 1:
+                starts.setdefault(read.group(1), []).append(at)
+        elif "jobs.refresh_totals()" in line:
+            current = {"wrote": None}
+        elif current is not None and ("core.refresh: refreshed" in line or "core.history: history:" in line):
+            current["wrote"] = current["wrote"] or line
+        elif current is not None and "Job OK (team_analytics_refresh)" in line:
+            if current["wrote"] and at is not None:
+                writing_ends.append((at, current["wrote"]))
+            current = None
+    allowed = []
+    for read, times in starts.items():
+        times.sort()
+        if len(times) == 1:
+            continue
+        if len(times) > 2:
+            failures[read] = f"{len(times)} runs, at {times}"
+            continue
+        first, second = times
+        between = [(end, why) for end, why in writing_ends if first < end < second]
+        if between:
+            allowed.append((read, first, second, between[0][1]))
+        else:
+            failures[read] = (f"2 runs, at {first:.3f} and {second:.3f}, and no refresh run that wrote ended between "
+                              f"(runs that wrote ended at {[round(e, 3) for e, _ in writing_ends]})")
+    return {read: len(times) for read, times in starts.items()}, allowed, failures
 
 
 def refresh_runs(lines: list[str]) -> list[dict]:
