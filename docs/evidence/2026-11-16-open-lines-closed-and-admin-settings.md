@@ -23,8 +23,9 @@ outside the repository; the image comparison's four diff summaries and six scree
 Every line of the "Not verified" sections of
 [`2026-11-15-backend-acceptance.md`](2026-11-15-backend-acceptance.md) and
 [`2026-11-15-full-fork-conversion.md`](2026-11-15-full-fork-conversion.md), the "Not established"
-lines of [`2026-11-15-independent-review.md`](2026-11-15-independent-review.md), and two lines
-of the backend acceptance record's section "On the final build" that the plan named:
+lines of [`2026-11-15-independent-review.md`](2026-11-15-independent-review.md), and two more
+lines of the backend acceptance record that the plan named, one from its section "On the final
+build, after the independent review" and one from "After the second review pass":
 
 | Record | Open line | Now | What was run and seen, or the reason |
 | --- | --- | --- | --- |
@@ -39,8 +40,8 @@ of the backend acceptance record's section "On the final build" that the plan na
 | backend acceptance | A release switched from analytics on to off by an upgrade in place (the check reinstalled) | verified | `check-evidence off-then-on`: helm history "revision 9 Upgrade complete (before: revision 8)" for off and "revision 10 Upgrade complete (before: revision 9)" for on; while off all five read endpoints 404 for the administrator and signed out, no refresh scheduled, nothing added to the queue in 75 s; back on, the Technical accounts list and its table as before (`11|ta-bot`, 1 row), the schedule back, figures back after 26 s |
 | backend acceptance | Upstream's Compose files, which do not start the worker | ruled out | Out of scope, as before: the fork runs on Kubernetes only (ADR 0003) |
 | backend acceptance | Production, air-gapped and out of scope | ruled out | Out of scope, as before |
-| backend acceptance, "On the final build" | Image `25b249e2e3e1` and the adjusted `check-review` and `check-isolation clickhouse-down` not run on a stack | verified, on a later image | Both checks passed on the final image `7ead6d1cec4b` (figures under "Final run"). `25b249e2e3e1` itself was not run again; it is superseded |
-| backend acceptance, "On the final build" | The build's refusal for a rename not provoked | ruled out | The overlay build and its guards no longer exist: `build-server.sh` now builds the full image from a copy of the tracked files (ADR 0007) |
+| backend acceptance, "After the second review pass" | Image `25b249e2e3e1` and the adjusted `check-review` and `check-isolation clickhouse-down` not run on a stack | verified, on a later image | Both checks passed on the final image `7ead6d1cec4b` (figures under "Final run"). `25b249e2e3e1` itself was not run again; it is superseded |
+| backend acceptance, "On the final build, after the independent review" | The build's refusal for a rename not provoked | ruled out | The overlay build and its guards no longer exist: `build-server.sh` now builds the full image from a copy of the tracked files (ADR 0007) |
 | full-fork conversion | Nothing on a running stack | verified | The 2026-11-15 acceptance record and this record |
 | full-fork conversion | The build of the fork's tree with upstream's own `Dockerfile` | ruled out (superseded) | The fork builds the server from its own `Dockerfile.server`, a port of upstream's stages to Debian 12 (ADR 0007); upstream's `Dockerfile` is kept byte-identical and is not built |
 | full-fork conversion | A merge of a release that changes the fork's edited files, or files under `.github/` | ruled out | The owner decided that this work makes no release merge and no source version update (the spec's "Out of Scope") |
@@ -198,7 +199,8 @@ The server image is built from public bases (ADR 0007): `python:3.12-slim-bookwo
 in `Dockerfile.server`. No Dockerfile of the fork starts `FROM cvat/` except upstream's own
 `Dockerfile.ci` (`FROM cvat/server:local`), unchanged from `v2.82.0` and not built by the fork.
 
-The final build (`7ead6d1cec4b`, from 710 tracked files) passed every check of `build-server.sh`
+The final build (`7ead6d1cec4b`, from 710 tracked files, as many as `git ls-tree` lists under
+the copied paths at `2883bb8c1`) passed every check of `build-server.sh`
 before tagging: the bundle with and without analytics equal to the tree's `issues.rego`,
 `comments.rego` and `team_analytics.rego`; `python`, `python3`, `django-admin` and `uvicorn`
 resolve to the virtual environment and run on Python 3.12; supervisord 4.2.5; `nginx -t`
@@ -234,8 +236,9 @@ Never built: the `CLAM_AV=yes` and `CVAT_DEBUG_ENABLED=yes` branches of `Dockerf
 | Suite | Result |
 | --- | --- |
 | calculation suite, branch's app on `7ead6d1cec4b`, `cvat/clickhouse:23.12.2-debian-11-r0` | first run 370 tests, 1 failure in 1366 s: a new test, `test_the_overview_under_its_id_is_empty`, expected the rows by annotator to be empty under a filter on a technical account's id, but they keep the people (a wrong expectation, not a product fault); corrected in `5dea1cc89`; rerun at `5dea1cc89`: 370 tests, OK, 1259 s |
-| frontend suites through `tools/gate/node-suite.sh` (8 GiB address space per process, one minute per test) | the wrapper's own logs: page 289 of 289 (before `3b682f584`, `ebf221ef7` and `6da9f526f`), logging 77 of 77, task progress 20 and 1 skipped, 21 of 21 with a browser. After those three page commits the page lane's run shows 294 of 294; its log does not record whether it went through the wrapper. The fresh clone's `prek` at `0bf2f41cd` ran all three suites through the wrapper and they passed; it prints no counts |
+| frontend suites through `tools/gate/node-suite.sh` (8 GiB address space per process, one minute per test) | the wrapper's own logs: page 289 of 289 (written about 20 minutes before `3b682f584`, `ebf221ef7` and `6da9f526f` were committed), logging 77 of 77, task progress 20 and 1 skipped, 21 of 21 with a browser. A minute after those three page commits the page lane's run shows 294 of 294; its log does not record whether it went through the wrapper. The fresh clone's `prek` at `0bf2f41cd` ran all three suites through the wrapper and they passed; it prints no counts |
 | policy tests | the patched policies, the stock policies and upstream's generated suite passed in the fresh clone's `prek` |
+| `prek run --all-files` in the working tree | twelve hooks passed, exit 0, run after `9a8620e96` was committed (by the log's file time); the log does not name its commit |
 | fresh clone | see the table of open lines |
 
 ## The failed-job registry
@@ -288,10 +291,14 @@ search and project names, for every method and every way of naming an organizati
 permission check runs before the cache and before every Postgres read of the app; rego, CSV and
 generator agree with the Python; CSRF on PUT; the body rules; the table lock cannot deadlock;
 a refused PUT changes nothing; the worker reads the generation and then the list on every path;
-all 31 predicates match `user_id` as bound parameters; the page's header differs from upstream
-only by the link, its cache and late answers, its tooltips and its dialog; `Dockerfile.server`
+all 31 predicates match `user_id` as bound parameters; the header differs from upstream's only by
+the link; the page's option cache, its handling of late answers, its tooltips and its dialog's
+load, search and save paths hold; `Dockerfile.server`
 matches upstream's stages, with no build tools in the runtime stage, exactly three pulls, and the
 image tagged only after every check; no local path, name, e-mail or token in the range.
+
+Severity is as the reviewers gave it; "not rated" marks a finding they gave no rating (nothing
+was rated high; the backend reviewer rated all its findings low).
 
 | Pass | Finding | Severity | Done |
 | --- | --- | --- | --- |
@@ -302,19 +309,19 @@ image tagged only after every check; no local path, name, e-mail or token in the
 | 1, backend | F5 `.json`-suffixed paths routed, 500 to administrators | low | fixed `0406d9979` (not routed) |
 | 1, backend | notes: stored name as fresh as the last save; an unchanged save still advances; a user deleted during a save; the variable read once to warn | note | recorded as limits; why the variable is still read, commented in `7ebe97774` |
 | 1, page | F1 a non-administrator saw Settings, the filter row and the scope label until the 403 | medium | fixed `09ac22a85` (decided from the account's group, no request) |
-| 1, page | F2 the dialog stayed open over the refusal panel | low | fixed `09ac22a85` |
-| 1, page | F3 typing then Enter picked "All"; F4 focus lost after clearing; F9 stale options after a period change; F10 a popup could make the page scroll sideways | low | fixed `947be8a66`; F10 checked in the browser |
-| 1, page | F5 a hover-opened tooltip not dismissed by Escape | low | fixed `0c5ccc24a` |
-| 1, page | F6 Cancel during a save, a late result in a reopened dialog, no double-save guard; F7 the search's 20 filtered after the cap; F8 a failed search read "No users found" | low | fixed `c9170ac56`, `a741d9d4e` |
-| 1, page | N4 unknown ids asked again; T1 two dropped assertions | low | N4 fixed `09ac22a85`; T1 restored `969e7036b` |
+| 1, page | F2 the dialog stayed open over the refusal panel | not rated | fixed `09ac22a85` |
+| 1, page | F3 typing then Enter picked "All"; F4 focus lost after clearing; F9 stale options after a period change; F10 a popup could make the page scroll sideways | not rated | fixed `947be8a66`; F10 checked in the browser |
+| 1, page | F5 a hover-opened tooltip not dismissed by Escape | not rated | fixed `0c5ccc24a` |
+| 1, page | F6 Cancel during a save, a late result in a reopened dialog, no double-save guard; F7 the search's 20 filtered after the cap; F8 a failed search read "No users found" | not rated | fixed `c9170ac56`, `a741d9d4e` |
+| 1, page | N4 unknown ids asked again; T1 two dropped assertions | not rated | N4 fixed `09ac22a85`; T1 restored `969e7036b` |
 | 1, page | N1, N2 ticket wording; N3 a 503 after a committed save does not say figures keep the old list | note | tickets corrected; N3 recorded with the limit |
-| 1, delivery | S1 killed-worker could pass without killing anything; S6 worker left at zero after a timed-out scale-down; S7 weak assertions | medium (S1), low | fixed `07d362543`, `5cce53cf3` |
+| 1, delivery | S1 killed-worker could pass without killing anything; S6 worker left at zero after a timed-out scale-down; S7 weak assertions | medium (S1); S6, S7 not rated | fixed `07d362543`, `5cce53cf3` |
 | 1, delivery | S2 two-replicas passed with no refresh runs found | medium | fixed `5cce53cf3` |
-| 1, delivery | S3 off-then-on did not restore on failure; S4 the HTTP port not tied to the namespace; S5 an interrupted upgrade could leave values changed | medium (S3), low | fixed `0b2942412` |
-| 1, delivery | S8 no check that an administrator out of the admin group is refused at once | low | added `142fea153` (`revoked-admin`) |
-| 1, delivery | B1 `ldd`'s exit status could make the library check vacuous; B2 the Go stage pinned only in the script; B3 `non-free` left in the final apt sources; B6 nginx unchecked | low | fixed `074f69d1a`; re-read by the delivery reviewer |
-| 1, delivery | B4 base image environment variables | low | compared and stated (above) |
-| 1, delivery | D1-D6 documents and tickets said more than the code | low | corrected `663a3f3f9`, `06fdc1880`, `94fea2172`, `4edccebeb`, `f320da121`, `4fe9cf2f0` |
+| 1, delivery | S3 off-then-on did not restore on failure; S4 the HTTP port not tied to the namespace; S5 an interrupted upgrade could leave values changed | medium (S3); S4, S5 not rated | fixed `0b2942412` |
+| 1, delivery | S8 no check that an administrator out of the admin group is refused at once | not rated | added `142fea153` (`revoked-admin`) |
+| 1, delivery | B1 `ldd`'s exit status could make the library check vacuous; B2 the Go stage pinned only in the script; B3 `non-free` left in the final apt sources; B6 nginx unchecked | not rated | fixed `074f69d1a`; re-read by the delivery reviewer |
+| 1, delivery | B4 base image environment variables | not rated | compared and stated (above) |
+| 1, delivery | D1-D6 documents and tickets said more than the code | not rated | corrected `663a3f3f9`, `06fdc1880`, `94fea2172`, `4edccebeb`, `f320da121`, `4fe9cf2f0` |
 | 2 | 1 a save that never answers locked the dialog | medium | fixed `3b682f584` (a save is waited for at most 30 s) |
 | 2 | 2 backend F1, F4, F5 untested at the view or route level | medium | F4, F5 and HEAD added to the stack's settings check (`593154d91`, `4bd1dbea3`); the 503-after-commit path stays checked only by the author's container run |
 | 2 | 3 deleted-project ids asked again after a partial failure; 4 a shifted popup lost its 360 px cap | low | fixed `ebf221ef7`, `6da9f526f` |
@@ -385,6 +392,11 @@ limit.
   rests on the log order and the source, not on the stored failure text.
 - Whether ClickHouse cancels an insert whose client disconnected.
 - The `CLAM_AV=yes` and `CVAT_DEBUG_ENABLED=yes` builds.
+- The build's refusal when upstream's `Dockerfile` changes: provoked only by the build lane
+  before the first build, as its own report states; not repeated for this record.
+- The user search matching first and last names: read in the code (`icontains` on username,
+  first and last name); the stack's check asserts the username match, the cap of 20 and the
+  order only.
 - A 503 after a committed save, at the view level: only in the author's container check.
 - Screen-reader output of the page, the selectors and the dialog.
 - A real double click on Save in a browser (the page suite clicks twice in one go).

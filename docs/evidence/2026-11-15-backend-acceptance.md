@@ -256,7 +256,8 @@ before the fixes (`cbd8f8f05c54`) when the branch was published.
 
 ## Not verified
 
-2026-11-16: the lines below, and the two open lines of the section "On the final build", were
+2026-11-16: the lines below, the unprovoked rename refusal of "On the final build, after the
+independent review" and the checks not run on a stack in "After the second review pass" were
 verified or ruled out on that date; see
 [`2026-11-16-open-lines-closed-and-admin-settings.md`](2026-11-16-open-lines-closed-and-admin-settings.md).
 
