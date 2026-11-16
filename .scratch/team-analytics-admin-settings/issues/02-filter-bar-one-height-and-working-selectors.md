@@ -8,14 +8,18 @@ Project names: at Instance scope CVAT's own projects API returns only personal-w
 
 **Blocked by:** 01. The switch of `project-names.ts` uses the `project-names` action of ticket 05; that part lands once 05's action exists.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] New page test `verify/team-analytics-page/filter-select.test.cjs`: the selector opens, filters its options by the typed text, lists "All" first and the "No project" bucket, and choosing a value sets the filter while the clear button resets it.
-- [ ] Options are requested only when the dropdown opens, with `by=annotators` or `by=projects` and no project, annotator or shapes parameter, and are not requested again for the same organization and period.
-- [ ] For a period that is not processed, the dropdown shows "All", the current value and a "not processed yet" line, and no options.
-- [ ] Clicking a card row still sets the project or annotator filter (existing tests pass, `projects-filters.test.cjs` updated).
-- [ ] Project names come from the `project-names` action, and an id that is not returned still reads "Project #N".
-- [ ] Keyboard use works: the selector opens, moves through options and closes with the keyboard, and has combobox and listbox roles.
+- [x] New page test `verify/team-analytics-page/filter-select.test.cjs`: the selector opens, filters its options by the typed text, lists "All" first and the "No project" bucket, and choosing a value sets the filter while the clear button resets it.
+- [x] Options are requested only when the dropdown opens, with `by=annotators` or `by=projects` and no project, annotator or shapes parameter, and are not requested again for the same organization and period.
+- [x] For a period that is not processed, the dropdown shows "All", the current value and a "not processed yet" line, and no options.
+- [x] Clicking a card row still sets the project or annotator filter (existing tests pass, `projects-filters.test.cjs` updated).
+- [x] Project names come from the `project-names` action, and an id that is not returned still reads "Project #N".
+- [x] Keyboard use works: the selector opens, moves through options and closes with the keyboard, and has combobox and listbox roles.
 - [ ] On the live stack (browser step of ticket 08): every filter-bar control measures 36px on one shared centre line, the Settings button (in the header row at the right, not on the filter row) measures 36px, and a project and an annotator can be picked through the selectors.
 
 ## Comments
+
+2026-11-16: Done in `bc1dc086c`, with the review's fixes in `947be8a66` (typing then Enter, focus after clearing, stale options, popup edge), `e27dc28d8`, `ebf221ef7` (names requests asked again after a failure), `98bedfebd` and `6da9f526f` (popup placement and width). Shown: the page suite with `filter-select.test.cjs` passed through `tools/gate/node-suite.sh` (fresh clone at `0bf2f41cd`). On the stack (`check-fixes page`, final run): all 5 controls 36 px at 1024, 1400 and 1920 px, Settings 36 px at the header's right end; each selector one list request and none on reopening; a project and an annotator picked through the selectors with the figures changing; an open popup inside the page at 1024, 1192 and 1400 px; at instance scope 51 project options, none named "Project #N". Record: `docs/evidence/2026-11-16-open-lines-closed-and-admin-settings.md`.
+
+Left unticked, the live criterion, only partly met: the controls share one centre line at 1400 and 1920 px, but at 1024 px the bar wraps onto two lines (centres 148 and 192 px), each line on its own centre; heights, the Settings button and both selectors were shown.

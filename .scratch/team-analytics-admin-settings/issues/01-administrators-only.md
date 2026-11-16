@@ -10,13 +10,15 @@ Tracker: issue 19 of `.scratch/team-analytics/` is closed as `wontfix`, an accep
 
 **Blocked by:** none.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The policy tests (generated and hand-written) show administrators allowed for every Team Analytics action, with and without an organization, and every other role (owner, maintainer, supervisor, worker, `user` with no organization) refused.
-- [ ] No code path returns `{"error": "organization_required"}`; a refused caller gets the plain 403 and a signed-out caller 401.
-- [ ] The `admin` flag is gone from the core's scope, the read cache key and the status answer, and the calculation and read-path suites (`verify/team-analytics-backend/tests/`) pass with the changed stand-ins.
-- [ ] Page suite (`verify/team-analytics-page/`): only an administrator sees the header link and the page; an owner or maintainer sees neither, and the "select an organization" state no longer exists.
-- [ ] On the live stack (checked in ticket 08): an owner and a maintainer get 403 on every endpoint; an administrator gets figures for a selected organization and for Instance scope.
-- [ ] Docs handoff recorded for the integration pass: Organization scope and Instance scope in `GLOSSARY.md`, TA-1 access and IAM-2's reason in `docs/fork-specification.md`, `README.fork.md`, and the comment beside the app's wiring in `cvat/settings/base.py`.
+- [x] The policy tests (generated and hand-written) show administrators allowed for every Team Analytics action, with and without an organization, and every other role (owner, maintainer, supervisor, worker, `user` with no organization) refused.
+- [x] No code path returns `{"error": "organization_required"}`; a refused caller gets the plain 403 and a signed-out caller 401.
+- [x] The `admin` flag is gone from the core's scope, the read cache key and the status answer, and the calculation and read-path suites (`verify/team-analytics-backend/tests/`) pass with the changed stand-ins.
+- [x] Page suite (`verify/team-analytics-page/`): only an administrator sees the header link and the page; an owner or maintainer sees neither, and the "select an organization" state no longer exists.
+- [x] On the live stack (checked in ticket 08): an owner and a maintainer get 403 on every endpoint; an administrator gets figures for a selected organization and for Instance scope.
+- [x] Docs handoff recorded for the integration pass: Organization scope and Instance scope in `GLOSSARY.md`, TA-1 access and IAM-2's reason in `docs/fork-specification.md`, `README.fork.md`, and the comment beside the app's wiring in `cvat/settings/base.py`.
 
 ## Comments
+
+2026-11-16: Done in `e3fb1e7d0` (backend) and `1f1776e55` (page), with the stack's reads moved to an administrator in `213010452`; the first review's medium page finding (a non-administrator briefly saw Settings and the filter row) was fixed in `09ac22a85`, so the page decides from the account's group and sends no Team Analytics request at all. Shown: the policy tests (patched, stock and upstream's generated suite) and the page and calculation suites passed in a fresh clone's `prek` at `0bf2f41cd`; the calculation suite passed whole (370 tests, `5dea1cc89`, server image `7ead6d1cec4b`); `organization_required` and the scope's `admin` flag are gone from the app and the page (only page tests name the old body, as one no longer sent). On the stack, `up` of the final run: `ta-admin` 200 on all five read endpoints for three organizations and for instance scope, every owner, maintainer, supervisor, worker and outsider 403 on all five, signed out 401, and `revoked-admin` refused on its next 8 requests. Record: `docs/evidence/2026-11-16-open-lines-closed-and-admin-settings.md`.

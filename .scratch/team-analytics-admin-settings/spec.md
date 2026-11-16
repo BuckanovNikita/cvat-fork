@@ -212,7 +212,9 @@ other than the operations card that still scrolls sideways.
 The failed jobs seen at worker start on the owner's stack match rq 1.16.0's
 `clean_intermediate_queue` (a starting worker fails a job another process just dequeued; the job
 still runs). Ticket 09 confirms this from the pinned source and the job's `exc_info` and records
-it as an upstream limit, without changing the pin.
+it as an upstream limit, without changing the pin. (2026-11-16: confirmed from the pinned source
+and the worker's log order; the job's record had no `exc_info` to cite, because the scheduler
+recreates it every minute. See `docs/evidence/2026-11-16-open-lines-closed-and-admin-settings.md`.)
 
 The trust model and the correction procedure for a wrongly early event stay as documented in
 `docs/fork-specification.md`. `ta-bot` is only the test stack's example technical account.
