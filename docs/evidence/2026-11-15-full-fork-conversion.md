@@ -105,6 +105,9 @@ schedule can be removed where analytics is switched off; the table is the image 
 
 ## Not verified here
 
+2026-11-16: the lines below were verified or ruled out on that date; see
+[`2026-11-16-open-lines-closed-and-admin-settings.md`](2026-11-16-open-lines-closed-and-admin-settings.md).
+
 - Nothing on a running stack: that is the acceptance run's record.
 - The build of the fork's tree with upstream's own `Dockerfile`.
 - A merge of a release that changes the fork's edited files, or files under `.github/`.
