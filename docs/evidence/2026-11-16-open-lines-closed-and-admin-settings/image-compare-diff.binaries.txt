@@ -1,0 +1,26 @@
+--- old.binaries.txt (image 25b249e2e3e1)
++++ new.binaries.txt (image baa5a8b72149)
+@@ -1,14 +1,14 @@
+-os: Ubuntu 24.04.5 LTS
++os: Debian GNU/Linux 12 (bookworm)
+ id: uid=1000(django) gid=1000(django) groups=1000(django)
+-glibc: ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+-python: Python 3.12.3 at /opt/venv/bin/python
+-python3: Python 3.12.3 at /opt/venv/bin/python3
+-system python3: Python 3.12.3
+-nginx: nginx version: nginx/1.24.0 (Ubuntu)
++glibc: ldd (Debian GLIBC 2.36-9+deb12u14) 2.36
++python: Python 3.12.16 at /opt/venv/bin/python
++python3: Python 3.12.16 at /opt/venv/bin/python3
++system python3: Python 3.11.2
++nginx: nginx version: nginx/1.22.1
+ supervisord: 4.2.5
+-unrar: UNRAR 7.00 freeware      Copyright (c) 1993-2024 Alexander Roshal
+-7z: 7-Zip 23.01 (x64) : Copyright (c) 1999-2023 Igor Pavlov : 2023-06-20
+-git: git version 2.43.0
++unrar: UNRAR 6.21 freeware      Copyright (c) 1993-2023 Alexander Roshal
++7z: 7-Zip [64] 26.02 : Copyright (c) 1999-2026 Igor Pavlov : 2026-06-25
++git: git version 2.39.5
+ which smokescreen: /usr/local/bin/smokescreen
+ which wait-for-it: /usr/bin/wait-for-it
+ which pdftoppm: /usr/bin/pdftoppm
