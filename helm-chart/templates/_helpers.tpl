@@ -149,7 +149,12 @@ Service name is release-redis-master for replication architecture and if Sentine
 - name: DJANGO_LOG_SERVER_HOST
   value: "{{ .Release.Name }}-vector"
 - name: DJANGO_LOG_SERVER_PORT
-  value: "{{ (index .Values.vector.service.ports 0).port }}"
+  {{- /* The port vector listens on: one value, so the sender and the receiver cannot drift. */}}
+  {{- $port := 8282 }}
+  {{- with .Values.vector.service.ports }}
+  {{- $port = (index . 0).port | default 8282 }}
+  {{- end }}
+  value: "{{ $port }}"
 - name: CLICKHOUSE_HOST
   valueFrom:
     secretKeyRef:
@@ -206,6 +211,9 @@ Service name is release-redis-master for replication architecture and if Sentine
 {{- $localValues := .Values.cvat.backend.server }}
 {{- $fix := .Values.cvat.backend.permissionFix -}}
 {{- if $fix.enabled -}}
+{{- if and (not $fix.commandOverride) (not $fix.paths) -}}
+{{- fail "cvat.backend.permissionFix is enabled but sets neither paths nor commandOverride, so it would run chmod with no operand" -}}
+{{- end -}}
 - name: user-data-permission-fix
   image: {{ $fix.image }}:{{ $fix.tag }}
   imagePullPolicy: {{ $fix.imagePullPolicy }}

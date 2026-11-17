@@ -8,7 +8,7 @@ match imageTagsGuard.tagPattern, which by convention ends in the short commit
 the build published.
 */ -}}
 {{- if .Values.imageTagsGuard.enabled -}}
-{{- $pattern := .Values.imageTagsGuard.tagPattern }}
+{{- $pattern := required "imageTagsGuard.tagPattern must be set when the guard is on" .Values.imageTagsGuard.tagPattern }}
 {{- $known := dict
     "backend" (dict "image" .Values.cvat.backend.image "tag" .Values.cvat.backend.tag)
     "frontend" (dict "image" .Values.cvat.frontend.image "tag" .Values.cvat.frontend.tag)

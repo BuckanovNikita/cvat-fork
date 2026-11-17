@@ -10,7 +10,11 @@
 #
 # An empty NPM_REGISTRY sets nothing at all: the variables that name a registry are exported inside
 # the steps that use them, so a public build keeps every tool on its own default.
+#
+# Both bases are declared here, before the first FROM: an ARG declared inside a stage is not in
+# scope for a later FROM instruction, so a stage-scoped NGINX_IMAGE would resolve to an empty base.
 ARG NODE_IMAGE=node:lts-slim
+ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31.7-alpine3.24-slim
 FROM ${NODE_IMAGE} AS cvat-ui
 
 ENV TERM=xterm \
@@ -67,7 +71,6 @@ ARG SOURCE_MAPS_ENABLED=false
 RUN CLIENT_PLUGINS="${CLIENT_PLUGINS}" \
 SOURCE_MAPS_ENABLED="${SOURCE_MAPS_ENABLED}" yarn run build:cvat-ui
 
-ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31.7-alpine3.24-slim
 FROM ${NGINX_IMAGE}
 
 # Replace default.conf configuration to remove unnecessary rules

@@ -176,7 +176,9 @@ cvat:
       image: busybox
       tag: 1.36.1
       imagePullPolicy: IfNotPresent
-      # commandOverride: []
+      # Replaces the whole command, not arguments appended to one: give the
+      # program first. Leave it unset to chmod `paths` with /bin/chmod.
+      # commandOverride: ["/bin/chmod", "-R", "777", "/home/django"]
       paths:
         - /home/django
     service:
@@ -634,9 +636,10 @@ ingress:
   ## Create the TLS secret from the certificate and key values instead of
   ## managing it outside the chart. The values are read from the top-level
   ## `tlscrt` and `tlskey` keys, which is where a werf secrets file keeps them.
+  ## The secret is created under `ingress.tlsSecretName`, the same name the
+  ## ingress refers to, so there is no second name to keep in step.
   tlsSecret:
     create: false
-    name: ingress-tls-cvat
 
 traefik:
   enabled: false

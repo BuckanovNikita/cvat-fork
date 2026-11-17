@@ -181,8 +181,11 @@ done
 # Docker 23 taught `docker build` the --provenance flag. An older client rejects it outright, and
 # there it cannot request attestations anyway, so the flag is passed only where it exists. The CI
 # runner's client is one of them: the first pipeline died at argument parsing, before a build step.
+# The help text is captured first: piping it into `grep -q` would let grep exit early and SIGPIPE
+# the client, and `pipefail` would then read success as failure and drop the flag.
+build_help="$(docker build --help 2>&1 || true)"
 build_flags=(--pull=false)
-if docker build --help 2>&1 | grep -q -- '--provenance'; then
+if printf '%s\n' "$build_help" | grep -q -- '--provenance'; then
     build_flags+=(--provenance=false)
     echo "docker build accepts --provenance: attestations off" >&2
 else
