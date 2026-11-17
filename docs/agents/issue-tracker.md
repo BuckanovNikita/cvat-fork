@@ -9,9 +9,9 @@ Linear is private and this repository is public: PR descriptions, commit message
 ## Conventions
 
 - **Feature**: one parent issue whose description is the spec. Its implementation tickets are sub-issues, one issue per ticket.
-- **Ticket**: the description records the outcome, scope, an implementation plan where needed, compatibility constraints, acceptance criteria as a checklist, and the selected verification.
+- **Implementation ticket**: the description records the outcome, scope, an implementation plan where needed, compatibility constraints, acceptance criteria as a checklist, and the selected verification.
 - **Blocking**: Linear's native blocked-by relation.
-- **State**: one lifecycle state (Backlog, Todo, In Progress, In Review, Done, Canceled, Duplicate) and, outside wayfinding, one readiness label ([triage labels](triage-labels.md)). A ready label does not override an open blocker.
+- **State**: one lifecycle state (Triage, Backlog, Todo, In Progress, In Review, Done, Canceled, Duplicate) and, outside wayfinding, one readiness label ([triage labels](triage-labels.md)). A ready label does not override an open blocker. An issue awaiting triage sits in Triage with `needs-triage`.
 - **Discussion**: Linear comments on the issue.
 - **Vocabulary and decisions**: `GLOSSARY.md` and `docs/adr/` ([domain docs](domain.md)). The behavior to preserve is in the [fork specification](../fork-specification.md).
 
@@ -25,7 +25,7 @@ Read the issue by its identifier or URL, with its comments and relations.
 
 ## Lifecycle and acceptance
 
-Start dependent work only when its prerequisite is implemented and verified on the branch used as its base; the dependency still orders the merges. A canceled prerequisite requires replanning or removing the dependent work, never silently bypassing it. Move an issue to In Review when the implementation and its selected verification are ready for review. Mark it Done only after its changes reach `main` through a merged PR and its acceptance criteria are satisfied. Verification-only work completes on its recorded acceptance outcome, and a wayfinding ticket on its recorded answer.
+Start dependent work only when its prerequisite is implemented and verified on the branch used as its base; the dependency still orders the merges. Outside wayfinding, a canceled prerequisite requires replanning or removing the dependent work, never silently bypassing it. Move an issue to In Review when the implementation and its selected verification are ready for review. Mark it Done only after its changes reach `main` through a merged PR and its acceptance criteria are satisfied. Verification-only work completes on its recorded acceptance outcome, a wayfinding ticket on its recorded answer, and a wayfinding map when the skill calls it done.
 
 Record evidence with the source revision, the environment, the checks actually run and their outcomes, exclusions, reuse reasons and remaining limitations. Dated evidence files stay in `docs/evidence/`; link them from the issue. The repository has no CI, because the fork deletes upstream's `.github/`: run the selected checks of the [upgrade procedure, section 4](../upstream-upgrade.md#4-verify-the-integrated-changes) locally and record their outcomes in the issue and the PR. Confirm a GitHub check, a branch protection or a Linear automation exists before relying on it. Required verification that is deferred blocks merge readiness.
 
@@ -48,6 +48,7 @@ Used by `/wayfinder`. The **map** is one issue with **child** issues as tickets.
 - **Frontier**: the map's open sub-issues with no open blocker and no assignee; first in map order wins.
 - **Claim**: assign the issue to the dev driving the map, as the session's first write.
 - **Resolve**: post the answer as a comment, set the issue to Done, then append a context pointer (gist + link) to the map's Decisions-so-far.
+- **Rule out of scope**: set the ticket to Canceled.
 
 ## Local tracker archive
 
