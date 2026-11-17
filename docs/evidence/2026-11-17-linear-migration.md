@@ -9,7 +9,15 @@ at this repository's size: there is no Spec Kit here to archive and no release a
 
 Worktree branch `chore/linear-workflow`, created from `origin/main` at `2afbb331b` after a fetch on
 2026-11-17. The local `main` of the machine was one commit behind `origin/main` and was not used or
-moved. The repository had no pull request, open or closed, before this one.
+moved. The repository had no pull request, open or closed, before PR 1.
+
+The change reached `main` in two PRs. The owner squash-merged
+[PR 1](https://github.com/BuckanovNikita/cvat-fork/pull/1) on 2026-11-17 at 19:13 UTC as
+`529a95a5e`, holding the first two commits of that branch (`07a02ee37`, `6309c4016`). The two
+later commits had not been pushed. They were carried onto branch
+`chore/sip-100-linear-workflow-review`, created from `origin/main` at `529a95a5e`, as `3f78ce838`
+and `d8641eafa`, and are delivered with the last corrections of this file by a second PR
+([SIP-100](https://linear.app/sip-ds-team/issue/SIP-100/close-the-second-review-pass-on-the-linear-workflow-guidance)).
 
 ## What changed
 
@@ -42,8 +50,8 @@ Policy:
 - Independent review after integrated verification, for changes of behavior, interface, dependency,
   security or operational policy, now covers all work. The upgrade procedure already required it
   for an upgrade's behavioral and permission changes.
-- An external PR is not a request to triage ("PRs as a request surface: no"). An issue that arrives
-  in the team's Triage state moves to Backlog with `needs-triage`.
+- An external PR is not a request to triage ("PRs as a request surface: no"). An issue awaiting
+  triage sits in the team's Triage state with `needs-triage`.
 - The wayfinding operations are mapped to Linear objects: the map is an issue labelled
   `wayfinder:map`, a ticket is its sub-issue, blocking is the native relation, the claim is the
   assignee. One meaning changed: a ticket was unblocked when every ticket it listed was
@@ -98,10 +106,15 @@ questions and its comment:
 
 | Original source | Linear issue |
 | --- | --- |
-| `.scratch/task-progress/issues/01-the-legend-hides-the-progress-bar-when-a-task-has-many-buckets.md` | [SIP-98](https://linear.app/sip-ds-team/issue/SIP-98/the-legend-hides-the-progress-bar-when-a-task-has-many-buckets), Backlog, `needs-triage` |
+| `.scratch/task-progress/issues/01-the-legend-hides-the-progress-bar-when-a-task-has-many-buckets.md` | [SIP-98](https://linear.app/sip-ds-team/issue/SIP-98/the-legend-hides-the-progress-bar-when-a-task-has-many-buckets), created in Backlog, `needs-triage` |
 
 It had no blocker, so no blocking relation was created. Before creation, Linear was searched for
 the source path and for the title and held neither; a retry must match the source path first.
+
+The migration created SIP-98 in Backlog. At 19:13 UTC, half a minute after the merge of PR 1, it
+was moved to the team's Triage state, not by the migration. The guidance first sent an issue
+found in Triage to Backlog; it was changed to keep an issue awaiting triage in Triage, on that
+move alone. The owner has not stated the rule.
 
 ## Independent review
 
@@ -118,7 +131,7 @@ Nothing was rated high. It confirmed the ticket counts and statuses, the 79 unch
 14 links, the facts stated about the repository (default branch, no `.github/`, the pipeline not
 installed as git hooks, its twelve hooks, the merge command, ADR 0005) and that a squash or rebase
 merge of an upgrade PR removes the release from the ancestors of `main`. Its findings, all fixed in
-the second and third commits:
+`6309c4016` (in PR 1) and `3f78ce838`:
 
 - Medium: the wayfinding operations contradicted the general rules. A wayfinding ticket has no PR,
   so "Done only after a merged PR" never let it close, and it must carry no readiness label where
@@ -142,14 +155,15 @@ the second and third commits:
 
 ### Second pass
 
-The second read the fixes (`07a02ee37..22b9e3100`) with the first pass's findings, the resulting
-files, the skills and the team's states and labels in Linear. It found all eight findings closed
-and nothing high or medium, confirmed that merging `main` into an upgrade branch keeps the release
-an ancestor where a rebase does not, and that `AGENTS.md` still points correctly. Its findings, all
-low, fixed in the fourth commit:
+The second read the fixes with the first pass's findings, the resulting files, the skills and the
+team's states and labels in Linear. It read them before the merge of PR 1, as `6309c4016` and a
+commit with the content of `3f78ce838`. It found all eight findings closed and nothing high or
+medium, confirmed that merging `main` into an upgrade branch keeps the release an ancestor where a
+rebase does not, and that `AGENTS.md` still points correctly. Its findings, all low, fixed in
+`d8641eafa`:
 
-- The list of lifecycle states left out the team's Triage state. The guidance now says where an
-  issue arriving there goes.
+- The list of lifecycle states left out the team's Triage state. The guidance now names it and
+  says which issues sit there.
 - This file's list of changes omitted rules the fixes had added, and called the independent review
   new where the upgrade procedure already required it for upgrades. Corrected above.
 - The bare ticket numbers were listed as three where `verify/` holds more. Counted and corrected.
@@ -157,24 +171,31 @@ low, fixed in the fourth commit:
 - Not contradictions: the map had no completion rule, the ticket convention was not scoped to
   implementation tickets, and a ticket ruled out of scope had no state. All three are now stated.
 
-The fourth commit was checked by the author against each finding and not reviewed again.
+`d8641eafa` and the commit after it, which holds the Triage rule and the account of the merge in
+this file, were checked by the author against each finding and not reviewed again.
 
 ## Checks
 
-Run in the worktree on the committed tip of the fourth commit, 2026-11-17.
+Run in the worktree on the committed tip of `chore/sip-100-linear-workflow-review`, 2026-11-17,
+against `origin/main` at `529a95a5e`. The same checks had passed on the tip of PR 1 before its merge.
 
 - Passed: `git diff --check origin/main HEAD`.
-- Passed: `git diff --quiet origin/main HEAD -- .scratch`, so the 79 tracked files of the local
-  tracker (73 tickets, four specs, one plan, one ledger) are byte-identical to `origin/main`.
+- Passed: `git diff --quiet 2afbb331b HEAD -- .scratch`, so the 79 tracked files of the local
+  tracker (73 tickets, four specs, one plan, one ledger) are byte-identical to the tree before the
+  migration.
 - Passed: every relative link in `AGENTS.md`, the three files of `docs/agents/`,
   `docs/upstream-upgrade.md` and this file resolves to an existing file, and every heading anchor
   among them exists (a script written for this check and not kept).
 - Passed: a search of `AGENTS.md`, `docs/agents/` and `docs/upstream-upgrade.md` finds no remaining
   instruction to create or update tickets under `.scratch/`.
-- Passed: Linear readback. The project lists SIP-97 and SIP-98 and nothing else; SIP-98 carries the
-  source path, the `needs-triage` label and a link to the original file.
+- Passed: Linear readback. The project lists SIP-97, SIP-98 and SIP-100 and nothing else; SIP-98
+  carries the source path, the `needs-triage` label and a link to the original file.
+- Observed: a human merge through GitHub works as described. The owner merged PR 1, and Linear's
+  GitHub integration moved SIP-97 from In Review to Done one second later, with no action by an
+  agent. That automation is therefore configured for this repository.
 - Not selected: the check pipeline (`prek.toml`) and the test stack. The change is Markdown only,
   and the pipeline's twelve hooks read the UI code, the fork's Python, the policies and three
   JavaScript suites, none of which changed.
-- Not established: that a human merge through GitHub works as described. No PR had been merged in
-  this repository when this was written, and `main` has no branch protection and no ruleset.
+- Not established: that the merge-commit rule for an upstream release PR is followed in practice.
+  PR 1 was squashed, which is right for it; `main` has no branch protection and no ruleset, and
+  GitHub offers all three merge methods.

@@ -11,7 +11,7 @@ Linear is private and this repository is public: PR descriptions, commit message
 - **Feature**: one parent issue whose description is the spec. Its implementation tickets are sub-issues, one issue per ticket.
 - **Implementation ticket**: the description records the outcome, scope, an implementation plan where needed, compatibility constraints, acceptance criteria as a checklist, and the selected verification.
 - **Blocking**: Linear's native blocked-by relation.
-- **State**: one lifecycle state (Backlog, Todo, In Progress, In Review, Done, Canceled, Duplicate) and, outside wayfinding, one readiness label ([triage labels](triage-labels.md)). A ready label does not override an open blocker. An issue that arrives in the team's Triage state moves to Backlog with `needs-triage`.
+- **State**: one lifecycle state (Triage, Backlog, Todo, In Progress, In Review, Done, Canceled, Duplicate) and, outside wayfinding, one readiness label ([triage labels](triage-labels.md)). A ready label does not override an open blocker. An issue awaiting triage sits in Triage with `needs-triage`.
 - **Discussion**: Linear comments on the issue.
 - **Vocabulary and decisions**: `GLOSSARY.md` and `docs/adr/` ([domain docs](domain.md)). The behavior to preserve is in the [fork specification](../fork-specification.md).
 
