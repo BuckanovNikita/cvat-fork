@@ -59,6 +59,12 @@ spec:
           {{- end }}
           securityContext:
             runAsNonRoot: true
+            {{- with .Values.cvat.backend.runAsUser }}
+            runAsUser: {{ . }}
+            {{- end }}
+            {{- with .Values.cvat.backend.runAsGroup }}
+            runAsGroup: {{ . }}
+            {{- end }}
       restartPolicy: OnFailure
       {{- with merge $localValues.affinity .Values.cvat.backend.affinity }}
       affinity:
