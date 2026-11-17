@@ -60,6 +60,10 @@ git switch -c "upgrade/cvat-${TARGET}"
 git merge --no-ff "${TARGET}"
 ```
 
+From here on the branch is never rebased: a rebase drops the merge and with it
+the join to upstream's history. To take later commits of `main`, merge `main`
+into the branch. Section 5 says how the branch is delivered.
+
 Expect conflicts only where the fork and upstream both changed a file:
 
 - The fork's edited upstream files: the seventeen UI files, the two policies

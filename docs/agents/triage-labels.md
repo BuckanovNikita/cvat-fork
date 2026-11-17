@@ -12,4 +12,4 @@ The skills speak in terms of five canonical triage roles. Each is a Linear label
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label from this table.
 
-An issue carries one readiness label at a time. Readiness does not override blockers, verification or the human merge. Completion evidence belongs in the issue and its linked PR and evidence, not in a label.
+An issue carries one readiness label at a time; wayfinding maps and tickets carry none ([wayfinding operations](issue-tracker.md#wayfinding-operations)). Readiness does not override blockers, verification or the human merge. Completion evidence belongs in the issue and its linked PR and evidence, not in a label.
