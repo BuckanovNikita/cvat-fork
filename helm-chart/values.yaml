@@ -681,7 +681,8 @@ imageTagsGuard:
   ## published, for example <release-line>-0a1b2c3d.
   tagPattern: "^[0-9A-Za-z_.-]+-[0-9a-f]{8}$"
   ## Components to guard. Each name maps to a reference the chart renders:
-  ## backend, frontend, grafana, opa, kvrocks.
+  ## backend, frontend, grafana, opa, kvrocks. Grafana is only rendered while
+  ## `analytics.enabled` is true, so leave it out of this list there.
   components:
     - backend
     - frontend

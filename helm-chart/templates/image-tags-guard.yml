@@ -9,10 +9,11 @@ the build published.
 */ -}}
 {{- if .Values.imageTagsGuard.enabled -}}
 {{- $pattern := required "imageTagsGuard.tagPattern must be set when the guard is on" .Values.imageTagsGuard.tagPattern }}
+{{- $grafana := .Values.grafana | default dict }}
 {{- $known := dict
     "backend" (dict "image" .Values.cvat.backend.image "tag" .Values.cvat.backend.tag)
     "frontend" (dict "image" .Values.cvat.frontend.image "tag" .Values.cvat.frontend.tag)
-    "grafana" (dict "image" .Values.grafana.image.repository "tag" .Values.grafana.image.tag)
+    "grafana" (dict "image" (dig "image" "repository" "" $grafana) "tag" (dig "image" "tag" "" $grafana))
     "opa" (dict "image" .Values.cvat.opa.image "tag" .Values.cvat.opa.tag)
     "kvrocks" (dict "image" .Values.cvat.kvrocks.image "tag" .Values.cvat.kvrocks.tag) }}
 {{- range $component := .Values.imageTagsGuard.components }}
