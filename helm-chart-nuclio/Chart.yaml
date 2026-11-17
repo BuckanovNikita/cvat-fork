@@ -1,0 +1,25 @@
+apiVersion: v2
+name: nuclio
+# The chart itself is meant to run on any reasonably recent cluster; the
+# kubeVersion floor matches the one declared by the cvat chart.
+kubeVersion: ">= 1.23.0-0"
+description: A Helm chart for Nuclio, the serverless framework used by CVAT to run serverless functions
+
+# A chart can be either an 'application' or a 'library' chart.
+#
+# Application charts are a collection of templates that can be packaged into versioned archives
+# to be deployed.
+#
+# Library charts provide useful utilities or functions for the chart developer. They're included as
+# a dependency of application charts to inject those utilities and functions into the rendering
+# pipeline. Library charts do not define any templates and therefore cannot be deployed.
+type: application
+
+# This is the chart version. It tracks the version line of the upstream nuclio
+# chart this one was forked from (0.22.*), because the cvat chart used to
+# consume the dependency by that version.
+version: 0.22.0
+
+# This is the version number of the application being deployed, i.e. the nuclio
+# release the default images are tagged with (see values.yaml).
+appVersion: "1.14.1"

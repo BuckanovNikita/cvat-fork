@@ -37,11 +37,6 @@ dependencies:
 #    condition: postgresql.enabled
 #    alias: postgresql
 
-  - name: nuclio
-    version: "0.22.*"
-    repository: https://nuclio.github.io/nuclio/charts
-    condition: nuclio.enabled
-
   - name: vector
     version: "0.19.*"
     repository: https://helm.vector.dev
