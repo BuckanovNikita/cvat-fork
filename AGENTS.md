@@ -4,11 +4,11 @@
 
 ### Issue tracker
 
-Issues and specs live as local markdown files under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
+Active issues, specs and plans live in Linear (team `SIP`, project `cvat-fork`). Delivery is a GitHub PR from a task branch: agents push the branch and open the PR, humans merge. Read `docs/agents/issue-tracker.md` before planning, picking up or delivering work. `.scratch/` is the superseded local tracker, kept as a historical record.
 
 ### Triage labels
 
-The five default triage roles, recorded as a `Status:` line in each issue file. See `docs/agents/triage-labels.md`.
+The five default triage roles, as Linear labels separate from lifecycle state. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

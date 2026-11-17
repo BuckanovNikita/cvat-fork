@@ -60,6 +60,10 @@ git switch -c "upgrade/cvat-${TARGET}"
 git merge --no-ff "${TARGET}"
 ```
 
+From here on the branch is never rebased: a rebase drops the merge and with it
+the join to upstream's history. To take later commits of `main`, merge `main`
+into the branch. Section 5 says how the branch is delivered.
+
 Expect conflicts only where the fork and upstream both changed a file:
 
 - The fork's edited upstream files: the seventeen UI files, the two policies
@@ -126,7 +130,7 @@ Update the release in the default tags together. The tools read the release
 tag as `STOCK_TAG` (`verify/policy_test.sh`, the stack's
 `check-issue-policies`) and `UPSTREAM_TAG` (`tools/gate/ui-lint.sh`). Search
 the fork's own files for the old release number, outside dated evidence and
-the tracker:
+the archived local tracker:
 
 ```bash
 git grep -n -F v2.82.0 -- $(git diff --name-only --diff-filter=AM "${TARGET}" HEAD -- . ':!docs/evidence' ':!.scratch')
@@ -208,8 +212,9 @@ acceptance evidence.
 
 Run applicable checks once on the integrated result; rerun them only after
 relevant changes or failures. Keep failures, warnings, skipped checks and their
-reasons in dated evidence. No root Spec Kit or OpenSpec workflow exists in the
-repository; use a native workflow if one is introduced later.
+reasons in dated evidence. The upgrade's plan, acceptance criteria and status
+live in Linear ([issue tracker](agents/issue-tracker.md)); the repository has
+no Spec Kit or OpenSpec workflow.
 
 Upstream's own Django and REST suites are not part of the fork's checks. Its
 REST test for issues, `tests/python/rest_api/test_issues.py`, encodes the
@@ -565,7 +570,13 @@ baseline link and specification integration map as needed. Keep historical
 test counts and deployment results out of the evergreen specification.
 
 Commit only task-owned changes using the repository's commit convention, with
-safe mechanical formatting fixes separate from behavior changes. Publishing
+safe mechanical formatting fixes separate from behavior changes. Deliver the
+upgrade branch as a GitHub PR against `main`
+([delivery rules](agents/issue-tracker.md#delivery)). The human who merges it
+chooses **Create a merge commit**: a squash or rebase merge drops the release's
+parent and breaks the join to upstream's history
+([ADR 0005](adr/0005-a-full-source-fork-joined-to-upstream-history.md)). Say so
+in the PR description, and never rebase the upgrade branch. Publishing an image
 or deployment requires its own authorization. Before an authorized deployment,
 retain the prior UI and fork server images and deployment configuration, and plan
 database backup/rollback according to the target upstream release; reverting
