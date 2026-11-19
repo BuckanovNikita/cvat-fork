@@ -1,0 +1,45 @@
+{{- /*
+Answer each configured path with a permanent redirect to the ingress hostname
+instead of serving it, for a deployment that closes an endpoint such as open
+registration. Off unless ingress.redirectPaths is non-empty.
+*/ -}}
+{{- if and .Values.ingress.enabled .Values.ingress.redirectPaths -}}
+{{- $fullName := include "cvat.fullname" . -}}
+{{- $code := .Values.ingress.redirectCode | default 308 -}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}-redirect
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cvat.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/permanent-redirect: "https://{{ .Values.ingress.hostname }}"
+    nginx.ingress.kubernetes.io/permanent-redirect-code: "{{ $code }}"
+spec:
+{{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | toYaml }}
+{{- else if and .Values.traefik.enabled .Values.traefik.ingressClass.enabled }}
+  ingressClassName: {{ .Values.traefik.ingressClass.name | default (include "traefik.fullname" .Subcharts.traefik) }}
+{{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+  - hosts:
+    - {{ .Values.ingress.hostname }}
+    secretName: {{ .Values.ingress.tlsSecretName }}
+  {{- end }}
+  rules:
+  - host: {{ .Values.ingress.hostname }}
+    http:
+      paths:
+      {{- range $path := .Values.ingress.redirectPaths }}
+      - path: {{ $path }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ $.Release.Name }}-backend-service
+            port:
+              number: 8080
+      {{- end }}
+{{- end }}

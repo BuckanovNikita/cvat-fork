@@ -3,9 +3,23 @@
 # Dockerfile.server, a port of upstream's Dockerfile to Debian 12 with Python 3.12 from the
 # official Python image. The server and every worker run this one image.
 #
-# The build needs network access: it pulls the pinned bases (the Python, Rust and Go images named
-# in Dockerfile.server; nothing else: Dockerfile.server needs no external frontend image), downloads and compiles OpenH264 and FFmpeg, and downloads the Python
-# packages. It never pushes. Run it outside the closed contour and transfer the result (SAVE=1).
+# With no overrides the build pulls the public bases named in Dockerfile.server, downloads and
+# compiles OpenH264 and FFmpeg from github.com and the Python packages from PyPI. The build inside
+# a closed network uses the same files: every input that network has to supply is a build argument
+# of Dockerfile.server and an environment variable here of the same name, passed through when it
+# is set. Nothing of such a network lives in this script or in the Dockerfile.
+#
+#   BASE_IMAGE, RUST_IMAGE, GOLANG_IMAGE  the three bases    default: the ARG defaults in
+#                                                           Dockerfile.server
+#   APT_REMOTE, APT_SECURITY_REMOTE       apt mirrors        default: the base's own sources
+#   PIP_INDEX                             Python index       default: PyPI
+#   GO_PROXY                              Go module proxy    default: proxy.golang.org
+#   CARGO_INDEX                           cargo index        default: crates.io
+#   GITHUB_PROXY                          github.com mirror  default: github.com itself
+#
+# MAKE_JOBS (default 5, upstream's make -j5) sets the parallel jobs of each compile step; the
+# FFmpeg, wheel and Go stages run at the same time, so the build can use several times as many
+# cores. The build needs network access and never pushes; SAVE=1 packages the result for transfer.
 #
 # The build context is the tracked files of the paths Dockerfile.server copies, as they are in
 # the working tree. The script refuses to build when
@@ -15,9 +29,11 @@
 # - a file under the copied paths is not tracked (the image would lack it while the working
 #   tree has it), or a tracked file there is missing from the working tree.
 #
-# MAKE_JOBS (default 5, upstream's make -j5) sets the parallel jobs of each compile step; the
-# FFmpeg, wheel and Go stages run at the same time, so the build can use several times as many
-# cores. The build goes to a temporary tag. IMAGE is tagged only after these checks, each in a
+# The three bases are pulled before the build, so that a slow registry is retried here, once, and
+# the log records the digest each reference resolved to. A base does not have to be pinned by
+# digest: a tag is logged as what it resolved to, and the build is not refused either way.
+#
+# The build goes to a temporary tag. IMAGE is tagged only after these checks, each in a
 # one-off container without network:
 # - the image's bundle, from the server's own builder (verify/policy_bundle.sh from-image), holds
 #   the tree's two patched policies, each once, byte for byte;
@@ -35,7 +51,13 @@
 # If one fails, the script removes only what this run built (the temporary tag; the image goes
 # with it unless another tag names it), tags nothing, saves nothing and exits non-zero. An
 # earlier image under IMAGE is left as it is. The build cache stays.
+#
+# A successful build's last line is its whole audit trail in one grep: the image and its id, the
+# elapsed time of the run, the image size and the digest each base resolved to.
 set -euo pipefail
+
+# The wall clock of this whole run — context, pulls, build, checks — for the summary line.
+SECONDS=0
 
 IMAGE="${IMAGE:-cvat/server:v2.82.0-fork}"
 MAKE_JOBS="${MAKE_JOBS:-5}"
@@ -50,6 +72,12 @@ COPIED=(
     backend_entrypoint.d cvat supervisord utils backend_entrypoint.sh
     components/analytics/clickhouse/init.py manage.py rqscheduler.py wait_for_deps.sh
 )
+# The three bases: an environment variable of the same name wins, otherwise the ARG default of
+# Dockerfile.server is used, so the script and the Dockerfile cannot drift apart.
+BASE_ARGS=(BASE_IMAGE RUST_IMAGE GOLANG_IMAGE)
+# Every perimeter input: passed through as a build argument when the environment sets it, left out
+# when it does not, which keeps the ARG's empty (public) default.
+PERIMETER_ARGS=(APT_REMOTE APT_SECURITY_REMOTE PIP_INDEX GO_PROXY CARGO_INDEX GITHUB_PROXY)
 
 if ! [[ "$MAKE_JOBS" =~ ^[1-9][0-9]*$ ]]; then
     echo "MAKE_JOBS must be a positive integer, not '$MAKE_JOBS'" >&2
@@ -66,15 +94,26 @@ if [ "$upstream_sha256" != "$PORTED_FROM_SHA256" ]; then
     exit 1
 fi
 
-# The three bases are the defaults of Dockerfile.server's ARGs; each must be pinned by digest.
+# Resolve the bases and the build arguments. A base reference may be a tag or a tag pinned by
+# digest, and its digest is recorded after the pull below rather than required here.
 bases=()
-for arg in BASE_IMAGE RUST_IMAGE GOLANG_IMAGE; do
-    ref="$(sed -n "s/^ARG $arg=//p" "$ROOT/Dockerfile.server")"
-    if ! [[ "$ref" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]]; then
-        echo "Dockerfile.server: ARG $arg is not one image pinned by digest: '$ref'" >&2
+build_args=(--build-arg "MAKE_JOBS=$MAKE_JOBS")
+set_args=()
+for arg in "${BASE_ARGS[@]}"; do
+    ref="${!arg:-$(sed -n "s/^ARG $arg=//p" "$ROOT/Dockerfile.server")}"
+    if [ -z "$ref" ]; then
+        echo "Dockerfile.server: ARG $arg has no default, and $arg is not set in the environment" >&2
         exit 1
     fi
-    bases+=("$ref")
+    bases+=("$arg=$ref")
+    build_args+=(--build-arg "$arg=$ref")
+done
+for arg in "${PERIMETER_ARGS[@]}"; do
+    value="${!arg:-}"
+    if [ -n "$value" ]; then
+        set_args+=("$arg")
+        build_args+=(--build-arg "$arg=$value")
+    fi
 done
 
 # Each git call's output goes to a variable first, so that a failing call stops the script.
@@ -110,19 +149,70 @@ tar -C "$ROOT" -cf - --null --verbatim-files-from -T "$work/files" | tar -C "$wo
 chmod -R u=rwX,go=rX "$work/context"
 echo "context: $(tr -cd '\0' <"$work/files" | wc -c) tracked files of ${COPIED[*]}" >&2
 
-for ref in "${bases[@]}"; do
-    docker pull -q "$ref" >/dev/null
+if [ "${#set_args[@]}" -gt 0 ]; then
+    echo "inputs from the environment: ${set_args[*]}" >&2
+else
+    echo "inputs from the environment: none (public defaults of Dockerfile.server)" >&2
+fi
+
+# Pull the three bases before the build, so that a slow TLS handshake to a registry is retried
+# here, once, before the build itself sees it. The digest each reference resolved to is recorded
+# in the log — per pull here and once more in the summary line at the end: a tag is not a digest,
+# so this is the record of what was built from.
+base_digests=""
+for entry in "${bases[@]}"; do
+    arg="${entry%%=*}"
+    ref="${entry#*=}"
+    echo "pulling base $arg: $ref" >&2
+    if ! docker pull -q "$ref" >/dev/null; then
+        echo "  pull failed once; retrying (a slow TLS handshake to the registry)" >&2
+        docker pull -q "$ref" >/dev/null
+    fi
+    resolved="$(docker image inspect --format '{{range .RepoDigests}}{{.}} {{end}}' "$ref" 2>/dev/null || true)"
+    resolved="${resolved% }"
+    if [ -z "$resolved" ]; then
+        # A reference this daemon has no repo digest for (a locally built image, for one).
+        resolved="$(docker image inspect --format '{{.Id}}' "$ref")"
+    fi
+    echo "resolved to $resolved" >&2
+    base_digests+="${base_digests:+ }$arg=$resolved"
 done
 
+# Docker 23 taught `docker build` the --provenance flag. An older client rejects it outright, and
+# there it cannot request attestations anyway, so the flag is passed only where it exists. The CI
+# runner's client is one of them: the first pipeline died at argument parsing, before a build step.
+# The help text is captured first: piping it into `grep -q` would let grep exit early and SIGPIPE
+# the client, and `pipefail` would then read success as failure and drop the flag.
+build_help="$(docker build --help 2>&1 || true)"
+build_flags=(--pull=false)
+if printf '%s\n' "$build_help" | grep -q -- '--provenance'; then
+    build_flags+=(--provenance=false)
+    echo "docker build accepts --provenance: attestations off" >&2
+else
+    echo "this docker client predates --provenance: building without the flag" >&2
+fi
+
 DOCKER_BUILDKIT=1 docker build \
-    --pull=false \
-    --provenance=false \
-    --build-arg "MAKE_JOBS=$MAKE_JOBS" \
+    "${build_flags[@]}" \
+    "${build_args[@]}" \
     --iidfile "$work/id" \
     -t "$tmp_tag" \
     -f "$ROOT/Dockerfile.server" \
     "$work/context"
-built="$(cat "$work/id")"
+
+# The image as this daemon stored it, by the tag the checks below run it by. An --iidfile digest
+# cannot be used to tag: a daemon records the digest of the manifest BuildKit solved, which its
+# classic image store does not keep as an image, so tagging by it fails with "No such image". The
+# iidfile is the fallback for a daemon that reports the tag differently.
+built="$(docker image inspect --format '{{.Id}}' "$tmp_tag" 2>/dev/null || true)"
+if [ -z "$built" ] && [ -s "$work/id" ]; then
+    built="$(cat "$work/id")"
+    echo "no stored image reports the tag $tmp_tag; using the iidfile's id $built" >&2
+fi
+if [ -z "$built" ]; then
+    echo "the build produced no image id: nothing to check or tag" >&2
+    exit 1
+fi
 
 # A one-off container of the build: no network, one CPU, the image's own user.
 in_image() {
@@ -215,8 +305,9 @@ if [ "$status" != 0 ]; then
     exit 1
 fi
 
+size="$(docker image inspect --format '{{.Size}}' "$tmp_tag")"
 docker tag "$built" "$IMAGE"
-echo "built $IMAGE ($built) from the fork's tree; every check passed"
+echo "built $IMAGE ($built) from the fork's tree in ${SECONDS}s; every check passed; image size ${size} bytes; base digests: ${base_digests}"
 
 # Only needed when the image has to cross the air gap
 if [ "${SAVE:-0}" = 1 ]; then

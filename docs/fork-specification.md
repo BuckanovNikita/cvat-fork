@@ -257,38 +257,42 @@ No Dockerfile of the fork starts from a `cvat/` image
 | UI | `build-ui.sh`, `Dockerfile.ui.dockerignore` | Upstream `Dockerfile.ui` built from the repository root, with the fork's UI changes |
 | Fork server image | `build-server.sh`, `Dockerfile.server` | CVAT's whole backend built from the fork's tree by the fork's port of upstream's `Dockerfile` to Debian 12 with Python 3.12 ([ADR 0007](adr/0007-the-fork-builds-its-images-from-public-bases-the-server-on-debian-12.md)) |
 
-`build-ui.sh` compiles the frontend inside upstream `Dockerfile.ui`, with the
-repository root as the build context. `Dockerfile.ui.dockerignore`, which
-BuildKit reads in place of `.dockerignore` for that Dockerfile, cuts the
-context down to what `Dockerfile.ui` copies: the root package manifest and
-lock, `.yarnrc.yml` and the five UI packages, without `node_modules`. Preserve
-the script's selected Node image override through the named BuildKit context,
-disabled source maps, and removal of stale local `cvat-ui/dist` output before
-building. The script's `IMAGE` (default `cvat/ui:v2.82.0-fork`) and `NODE_IMAGE`
-variables are supported overrides; `SAVE=1` additionally exports a compressed image archive, while the
-default only builds the image. Consult the script for current defaults. The UI
-build needs the network by design (it installs from upstream's lock with
-`--immutable`), and what it starts from is pinned by tag, not by digest: the
-Node image in `build-ui.sh`, and in upstream's `Dockerfile.ui` the nginx base
-and an unpinned `corepack` install. That is upstream's build, kept as it is.
+Both bases are arguments: `NODE_IMAGE` for the build stage and `NGINX_IMAGE`
+for the runtime stage, declared before the first `FROM` so that a caller's
+value reaches the `FROM` line. `NPM_REGISTRY` names the registry npm, yarn and
+corepack use, and is empty by default, which leaves each tool on its own.
+`Dockerfile.ui.dockerignore`, which BuildKit reads in place of `.dockerignore`
+for that Dockerfile, cuts the context down to what `Dockerfile.ui` copies: the
+root package manifest and lock, `.yarnrc.yml` and the five UI packages, without
+`node_modules`. Source maps stay disabled and stale local `cvat-ui/dist` output
+is removed before building. The script's `IMAGE` (default
+`cvat/ui:v2.82.0-fork`), `NODE_IMAGE`, `NGINX_IMAGE` and `NPM_REGISTRY`
+variables are supported overrides; `SAVE=1` additionally exports a compressed
+image archive, while the default only builds the image and never pushes.
+Consult the script for current defaults. The UI build needs the network by
+design (it installs from upstream's lock with `--immutable`).
 
 The fork server image is a full build of the fork's tree by
 `Dockerfile.server`, the fork's port of upstream's `Dockerfile`, stage for
 stage, to `python:3.12-slim-bookworm`: Debian 12, with Python 3.12 from the
 official Python image, the version upstream builds and pins its requirements
 for. Rust for the Datumaro wheel comes from a `rust:1.85-slim-bookworm` stage,
-and smokescreen from the Go image upstream's `Dockerfile` names. Every base is
-pinned by digest, all three (`BASE_IMAGE`, `RUST_IMAGE`, `GOLANG_IMAGE`) as
-the defaults of `Dockerfile.server`'s `ARG`s, and every `FROM` names one of
-them or an earlier stage. Each place
+and smokescreen from the Go image upstream's `Dockerfile` names. All three
+bases are `Dockerfile.server`'s `ARG`s (`BASE_IMAGE`, `RUST_IMAGE`,
+`GOLANG_IMAGE`), and every `FROM` names one of them or an earlier stage. Their
+defaults are public references and carry digests, but a build does not have to
+pin a base: a tag is accepted, and `build-server.sh` records the digest each
+reference resolved to
+([ADR 0008](adr/0008-the-fork-is-the-original-for-two-repositories.md)). Each
+place
 where `Dockerfile.server` differs from upstream's `Dockerfile` carries a
 comment that says why. Upstream's `Dockerfile` stays as upstream wrote it, and
 the fork's build does not use it. `Dockerfile.server` has no `# syntax=` line,
 so the Dockerfile frontend built into Docker's BuildKit builds it and no
 frontend image is pulled.
 
-The build needs network access: `build-server.sh` pulls the three pinned bases
-and no other image, and the build downloads and compiles OpenH264 and FFmpeg,
+The build needs network access: `build-server.sh` pulls the three bases and
+logs the digest each resolved to, and the build downloads and compiles OpenH264 and FFmpeg,
 downloads the Python packages and builds those without a wheel from source
 (python-ldap, Datumaro with its Rust extension, and PyAV, as upstream does). It
 takes long. `MAKE_JOBS` (default 5, upstream's fixed `make -j5`) sets the
@@ -299,7 +303,10 @@ copies (`cvat/`, `backend_entrypoint.d/`, `supervisord/`, `utils/`,
 `backend_entrypoint.sh`, `components/analytics/clickhouse/init.py`,
 `manage.py`, `rqscheduler.py` and `wait_for_deps.sh`), as they are in the
 working tree. The script never pushes. `IMAGE` (default
-`cvat/server:v2.82.0-fork`) and `MAKE_JOBS` are its supported overrides.
+`cvat/server:v2.82.0-fork`), `MAKE_JOBS` and the perimeter arguments
+(`APT_REMOTE`, `APT_SECURITY_REMOTE`, `PIP_INDEX`, `GO_PROXY`, `CARGO_INDEX`,
+`GITHUB_PROXY`, and the three bases) are its supported overrides
+([ADR 0008](adr/0008-the-fork-is-the-original-for-two-repositories.md)).
 
 `build-server.sh` refuses, before it builds, when:
 
@@ -307,7 +314,6 @@ working tree. The script never pushes. `IMAGE` (default
   from: the script records that file's SHA-256 (`PORTED_FROM_SHA256`), so a
   release that changes upstream's `Dockerfile` cannot be built until the
   change is ported ([upgrade procedure, section 3](upstream-upgrade.md#3-merge-the-policies-and-update-the-images));
-- a base named by `Dockerfile.server` is not one image pinned by digest;
 - a file under the copied paths is not tracked (the image would lack it while
   the working tree has it), or a tracked file there is missing from the
   working tree;

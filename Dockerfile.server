@@ -5,14 +5,44 @@
 # names that differ between Ubuntu 24.04 and Debian 12, Rust 1.85 from the Rust image, Python and
 # its headers, pip and venv from the base instead of apt.
 #
+# The same file builds inside a closed network. Everything such a network has to supply is a build
+# argument with a public default, so building it needs no edit to this file and nothing of that
+# network is committed here:
+#
+#   BASE_IMAGE, RUST_IMAGE, GOLANG_IMAGE   the three bases          default: the official images
+#   APT_REMOTE                             the Debian apt mirror    default: empty, the base's own
+#                                                                   sources are used unchanged
+#   APT_SECURITY_REMOTE                    its security suites      default: empty, APT_REMOTE
+#   PIP_INDEX                              the Python package index default: empty, PyPI
+#   GO_PROXY                               the Go module proxy      default: empty, proxy.golang.org
+#   CARGO_INDEX                            the cargo registry index default: empty, crates.io
+#   GITHUB_PROXY                           a mirror of github.com   default: empty, github.com
+#                                                                   itself
+#
+# An ARG must be re-declared inside a stage (without a value) before that stage uses it.
+#
+# The four source archives (OpenH264, FFmpeg, datumaro, smokescreen) are downloaded as files and
+# verified against their sha256, and each download is one line that GITHUB_PROXY prefixes: an
+# empty GITHUB_PROXY means github.com, so there is no second code path for a closed network.
+#
 # It deliberately needs no external Dockerfile frontend image: upstream's `# syntax=` line is left
 # out and its one COPY --parents is written as plain COPY instructions with explicit destinations,
 # so the frontend built into the Docker installation's BuildKit builds it (RUN --mount needs
 # BuildKit; the legacy builder cannot build this file).
 #
-# Built by build-server.sh, which gives it a context of the tracked files it copies, refuses a
-# base that is not pinned by digest, and refuses to build when upstream's Dockerfile changed since this port
+# Built by build-server.sh, which gives it a context of the tracked files it copies, passes these
+# arguments through from the environment, pulls the three bases and logs the digest each resolved
+# to, and refuses to build when upstream's Dockerfile changed since this port
 # (docs/upstream-upgrade.md, section 3). The server and every worker run this one image.
+
+# The perimeter inputs. Empty means the public default named above: an empty value is never
+# written into a config file below, so nothing here changes a public build.
+ARG APT_REMOTE
+ARG APT_SECURITY_REMOTE
+ARG PIP_INDEX
+ARG GO_PROXY
+ARG CARGO_INDEX
+ARG GITHUB_PROXY
 
 # python:3.12-slim-bookworm
 ARG BASE_IMAGE=python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
@@ -26,12 +56,40 @@ ARG GOLANG_IMAGE=golang:1.27.2@sha256:820153096fda4de6ac1b7194d12e416b7dd8f4e9a3
 # (a source archive in the requirements) builds a Rust extension.
 FROM ${RUST_IMAGE} AS rust-toolchain
 
+ARG CARGO_INDEX
+# A base may default to a non-root user, and this stage writes the toolchain's config.
+USER root
+# crates.io is replaced by CARGO_INDEX when it is set. The config is written here, in the image's
+# CARGO_HOME, so that the COPY of /usr/local/cargo below (into build-image-base) carries it: cargo
+# runs only in the stages based on the Python base. The timeouts and retries cover an artifact
+# server's slow TLS handshakes; they are part of that config, so a public build keeps cargo's own
+# defaults.
+RUN if [ -n "$CARGO_INDEX" ]; then \
+        printf '[source.crates-io]\nreplace-with = "mirror"\n\n[source.mirror]\nregistry = "%s"\n\n[net]\nretry = 5\n\n[http]\ntimeout = 300\n' \
+            "$CARGO_INDEX" > /usr/local/cargo/config.toml; \
+    fi
+
 FROM ${BASE_IMAGE} AS build-image-base
+# A base may default to a non-root user; every stage that installs packages or writes outside a
+# home directory runs as root.
+USER root
+ARG APT_REMOTE
+ARG APT_SECURITY_REMOTE
 
 # Upstream's python3-dev and python3-pip are left out: the base provides Python 3.12 with its
 # headers and pip under /usr/local, and Debian's packages would bring Debian's Python 3.11.
 # libldap-dev is Debian's name for Ubuntu's libldap2-dev.
-RUN apt-get update && \
+# With no APT_REMOTE the base's own sources are used as they are. With one, the base's sources go
+# (they name public hosts, unreachable in a closed network) and one sources file names the two
+# mirrors instead; its Release files are signed by the Debian keys the base already carries, so
+# the stock keyring is used rather than trusted=yes. non-free is named up front because unrar and
+# libclamunrar live there (installed in the runtime stage below).
+RUN if [ -n "$APT_REMOTE" ]; then \
+        rm -f /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; \
+        printf 'Types: deb\nURIs: %s\nSuites: bookworm bookworm-updates\nComponents: main non-free\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n\nTypes: deb\nURIs: %s\nSuites: bookworm-security\nComponents: main non-free\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' \
+            "$APT_REMOTE" "${APT_SECURITY_REMOTE:-$APT_REMOTE}" > /etc/apt/sources.list.d/mirror.sources; \
+    fi && \
+    apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get --no-install-recommends install -yq \
         curl \
         g++ \
@@ -67,18 +125,29 @@ FROM build-image-base AS build-image-av
 ARG PREFIX=/opt/ffmpeg
 ARG PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig
 ARG MAKE_JOBS=5
+ARG GITHUB_PROXY
+ARG PIP_INDEX
 
 ENV FFMPEG_VERSION=8.0 \
     OPENH264_VERSION=2.6.0
 
+# The source archives are fetched as files and verified against their sha256; curl -f makes an
+# error page fail the build instead of being piped into tar. GITHUB_PROXY (github.com when empty)
+# prefixes the URL, so the same line serves a public and a closed network.
 WORKDIR /tmp/openh264
-RUN curl -sL https://github.com/cisco/openh264/archive/v${OPENH264_VERSION}.tar.gz --output - | \
-    tar -zx --strip-components=1 && \
+RUN curl -fsSL "${GITHUB_PROXY:-https://github.com}/cisco/openh264/archive/v${OPENH264_VERSION}.tar.gz" --output openh264.tar.gz && \
+    echo "558544ad358283a7ab2930d69a9ceddf913f4a51ee9bf1bfb9e377322af81a69  openh264.tar.gz" | sha256sum -c - && \
+    tar -zxf openh264.tar.gz --strip-components=1 && \
     make -j${MAKE_JOBS} && make install-shared PREFIX=${PREFIX} && make clean
 
+# Upstream takes this from ffmpeg.org; the GitHub archive of tag n8.0 serves the same source (its
+# only top directory is FFmpeg-n8.0, so --strip-components=1 works unchanged; it carries RELEASE
+# but no VERSION, and configure falls back to it, so only the built libraries' release string can
+# differ from the ffmpeg.org tarball's). One URL and one checksum for both kinds of network.
 WORKDIR /tmp/ffmpeg
-RUN curl -sL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz --output - | \
-    tar -zx --strip-components=1 && \
+RUN curl -fsSL "${GITHUB_PROXY:-https://github.com}/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz" --output ffmpeg.tar.gz && \
+    echo "dd4030dbfdc34d9ff255a116bdd1caade42500ac2981efa27f8b151cc54c7b9e  ffmpeg.tar.gz" | sha256sum -c - && \
+    tar -zxf ffmpeg.tar.gz --strip-components=1 && \
     ./configure --disable-nonfree --disable-gpl --enable-libopenh264 --enable-libmp3lame \
         --enable-shared --disable-static --disable-doc --disable-programs --prefix="${PREFIX}" && \
     make -j${MAKE_JOBS} && make install && make clean
@@ -92,7 +161,10 @@ COPY utils/dataset_manifest/requirements.txt /tmp/utils/dataset_manifest/require
 RUN grep -q '^av==' /tmp/utils/dataset_manifest/requirements.txt
 RUN sed -i '/^av==/!d' /tmp/utils/dataset_manifest/requirements.txt
 
+# pip reads its index from PIP_INDEX only when that is set: an empty value would be an empty index,
+# so it is exported inside the step rather than put in the image's environment.
 RUN --mount=type=cache,target=/root/.cache/pip/http-v2 \
+    if [ -n "$PIP_INDEX" ]; then export PIP_INDEX_URL="$PIP_INDEX" PIP_DEFAULT_TIMEOUT=300; fi && \
     python3 -m pip wheel --no-binary=av \
     -r /tmp/utils/dataset_manifest/requirements.txt \
     -w /tmp/wheelhouse
@@ -100,16 +172,31 @@ RUN --mount=type=cache,target=/root/.cache/pip/http-v2 \
 # This stage builds wheels for all dependencies (except PyAV)
 FROM build-image-base AS build-image
 
+ARG GITHUB_PROXY
+ARG PIP_INDEX
+
 COPY cvat/requirements/ /tmp/cvat/requirements/
 COPY utils/dataset_manifest/requirements.txt /tmp/utils/dataset_manifest/requirements.txt
 
 # Exclude av from the requirements file
 RUN sed -i '/^av==/d' /tmp/utils/dataset_manifest/requirements.txt
 
+# datumaro's requirement is a direct URL, which pip would fetch itself. The zip is downloaded here
+# instead (through GITHUB_PROXY when it is set, from github.com when it is not), verified against
+# its sha256, and handed to pip as a local file: one code path either way, and the archive does not
+# depend on how pip resolves URLs.
+RUN curl -fsSL "${GITHUB_PROXY:-https://github.com}/cvat-ai/datumaro/archive/335fc3e55fe699b9401091f6af11f10c3b0e08cb.zip" --output /tmp/datumaro.zip && \
+    echo "de0c5d41a31da10c140cc0db0707739ae71c375c4a94933a5ea4cf0dbdf82cef  /tmp/datumaro.zip" | sha256sum -c - && \
+    sed -i 's#^datumaro @ https://github.com/cvat-ai/datumaro/archive/335fc3e55fe699b9401091f6af11f10c3b0e08cb.zip$#datumaro @ file:///tmp/datumaro.zip#' \
+        /tmp/cvat/requirements/base.txt && \
+    grep -q '^datumaro @ file:///tmp/datumaro.zip$' /tmp/cvat/requirements/base.txt
+
 ARG CVAT_CONFIGURATION="production"
 
 # The lxml and xmlsec wheels must bundle compatible libxml2 versions.
+# PIP_INDEX is used when it is set; empty leaves pip on PyPI.
 RUN --mount=type=cache,target=/root/.cache/pip/http-v2 \
+    if [ -n "$PIP_INDEX" ]; then export PIP_INDEX_URL="$PIP_INDEX" PIP_DEFAULT_TIMEOUT=300; fi && \
     DATUMARO_HEADLESS=1 python3 -m pip wheel --no-deps --only-binary lxml,xmlsec \
     -r /tmp/cvat/requirements/${CVAT_CONFIGURATION}.txt \
     -w /tmp/wheelhouse
@@ -117,10 +204,33 @@ RUN --mount=type=cache,target=/root/.cache/pip/http-v2 \
 # Upstream's stage, with its golang:1.27.2 pinned by digest (GOLANG_IMAGE above).
 FROM ${GOLANG_IMAGE} AS build-smokescreen
 
-RUN git clone --filter=blob:none --no-checkout https://github.com/stripe/smokescreen.git
-RUN cd smokescreen && git checkout eb1ac09 && go build -o /tmp/smokescreen
+# A base may default to a non-root user, and the build writes the module cache below.
+USER root
+ARG GITHUB_PROXY
+ARG GO_PROXY
+ENV GOPATH=/go \
+    GOMODCACHE=/go/pkg/mod \
+    GOCACHE=/go/cache
+WORKDIR /tmp/smokescreen-src
+# Upstream git-clones github.com here. The archive of the same commit is downloaded instead (its
+# only top directory is smokescreen-eb1ac09e96e9a6ad1576837c818629b43133c39f, hence
+# --strip-components=1) and verified against its sha256, so the download is one line for a public
+# and a closed network alike. GO_PROXY and GOSUMDB are set only when GO_PROXY is: empty leaves the
+# toolchain on proxy.golang.org and sum.golang.org.
+RUN curl -fsSL "${GITHUB_PROXY:-https://github.com}/stripe/smokescreen/archive/eb1ac09.tar.gz" --output smokescreen.tar.gz && \
+    echo "17bc5b71a6c6c24c4f0d1beb5e5486f8b22c663f79e52875d949b086846b8d4a  smokescreen.tar.gz" | sha256sum -c - && \
+    tar -zxf smokescreen.tar.gz --strip-components=1 && \
+    if [ -n "$GO_PROXY" ]; then export GOPROXY="$GO_PROXY" GOSUMDB=off; fi && \
+    go mod download && \
+    go build -o /tmp/smokescreen
 
 FROM ${BASE_IMAGE}
+# A base may default to a non-root user; the runtime stage installs packages and writes system
+# files, so it runs as root and switches to its own user at the end of the stage.
+USER root
+ARG APT_REMOTE
+ARG APT_SECURITY_REMOTE
+ARG PIP_INDEX
 
 ARG http_proxy
 ARG https_proxy
@@ -148,7 +258,18 @@ ENV DJANGO_SETTINGS_MODULE="cvat.settings.${CVAT_CONFIGURATION}"
 # supervisor runs on Debian's own python3, so that package brings Python 3.11 as a second
 # interpreter in /usr/bin; it runs supervisord only. Every program CVAT starts finds the venv's
 # Python 3.12 first on PATH (build-server.sh checks this).
-RUN sed -i 's/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources && \
+# With no APT_REMOTE this is upstream's behaviour: the base's main component is widened with
+# non-free here and narrowed again after the CLAM_AV step below. With one, the base's sources go
+# and one sources file names the two mirrors, non-free included from the start, as in the build
+# stage above (this stage starts from BASE_IMAGE, not from build-image-base, so the file written
+# there is not inherited).
+RUN if [ -n "$APT_REMOTE" ]; then \
+        rm -f /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; \
+        printf 'Types: deb\nURIs: %s\nSuites: bookworm bookworm-updates\nComponents: main non-free\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n\nTypes: deb\nURIs: %s\nSuites: bookworm-security\nComponents: main non-free\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' \
+            "$APT_REMOTE" "${APT_SECURITY_REMOTE:-$APT_REMOTE}" > /etc/apt/sources.list.d/mirror.sources; \
+    else \
+        sed -i 's/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources; \
+    fi && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get --no-install-recommends install -yq \
         adduser \
@@ -171,6 +292,16 @@ RUN sed -i 's/^Components: main$/Components: main non-free/' /etc/apt/sources.li
     && ln -fs /usr/share/zoneinfo/${TZ} /etc/localtime && \
     dpkg-reconfigure -f noninteractive tzdata && \
     rm -rf /var/lib/apt/lists/*
+
+# The CA-certificate layer: installing Debian's ca-certificates package regenerates /etc/ssl/certs,
+# so the bundle above is refreshed (which also picks up any CA a base ships under
+# /usr/local/share/ca-certificates) and copied to where the deployment's tools look for it. The
+# three variables point requests, curl and OpenSSL at that bundle.
+RUN update-ca-certificates && \
+    cp /etc/ssl/certs/ca-certificates.crt /usr/local/share/ca-certificates/all_certs.crt
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 # Install smokescreen
 COPY --from=build-smokescreen /tmp/smokescreen /usr/local/bin/smokescreen
@@ -196,8 +327,11 @@ RUN if [ "$CLAM_AV" = "yes" ]; then \
     fi
 
 # The apt sources go back to upstream's main component only, now that unrar and libclamunrar
-# are installed: nothing later in the image comes from non-free.
-RUN sed -i 's/^Components: main non-free$/Components: main/' /etc/apt/sources.list.d/debian.sources
+# are installed: nothing later in the image comes from non-free. Only the base's own sources were
+# widened above; a written sources file names non-free deliberately and stays as it is.
+RUN if [ -z "$APT_REMOTE" ]; then \
+        sed -i 's/^Components: main non-free$/Components: main/' /etc/apt/sources.list.d/debian.sources; \
+    fi
 
 # Install wheels from the build image
 # The venv is made from the base's Python 3.12, named in full: Debian's python3 is 3.11.
@@ -215,7 +349,10 @@ COPY --from=build-image-av /opt/ffmpeg/lib /usr/lib
 # These variables are required for supervisord substitutions in files
 # This library allows remote python debugging with VS Code
 ARG CVAT_DEBUG_ENABLED
+# pip is only left in the image for this optional install and it runs as root, so the index is
+# exported here too, and only when PIP_INDEX is set.
 RUN if [ "${CVAT_DEBUG_ENABLED}" = 'yes' ]; then \
+        if [ -n "$PIP_INDEX" ]; then export PIP_INDEX_URL="$PIP_INDEX" PIP_DEFAULT_TIMEOUT=300; fi; \
         python3 -m pip install --no-cache-dir debugpy; \
     fi
 

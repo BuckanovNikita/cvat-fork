@@ -1,0 +1,31 @@
+{{- /*
+Renders no resources. It exists to make a deploy with a missing or mutable
+image reference fail loudly instead of silently running something else.
+
+Switch it on where the references are supplied at deploy time: every component
+listed in imageTagsGuard.components must then carry an image, and its tag must
+match imageTagsGuard.tagPattern, which by convention ends in the short commit
+the build published.
+*/ -}}
+{{- if .Values.imageTagsGuard.enabled -}}
+{{- $pattern := required "imageTagsGuard.tagPattern must be set when the guard is on" .Values.imageTagsGuard.tagPattern }}
+{{- $grafana := .Values.grafana | default dict }}
+{{- $known := dict
+    "backend" (dict "image" .Values.cvat.backend.image "tag" .Values.cvat.backend.tag)
+    "frontend" (dict "image" .Values.cvat.frontend.image "tag" .Values.cvat.frontend.tag)
+    "grafana" (dict "image" (dig "image" "repository" "" $grafana) "tag" (dig "image" "tag" "" $grafana))
+    "opa" (dict "image" .Values.cvat.opa.image "tag" .Values.cvat.opa.tag)
+    "kvrocks" (dict "image" .Values.cvat.kvrocks.image "tag" .Values.cvat.kvrocks.tag) }}
+{{- range $component := .Values.imageTagsGuard.components }}
+{{- $reference := index $known $component }}
+{{- if not $reference }}
+{{- fail (printf "imageTagsGuard.components names an unknown component %q; known: backend, frontend, grafana, opa, kvrocks" $component) }}
+{{- end }}
+{{- if not (toString (default "" $reference.image)) }}
+{{- fail (printf "the %s image reference is not set, and imageTagsGuard.enabled requires it" $component) }}
+{{- end }}
+{{- if not (regexMatch $pattern (toString (default "" $reference.tag))) }}
+{{- fail (printf "the %s image tag %q is not immutable (expected %s); build it or pass the tag the build published" $component (toString (default "" $reference.tag)) $pattern) }}
+{{- end }}
+{{- end }}
+{{- end -}}

@@ -141,7 +141,7 @@ Service name is release-redis-master for replication architecture and if Sentine
   value: "{{ .Values.cvat.backend.numProxies }}"
 
 - name: CVAT_OPA_URL
-  value: "http://{{ .Release.Name }}-opa-service:8181"
+  value: "http://{{ tpl .Values.cvat.opa.serviceName . }}:8181"
 
 {{- if .Values.analytics.enabled}}
 - name: CVAT_ANALYTICS
@@ -149,7 +149,12 @@ Service name is release-redis-master for replication architecture and if Sentine
 - name: DJANGO_LOG_SERVER_HOST
   value: "{{ .Release.Name }}-vector"
 - name: DJANGO_LOG_SERVER_PORT
-  value: "8282"
+  {{- /* The port vector listens on: one value, so the sender and the receiver cannot drift. */}}
+  {{- $port := 8282 }}
+  {{- with .Values.vector.service.ports }}
+  {{- $port = (index . 0).port | default 8282 }}
+  {{- end }}
+  value: "{{ $port }}"
 - name: CLICKHOUSE_HOST
   valueFrom:
     secretKeyRef:
@@ -183,7 +188,7 @@ Service name is release-redis-master for replication architecture and if Sentine
 - name: CVAT_SERVERLESS
   value: "1"
 - name: CVAT_NUCLIO_HOST
-  value: "{{ .Release.Name }}-nuclio-dashboard"
+  value: "{{ tpl .Values.nuclio.dashboard.host . }}"
 - name: CVAT_NUCLIO_FUNCTION_NAMESPACE
   value: "{{ .Release.Namespace }}"
 {{- end }}
@@ -204,18 +209,20 @@ Service name is release-redis-master for replication architecture and if Sentine
 
 {{- define "cvat.backend.initContainers" -}}
 {{- $localValues := .Values.cvat.backend.server }}
-{{- if .Values.cvat.backend.permissionFix.enabled -}}
+{{- $fix := .Values.cvat.backend.permissionFix -}}
+{{- if $fix.enabled -}}
+{{- if and (not $fix.commandOverride) (not $fix.paths) -}}
+{{- fail "cvat.backend.permissionFix is enabled but sets neither paths nor commandOverride, so it would run chmod with no operand" -}}
+{{- end -}}
 - name: user-data-permission-fix
-  image: {{ .Values.cvat.backend.permissionFix.image }}:{{ .Values.cvat.backend.permissionFix.tag }}
-  imagePullPolicy: {{ .Values.cvat.backend.permissionFix.imagePullPolicy }}
-  command: ["/bin/sh", "-c"]
-  args:
-  {{- if not .Values.cvat.backend.permissionFix.commandOverride -}}
-  {{- with join " " .Values.cvat.backend.permissionFix.paths }}
-    - "chmod -R 777 {{ . }}"
-  {{- end -}}
-  {{ else }}
-  {{- toYaml .Values.cvat.backend.permissionFix.commandOverride | nindent 3 }}
+  image: {{ $fix.image }}:{{ $fix.tag }}
+  imagePullPolicy: {{ $fix.imagePullPolicy }}
+  {{- if $fix.commandOverride }}
+  command:
+  {{- toYaml $fix.commandOverride | nindent 2 }}
+  {{- else }}
+  command:
+  {{- toYaml (concat (list "/bin/chmod" "-R" "777") $fix.paths) | nindent 2 }}
   {{- end }}
   {{- with merge $localValues.resources .Values.cvat.backend.resources }}
   resources:

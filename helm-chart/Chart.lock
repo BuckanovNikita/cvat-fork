@@ -1,0 +1,21 @@
+dependencies:
+- name: postgresql
+  repository: https://charts.bitnami.com/bitnami
+  version: 12.1.15
+- name: vector
+  repository: https://helm.vector.dev
+  version: 0.19.2
+- name: clickhouse
+  repository: https://charts.bitnami.com/bitnami
+  version: 4.1.16
+- name: grafana
+  repository: https://grafana.github.io/helm-charts
+  version: 6.60.6
+- name: traefik
+  repository: https://helm.traefik.io/traefik
+  version: 37.3.0
+- name: redis
+  repository: https://charts.bitnami.com/bitnami
+  version: 19.6.4
+digest: sha256:ea32f94700be3525c64723d3ac07fa5f0938daa72a8b209f63f1f2d22d79219b
+generated: '2026-11-17T00:00:00.000000000+03:00'

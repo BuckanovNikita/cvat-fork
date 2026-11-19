@@ -19,6 +19,13 @@ cvat:
     additionalEnv: []
     numProxies: 1
 
+    # Applied to the server and initializer containers when set. Left empty the
+    # containers keep the image's own user and only runAsNonRoot is enforced,
+    # which is enough for a volume the image owns. A deployment whose shared
+    # volume is written by another uid pins both here.
+    runAsUser: ""
+    runAsGroup: ""
+
     # This should only be used by supercharts;
     # to set custom environment for a Helm release, use additionalEnv.
     extensionEnv: {}
@@ -169,7 +176,9 @@ cvat:
       image: busybox
       tag: 1.36.1
       imagePullPolicy: IfNotPresent
-      # commandOverride: []
+      # Replaces the whole command, not arguments appended to one: give the
+      # program first. Leave it unset to chmod `paths` with /bin/chmod.
+      # commandOverride: ["/bin/chmod", "-R", "777", "/home/django"]
       paths:
         - /home/django
     service:
@@ -240,6 +249,11 @@ cvat:
           name: http
   opa:
     replicas: 1
+    # Name of the Service the backend talks to. The backend reads it from
+    # CVAT_OPA_URL, which is built from this value, so the two can never point
+    # at different objects. Deployments that expect the bare name "opa" (the
+    # default IAM_OPA_URL in the server settings) set this to "opa".
+    serviceName: "{{ .Release.Name }}-opa-service"
     image: openpolicyagent/opa
     tag: 1.12.2
     imagePullPolicy: IfNotPresent
@@ -351,6 +365,9 @@ cvat:
 #     accessModes:
 #       - ReadWriteOnce
       size: 100Gi
+      # Value of the tier label on the data PVC. Empty keeps "kvrocks".
+      # Deployments that select volumes by tier label set it to their tier.
+      pvcTierLabel: ""
       annotations: {}
       volumeAttributesClass:
         create: false
@@ -459,6 +476,10 @@ nuclio:
   enabled: false
   dashboard:
     containerBuilderKind: kaniko
+    # Host the backend uses to reach the nuclio dashboard. The dashboard chart
+    # creates a Service of this name, so a deployment that installs that chart
+    # with a different release name sets it here.
+    host: "{{ .Release.Name }}-nuclio-dashboard"
 # See https://github.com/nuclio/nuclio/blob/master/hack/k8s/helm/nuclio/values.yaml for more info
 #  registry:
 #    loginUrl: someurl
@@ -476,6 +497,12 @@ analytics:
   clickhousePassword: user
   clickhouseHost: "{{ .Release.Name }}-clickhouse"
   clickhousePort: 8123
+  # Render the ClickHouse schema as a secret the ClickHouse subchart runs on
+  # first start. Off by default: point `clickhouse.initdbScriptsSecret` at the
+  # secret's name when you switch it on.
+  clickhouseInit:
+    enabled: false
+    secretName: cvat-clickhouse-init
 
 vector:
   envFrom:
@@ -597,6 +624,22 @@ ingress:
   ## @param ingress.tlsSecretName Specifies the name of the secret containing TLS certificates. Ignored if ingress.tls is false
   ##
   tlsSecretName: ingress-tls-cvat
+  ## Paths that must not be served but answered with a permanent redirect to
+  ## `ingress.hostname` instead, for example a registration endpoint that is
+  ## closed on a private deployment. Each path becomes one rule on a single
+  ## ingress. Empty renders nothing.
+  ##
+  redirectPaths: []
+  ## @param ingress.redirectCode Status code of those redirects
+  ##
+  redirectCode: 308
+  ## Create the TLS secret from the certificate and key values instead of
+  ## managing it outside the chart. The values are read from the top-level
+  ## `tlscrt` and `tlskey` keys, which is where a werf secrets file keeps them.
+  ## The secret is created under `ingress.tlsSecretName`, the same name the
+  ## ingress refers to, so there is no second name to keep in step.
+  tlsSecret:
+    create: false
 
 traefik:
   enabled: false
@@ -627,3 +670,20 @@ traefik:
 
 smokescreen:
   opts: ''
+
+imageTagsGuard:
+  ## Fail the render unless every guarded image reference is set and its tag is
+  ## immutable. Off by default: the chart's own values carry public image tags,
+  ## and a deployment that supplies them at deploy time switches this on so a
+  ## missing or mutable reference cannot silently run.
+  enabled: false
+  ## A tag counts as immutable when it ends in the short commit the build
+  ## published, for example <release-line>-0a1b2c3d.
+  tagPattern: "^[0-9A-Za-z_.-]+-[0-9a-f]{8}$"
+  ## Components to guard. Each name maps to a reference the chart renders:
+  ## backend, frontend, grafana, opa, kvrocks. Grafana is only rendered while
+  ## `analytics.enabled` is true, so leave it out of this list there.
+  components:
+    - backend
+    - frontend
+    - grafana

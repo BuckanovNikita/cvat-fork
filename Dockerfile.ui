@@ -1,11 +1,44 @@
-FROM node:lts-slim AS cvat-ui
+# The frontend image: the whole CVAT UI bundle compiled inside the image, then served by an
+# unprivileged nginx. Everything a closed network has to supply is a build argument with a public
+# default, so this file builds unchanged from public defaults and needs no committed registry file
+# in the build context:
+#
+#   NODE_IMAGE     the build stage's base     default: node:lts-slim
+#   NGINX_IMAGE    the runtime stage's base   default: nginxinc/nginx-unprivileged:1.31.7-alpine3.24-slim
+#   NPM_REGISTRY   the registry npm, yarn and corepack use
+#                                             default: empty, each tool's own registry
+#
+# An empty NPM_REGISTRY sets nothing at all: the variables that name a registry are exported inside
+# the steps that use them, so a public build keeps every tool on its own default.
+#
+# Both bases are declared here, before the first FROM: an ARG declared inside a stage is not in
+# scope for a later FROM instruction, so a stage-scoped NGINX_IMAGE would resolve to an empty base.
+ARG NODE_IMAGE=node:lts-slim
+ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31.7-alpine3.24-slim
+FROM ${NODE_IMAGE} AS cvat-ui
 
 ENV TERM=xterm \
     LANG='C.UTF-8'  \
     LC_ALL='C.UTF-8'
 
+ARG NPM_REGISTRY
+# A base may default to a non-root user; the build writes into /tmp and into npm's global prefix.
+USER root
+
+# corepack is not part of every Node distribution (newer images drop it), so it is installed where
+# it is missing; corepack enable then creates the yarn shim that the packageManager field in
+# package.json pins. npm itself needs the registry when one is given.
+RUN if ! command -v corepack >/dev/null 2>&1; then \
+        if [ -n "$NPM_REGISTRY" ]; then \
+            npm install -g corepack --registry "$NPM_REGISTRY"; \
+        else \
+            npm install -g corepack; \
+        fi; \
+    fi && \
+    if [ -n "$NPM_REGISTRY" ]; then export COREPACK_NPM_REGISTRY="$NPM_REGISTRY"; fi && \
+    corepack enable
+
 # Install dependencies
-RUN npm install -g corepack
 COPY .yarnrc.yml /tmp/
 COPY package.json /tmp/
 COPY yarn.lock /tmp/
@@ -16,8 +49,14 @@ COPY cvat-ui/package.json /tmp/cvat-ui/
 COPY cvat-data/package.json /tmp/cvat-data/
 
 # Install common dependencies
+# yarn reads its registry from YARN_NPM_REGISTRY_SERVER and corepack the yarn release it downloads
+# from COREPACK_NPM_REGISTRY; both are exported here, for this install only, when a registry is
+# given.
 WORKDIR /tmp/
-RUN DISABLE_HUSKY=1 yarn install --immutable
+RUN if [ -n "$NPM_REGISTRY" ]; then \
+        export YARN_NPM_REGISTRY_SERVER="$NPM_REGISTRY" COREPACK_NPM_REGISTRY="$NPM_REGISTRY" npm_config_registry="$NPM_REGISTRY"; \
+    fi && \
+    DISABLE_HUSKY=1 yarn install --immutable
 
 # Build source code
 COPY cvat-data/ /tmp/cvat-data/
@@ -32,7 +71,7 @@ ARG SOURCE_MAPS_ENABLED=false
 RUN CLIENT_PLUGINS="${CLIENT_PLUGINS}" \
 SOURCE_MAPS_ENABLED="${SOURCE_MAPS_ENABLED}" yarn run build:cvat-ui
 
-FROM nginxinc/nginx-unprivileged:1.31.7-alpine3.24-slim
+FROM ${NGINX_IMAGE}
 
 # Replace default.conf configuration to remove unnecessary rules
 COPY cvat-ui/react_nginx.conf /etc/nginx/conf.d/default.conf

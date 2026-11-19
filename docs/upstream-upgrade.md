@@ -142,8 +142,10 @@ fork server tag, and the release whose `Dockerfile` it records),
 (`STOCK_TAG`), `verify/policy_bundle.sh` (its usage text),
 `verify/team_analytics_backend.sh` (its image), the stack's `stack.env` and
 `run.sh`, and the commands of this document. Review upstream's `Dockerfile.ui`
-build arguments and base-image name against the UI script's BuildKit override,
-and its file list against `Dockerfile.ui.dockerignore`. Consult project
+build arguments and base-image name against the UI script's `NODE_IMAGE`, which
+sets the build stage's base (the script's own default is `node:24.19.0-slim`),
+and against `NGINX_IMAGE`, the runtime stage's base in `Dockerfile.ui`; then
+review its file list against `Dockerfile.ui.dockerignore`. Consult project
 dependency configuration for compatible tools rather than adding version pins
 to these instructions.
 
@@ -164,12 +166,13 @@ matching stage of `Dockerfile.server`: Ubuntu package names become Debian 12's
 be missing), and the commented deviations stay, each with its comment. A path
 upstream's `COPY` gains is copied by its own `COPY` line and added to the list
 of copied paths in `build-server.sh` (`COPIED`), which makes the build
-context. Check the pinned bases against the change: a Python version upstream
-moves to, or a Rust or Go version its stages name, needs a new base, pinned by
-digest. All three bases are the defaults of `Dockerfile.server`'s `ARG`s:
+context. Check the bases against the change: a Python version upstream moves
+to, or a Rust or Go version its stages name, needs a new base reference. All
+three bases are the defaults of `Dockerfile.server`'s `ARG`s:
 `BASE_IMAGE` (Python), `RUST_IMAGE` and `GOLANG_IMAGE` (the Go image of
-upstream's smokescreen stage, whose `FROM` names that `ARG`); the script
-refuses one that is not pinned. Then record the hash of the
+upstream's smokescreen stage, whose `FROM` names that `ARG`). A base does not
+have to be pinned by digest: a tag is accepted, and `build-server.sh` records in
+its log the digest each base reference resolved to. Then record the hash of the
 target's `Dockerfile` in `build-server.sh` as `PORTED_FROM_SHA256`:
 
 ```bash
@@ -199,7 +202,7 @@ and test the default configuration only: the `CLAM_AV=yes` and
 `CVAT_DEBUG_ENABLED=yes` builds have never been built. A ported package from
 Debian's non-free component goes in while that component is enabled, as
 `unrar` does; the final image's apt sources have the main component only. Before it builds, it refuses the unported
-`Dockerfile` above, a base not pinned by digest, and a tree with an untracked
+`Dockerfile` above and a tree with an untracked
 file, or a tracked file missing, under the copied paths; an untracked file is
 added or removed before building again. Check
 its bundle as under "Policies" in section 4. Check added or renamed chart
@@ -541,7 +544,7 @@ Record what ran and what stayed unverified in dated evidence.
 The two images are built by their scripts (BUILD-1): `./build-ui.sh` with the
 chosen `IMAGE`/`NODE_IMAGE` overrides, and `./build-server.sh` with
 `IMAGE`/`MAKE_JOBS`. Both need network access; `build-server.sh` pulls only the
-three bases `Dockerfile.server` pins, and no `cvat/` image. Use
+three bases `Dockerfile.server`'s `ARG`s name, and no `cvat/` image. Use
 `SAVE=1` only if an archive is needed, for example to carry an image to an
 installation without network access. Inspect served assets in the built UI image and
 check the fork server image's bundle (under "Policies"). Without touching the

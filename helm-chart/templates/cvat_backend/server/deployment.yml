@@ -80,6 +80,12 @@ spec:
           {{- end }}
           securityContext:
             runAsNonRoot: true
+            {{- with .Values.cvat.backend.runAsUser }}
+            runAsUser: {{ . }}
+            {{- end }}
+            {{- with .Values.cvat.backend.runAsGroup }}
+            runAsGroup: {{ . }}
+            {{- end }}
         - name: cvat-nginx
           image: {{ .Values.cvat.backend.image }}:{{ .Values.cvat.backend.tag }}
           imagePullPolicy: {{ .Values.cvat.backend.imagePullPolicy }}
@@ -113,6 +119,12 @@ spec:
             subPath: data
           securityContext:
             runAsNonRoot: true
+            {{- with .Values.cvat.backend.runAsUser }}
+            runAsUser: {{ . }}
+            {{- end }}
+            {{- with .Values.cvat.backend.runAsGroup }}
+            runAsGroup: {{ . }}
+            {{- end }}
       initContainers:
       {{- include "cvat.backend.initContainers" . | nindent 8 }}
       {{- with merge $localValues.affinity .Values.cvat.backend.affinity }}

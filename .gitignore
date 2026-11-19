@@ -38,9 +38,9 @@ yarn-error.log*
 .idea/
 
 #Ignore helm-related files
-/helm-chart/Chart.lock
 /helm-chart/values.*.yaml
-/helm-chart/charts/*
+# Chart.lock and the dependency tarballs are committed: a deploy resolves
+# dependencies from them and only fetches when no <name>-<version>.tgz matches.
 
 #Ignore website temp files
 /site/public/
